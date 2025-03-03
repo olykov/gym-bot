@@ -24,6 +24,12 @@ jobs:
           echo "IMAGE_NAME=${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot" >> $GITHUB_ENV
           echo "Using image tag: $TAG and image name: $IMAGE_NAME"
       
+      - name: Debugs
+        run: |
+          echo "image repository: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot"
+          echo "image tag: ${{ env.IMAGE_TAG }}"
+          echo "image name: ${{ env.IMAGE_NAME }}"
+      
       - name: Build and push Docker image
         # env:
         #   IMAGE_NAME: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot
@@ -32,24 +38,24 @@ jobs:
           docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
           docker push ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
       
-      # - name: Install Ansible
-      #   run: sudo apt update && sudo apt install -y ansible
+      - name: Install Ansible
+        run: sudo apt update && sudo apt install -y ansible
 
-      # - name: Set up SSH Key
-      #   run: |
-      #     mkdir -p ~/.ssh
-      #     echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-      #     chmod 600 ~/.ssh/id_rsa
-      #     ssh-keyscan -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_ADDRESS }} >> ~/.ssh/known_hosts
+      - name: Set up SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_ADDRESS }} >> ~/.ssh/known_hosts
   
-      # - name: Run Ansible Playbook
-      #   env:
-      #     ANSIBLE_HOST_KEY_CHECKING: "False"
-      #     SERVER_ADDRESS: "${{ secrets.SERVER_ADDRESS }}"
-      #     SERVER_USER: "${{ secrets.SERVER_USER }}"
-      #     SERVER_PORT: "${{ secrets.SERVER_PORT }}"
-      #     DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
-      #     DOCKER_TAG: ${{ env.DOCKER_TAG }}
-      #   run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
+      - name: Run Ansible Playbook
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+          SERVER_ADDRESS: "${{ secrets.SERVER_ADDRESS }}"
+          SERVER_USER: "${{ secrets.SERVER_USER }}"
+          SERVER_PORT: "${{ secrets.SERVER_PORT }}"
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+          DOCKER_TAG: ${{ env.DOCKER_TAG }}
+        run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
       
         
