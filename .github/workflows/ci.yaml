@@ -31,7 +31,11 @@ jobs:
       
       - name: Install Ansible
         run: sudo apt update && sudo apt install -y ansible
-
+      
+      - name: Install Ansible requirements
+        run: |
+          ansible-galaxy install -f -r ansible/requirements.yaml
+      
       - name: Set up SSH Key
         run: |
           mkdir -p ~/.ssh
