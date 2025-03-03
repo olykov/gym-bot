@@ -22,8 +22,8 @@ services:
     container_name: gym_bot_app
     environment:
       DATABASE_URL: postgres://myuser:mypassword@db:5432/gym_bot_db
-      GOOGLE_SHEET_ID: ${ GOOGLE_SHEET_ID}
-      TELEGRAM_BOT_TOKEN: ${ TELEGRAM_BOT_TOKEN}
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     ports:
       - "5400:5400"
     depends_on:
