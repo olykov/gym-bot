@@ -18,3 +18,11 @@
         content: |
           APP_IMAGE={{ lookup('env', 'DOCKER_IMAGE') }}
           APP_TAG={{ lookup('env', 'DOCKER_TAG') }}
+          GOOGLE_SHEET_ID={{ lookup('env', 'GOOGLE_SHEET_ID') }}
+          TELEGRAM_BOT_TOKEN={{ lookup('env', 'TELEGRAM_BOT_TOKEN') }}
+    
+    - name: Copy docker-compose.yml
+      ansible.builtin.template:
+        src: "{{inventory_dir}}/files/docker-compose.yaml"
+        dest: "{{ home_dir }}/docker-compose.yml"
+    

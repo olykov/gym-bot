@@ -24,16 +24,7 @@ jobs:
           echo "IMAGE_NAME=${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot" >> $GITHUB_ENV
           echo "Using image tag: $TAG and image name: $IMAGE_NAME"
       
-      - name: Debugs
-        run: |
-          echo "image repository: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot"
-          echo "image tag: ${{ env.IMAGE_TAG }}"
-          echo "image name: ${{ env.IMAGE_NAME }}"
-      
       - name: Build and push Docker image
-        # env:
-        #   IMAGE_NAME: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot
-        #   # IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
           docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
           docker push ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
@@ -54,8 +45,10 @@ jobs:
           SERVER_ADDRESS: "${{ secrets.SERVER_ADDRESS }}"
           SERVER_USER: "${{ secrets.SERVER_USER }}"
           SERVER_PORT: "${{ secrets.SERVER_PORT }}"
-          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
-          DOCKER_TAG: ${{ env.DOCKER_TAG }}
+          DOCKER_IMAGE: ${{ env.IMAGE_NAME }}
+          DOCKER_TAG: ${{ env.IMAGE_TAG }}
+          GOOGLE_SHEET_ID: "${{ secrets.GOOGLE_SHEET_ID }}"
+          TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
         run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
       
         
