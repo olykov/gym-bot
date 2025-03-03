@@ -3,9 +3,18 @@
   hosts: app
   become: yes
   vars:
-    test: 1
+    home_dir: /opt/gym-bot
   
   tasks:
-    - name: Print test
-      debug:
-        msg: "{{ test }}"
+    - name: Ensure home directory exists
+      ansible.builtin.file:
+        path: "{{ home_dir }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Set environment variables
+      ansible.builtin.copy:
+        dest: "{{ home_dir }}/.env"
+        content: |
+          APP_IMAGE={{ lookup('env', 'DOCKER_IMAGE') }}
+          APP_TAG={{ lookup('env', 'DOCKER_TAG') }}
