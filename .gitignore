@@ -9,5 +9,3 @@ app/sa.json
 _aws*
 db.py
 init.sql
-
-docker-compose.yaml
