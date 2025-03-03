@@ -50,12 +50,12 @@
       # when: _docker_compose is changed
       tags: ["app"]
       block:
-        - name: Ensure rustdesk container is absent
+        - name: Ensure app container is absent
           community.docker.docker_compose_v2:
             project_src: "{{ work_dir }}"
             state: absent
 
-        - name: Ensure rustdesk container is running
+        - name: Ensure app container is running
           community.docker.docker_compose_v2:
             project_src: "{{ work_dir }}"
             pull: always
