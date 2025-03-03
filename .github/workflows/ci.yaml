@@ -25,7 +25,18 @@ jobs:
           docker build -t $IMAGE_NAME:$IMAGE_TAG .
           docker push $IMAGE_NAME:$IMAGE_TAG
       
-      # - name: Deploy with Ansible
-      #   run: |
-      #     sudo apt-get update && sudo apt-get install -y ansible
-      #     ansible-playbook -i inventory deploy.yml
+      - name: Install Ansible
+        run: sudo apt update && sudo apt install -y ansible
+
+      - name: Set up SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_ADDRESS }} >> ~/.ssh/known_hosts
+  
+      - name: Install Ansible
+        run: sudo apt update && sudo apt install -y ansible
+  
+      - name: Test Ansible Connection
+        run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml

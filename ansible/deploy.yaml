@@ -1,0 +1,11 @@
+---
+- name: Deploy application
+  hosts: app
+  become: yes
+  vars:
+    test: 1
+  
+  tasks:
+    - name: Print test
+      debug:
+        msg: "{{ test }}"
