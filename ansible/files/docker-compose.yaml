@@ -9,12 +9,12 @@ services:
     volumes:
       - ./db_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 512M
+    #     reservations:
+    #       memory: 256M
 
   app:
     image: "${APP_IMAGE}:${APP_TAG}"
@@ -22,15 +22,15 @@ services:
     container_name: gym_bot_app
     environment:
       DATABASE_URL: postgres://myuser:mypassword@db:5432/gym_bot_db
-      GOOGLE_SHEET_ID: ${ GOOGLE_SHEET_ID }
-      TELEGRAM_BOT_TOKEN: ${ TELEGRAM_BOT_TOKEN }
+      GOOGLE_SHEET_ID: ${ GOOGLE_SHEET_ID}
+      TELEGRAM_BOT_TOKEN: ${ TELEGRAM_BOT_TOKEN}
     ports:
       - "5400:5400"
     depends_on:
       - db
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 512M
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 1G
+    #     reservations:
+    #       memory: 512M
