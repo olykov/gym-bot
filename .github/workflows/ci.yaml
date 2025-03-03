@@ -49,6 +49,7 @@ jobs:
           DOCKER_TAG: ${{ env.IMAGE_TAG }}
           GOOGLE_SHEET_ID: "${{ secrets.GOOGLE_SHEET_ID }}"
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          SA: "${{ secrets.SA }}"
         run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
       
         

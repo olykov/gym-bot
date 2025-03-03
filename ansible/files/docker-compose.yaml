@@ -20,6 +20,8 @@ services:
     image: "${APP_IMAGE}:${APP_TAG}"
     restart: always
     container_name: gym_bot_app
+    volumes:
+      - ./sa.json:/app/sa.json:ro
     environment:
       DATABASE_URL: postgres://myuser:mypassword@db:5432/gym_bot_db
       GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID}

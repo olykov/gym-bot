@@ -11,6 +11,9 @@
         path: "{{ home_dir }}"
         state: directory
         mode: '0755'
+      with_items:
+        - "{{ home_dir }}"
+        - "{{ home_dir }}/db_data"
     
     - name: Set environment variables
       ansible.builtin.copy:
@@ -21,8 +24,20 @@
           GOOGLE_SHEET_ID={{ lookup('env', 'GOOGLE_SHEET_ID') }}
           TELEGRAM_BOT_TOKEN={{ lookup('env', 'TELEGRAM_BOT_TOKEN') }}
     
+    - name: Copy init.sql
+      ansible.builtin.copy:
+        src: "{{inventory_dir}}/files/init.sql"
+        dest: "{{ home_dir }}/init.sql"
+
     - name: Copy docker-compose.yml
       ansible.builtin.template:
         src: "{{inventory_dir}}/files/docker-compose.yaml"
         dest: "{{ home_dir }}/docker-compose.yml"
+    
+    - name: Copy sa.json
+      ansible.builtin.copy:
+        dest: "{{ home_dir }}/sa.json"
+        content: |
+          {{ lookup('env', 'SA') }}
+
     
