@@ -11,6 +11,7 @@ logger = Logger(name="Main")
 app = FastAPI()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+# Check if bot token is set
 if not BOT_TOKEN:
     raise ValueError("Bot token not set. Please configure TELEGRAM_BOT_TOKEN in your environment.")
 
