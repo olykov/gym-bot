@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS exercises (
 );
 
 CREATE TABLE IF NOT EXISTS training (
-    id CHAR(32) PRIMARY KEY,
+    id VARCHAR(32) PRIMARY KEY,
     date TIMESTAMP NOT NULL,
     user_id BIGINT REFERENCES users(id),
     muscle_id INT REFERENCES muscles(id),
