@@ -3,6 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 import prettytable as pt
 from datetime import datetime
+import hashlib
 
 from templates.exercise import exercise_types, sets, weights, reps
 from .postgres import PostgresDB
@@ -16,6 +17,12 @@ sheets = GoogleSheets(os.environ.get("GOOGLE_SHEET_ID"), 'exercises')
 logger = Logger(name="handlers")
 router = Router()
 user_choices = {}
+
+
+def get_hash(*args):
+    """Create a hash from multiple arguments"""
+    combined = ''.join(str(arg) for arg in args)
+    return hashlib.md5(combined.encode()).hexdigest()
 
 
 def check_user_exists(user_id):
@@ -168,8 +175,10 @@ async def process_reps(callback_query: CallbackQuery):
     )
 
     # Backup
+    # {{ $json.exercise + $json.date  + $json.set + $json.weight + $json.reps}}
     if "2107709598" == f"{user_id}":
         sheets.add_row(
+            get_hash(user_choices[user_id]['exercise'], datetime.now().strftime('%Y-%m-%d'), user_choices[user_id]["set"], user_choices[user_id]["weight"], user_choices[user_id]["reps"]),
             user_choices[user_id]['muscle'],
             user_choices[user_id]['exercise'],
             user_choices[user_id]["set"],
