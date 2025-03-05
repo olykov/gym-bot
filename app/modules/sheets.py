@@ -12,7 +12,7 @@ class GoogleSheets:
         self.spreadsheet = self.client.open_by_key(spreadsheet_id)
         self.sheet = self.spreadsheet.worksheet(sheet_name)
 
-    def add_row(self, muscle, exercise, set_num, weight, reps):
+    def add_row(self, row_hash, muscle, exercise, set_num, weight, reps):
         current_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-        row_data = [current_time, muscle, exercise, set_num, weight, reps]
+        row_data = [row_hash, current_time, muscle, exercise, set_num, weight, reps]
         self.sheet.append_row(row_data)

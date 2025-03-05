@@ -175,10 +175,14 @@ async def process_reps(callback_query: CallbackQuery):
     )
 
     # Backup
-    # {{ $json.exercise + $json.date  + $json.set + $json.weight + $json.reps}}
     if "2107709598" == f"{user_id}":
+        row_hash = get_hash(user_choices[user_id]['exercise'], 
+                          datetime.now().strftime('%Y-%m-%d'), 
+                          user_choices[user_id]["set"], 
+                          user_choices[user_id]["weight"], 
+                          user_choices[user_id]["reps"])
         sheets.add_row(
-            get_hash(user_choices[user_id]['exercise'], datetime.now().strftime('%Y-%m-%d'), user_choices[user_id]["set"], user_choices[user_id]["weight"], user_choices[user_id]["reps"]),
+            row_hash,
             user_choices[user_id]['muscle'],
             user_choices[user_id]['exercise'],
             user_choices[user_id]["set"],
