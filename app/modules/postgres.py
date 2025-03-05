@@ -8,7 +8,7 @@ class PostgresDB:
         self.conn = psycopg2.connect(dbname=db_name, user=user, password=password, host=host, port=port)
         self.cursor = self.conn.cursor()
 
-    def save_training_data(self, id, user_id, muscle_name, exercise_name, set_num, weight, reps):
+    def save_training_data(self, id, date, user_id, muscle_name, exercise_name, set_num, weight, reps):
         query = '''
             INSERT INTO training (id, date, user_id, muscle_id, exercise_id, set, weight, reps)
             VALUES (%s, %s, %s, 
@@ -16,7 +16,7 @@ class PostgresDB:
                 (SELECT id FROM exercises WHERE name = %s LIMIT 1), 
                 %s, %s, %s)
         '''
-        self.cursor.execute(query, (id, datetime.now(), user_id, muscle_name, exercise_name, set_num, weight, reps))
+        self.cursor.execute(query, (id, date, user_id, muscle_name, exercise_name, set_num, weight, reps))
         self.conn.commit()
 
     def get_latest_training(self, user_id, body_part, exercise_name):

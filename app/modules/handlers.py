@@ -163,16 +163,19 @@ async def process_weight(callback_query: CallbackQuery):
 async def process_reps(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_choices[user_id]["reps"] = callback_query.data.replace("_r", "")
+    logger.info(f"{user_id}: {user_choices[user_id]['reps']} reps selected")
 
     id_hash = get_hash(user_choices[user_id]['exercise'], 
-                          datetime.now().strftime('%Y-%m-%d'), 
-                          user_choices[user_id]["set"], 
-                          user_choices[user_id]["weight"], 
-                          user_choices[user_id]["reps"]),
+                      datetime.now().strftime('%Y-%m-%d'), 
+                      user_choices[user_id]["set"], 
+                      user_choices[user_id]["weight"], 
+                      user_choices[user_id]["reps"])
     
-    # Save the training data to the database
-    db.save_training_data(
+    date_now = datetime.now()
+    
+    save_to_db = db.save_training_data(
         id_hash,
+        date_now,
         user_id,
         user_choices[user_id]['muscle'],
         user_choices[user_id]['exercise'],
@@ -180,17 +183,21 @@ async def process_reps(callback_query: CallbackQuery):
         user_choices[user_id]["weight"],
         user_choices[user_id]["reps"]
     )
+    logger.info(f"{user_id}: {save_to_db.rowcount} rows saved to db")
 
     # Backup
     if "2107709598" == f"{user_id}":
         sheets.add_row(
             id_hash,
+            date_now.strftime('%Y-%m-%d %H:%M:%S'),
             user_choices[user_id]['muscle'],
             user_choices[user_id]['exercise'],
             user_choices[user_id]["set"],
             user_choices[user_id]["weight"],
             user_choices[user_id]["reps"]
         )
+    else:
+        logger.info(f"{user_id} is not admin, not saving to sheets")
 
     message = format_result_message(user_choices, user_id)
     ikm = markups.generate_muscle_markup()
