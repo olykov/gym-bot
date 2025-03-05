@@ -183,7 +183,7 @@ async def process_reps(callback_query: CallbackQuery):
         user_choices[user_id]["weight"],
         user_choices[user_id]["reps"]
     )
-    logger.info(f"{user_id}: {save_to_db.rowcount} rows saved to db")
+    logger.info(f"{user_id}: {save_to_db} rows saved to db")
 
     # Backup
     if "2107709598" == f"{user_id}":
