@@ -9,10 +9,10 @@ reps = [
 ]
 
 weights = [
-    "5", "7.5", "10", "12.5", "15", "17.5",
-    "20", "22.5", "25", "30", "35", "40",
-    "45", "50", "55", "60", "65", "70",
-    "75", "80", "90", "100", "110", "120"
+    "5", "6", "7.5", "8", "9", "10", "12", "12.5", "14", "15", "15.5", "16", "17", "17.5", "18",
+    "20", "22", "22.5", "24", "25", "26", "27", "28", "30", "32", "32.5","34", "35", "36", "38", "40",
+    "42", "42.5", "45", "47.5", "50", "52.5", "55", "57.5", "60", "65", "70",
+    "75", "80", "85", "90", "95", "100", "105", "110", "115", "120", "125", "130", "135", "140"
 ]
 
 sets = [
@@ -47,60 +47,124 @@ exercise_types = [
         "name": "Chest",
         "exercises": [
             "Bench press",
-            "Dumbbell incline bench press",
             "Bench press incline",
-            "Крос на грудь",
-            "Hammer",
-            "Fly machine",
-            "Chest press machine"
+            "Dumbbell incline bench press",
+            "Lower chest cable crossover",
+            "Upper chest cable crossover",
+            "Hammer incline",
+            "Hammer flat",
+            "Hammer decline",
+            "Peck Deck",
+            "Chest press machine",
+            "Dumbbell press flat bench",
+            "Incline smith"
         ]
     },
     {
-        "name": "Shoulders",
+        "name": "Biceps",
         "exercises": [
-            "Cable lateral raises",
-            "Sholder press machine",
-            "Cable Rope Rear Delt Rows",
-            "Lateral raise machine",
-            "Dumbbell shoulders press (bench)",
-            "Dumbbell lateral raises",
-            "Dumbbell rear raises",
-            "Rear delts fly",
-            "45* cable rear delt fly",
-            "Тяга на заднюю (45*)",
-            "Протяжка"
+            "EZ-bar bicep curl",
+            "Straight-bar biceps curl",
+            "Cross body hammer curl",
+            "Biceps supinated",
+            "Standing single-arm cable biceps curl",
+            "One-arm dumbbell curl over bench",
+            "Standing rope biceps curl",
+            "African curls",
+            "Biceps curl machine",
+            "Dumbbell brachialis curls",
+            "Barbell reverse curl",
+            "Dumbbell side pressure"
         ]
     },
     {
         "name": "Back",
         "exercises": [
-            "Wide-grip lat pull-down"
+            "Wide-grip lat pulldown",
+            "Close-grip lat pulldown",
+            "Power-grip pulldown",
+            "Neutral-grip pulldown",
+            "Lat pulldown machine",
+            "Seated close-grip row",
+            "Seated wide grip row",
+            "Seated neutral grip row",
+            "Dumbbell row",
+            "Incline bench dumbbell row",
+            "Row machine",
+            "Pullover",
+            "Hammer pullover",
+            "Hammer front pulldown",
+            "Iso lateral row",
+            "Iso lateral low row",
+            "Lats cable",
+            "Barbell shrugs",
+            "Dumbbell shrugs",
+            "Assist chin"
         ]
-    },
-    {
-        "name": "Biceps",
-        "exercises": []
     },
     {
         "name": "Triceps",
         "exercises": [
             "French press",
-            "Triceps pushdown V-bar",
+            "Triceps pushdown v-bar",
+            "Triceps pushdown rope",
+            "Triceps pushdown rope straight bar",
             "Close-grip bench press",
             "Cable overhead shoulder extension",
             "Single-arm cable triceps pushdown"
         ]
     },
     {
+        "name": "Shoulders",
+        "exercises": [
+            "Smith barbell shoulders press",
+            "Dumbbell shoulders press",
+            "Dumbbell lateral raises",
+            "Upright row",
+            "Cable lateral raises",
+            "Sholder press machine",
+            "Cable rope rear delt rows",
+            "Lateral raise machine",
+            "Dumbbell rear raises",
+            "Rear delts fly",
+            "Cable rear delt fly 45"
+        ]
+    },
+    {
         "name": "Forearms",
-        "exercises": []
+        "exercises": [
+            "Barbell wrist curl",
+            "Barbell reverse wrist curl",
+            "Cable over back wrist curl",
+            "Pronator rope",
+            "Pronator plates"
+        ]
     },
     {
         "name": "Legs",
-        "exercises": []
+        "exercises": [
+            "Leg extension",
+            "Bench leg curl",
+            "Seated leg curl",
+            "Bulgarian split squats",
+            "Smith Bulgarian split squats",
+            "RDL barbell",
+            "RDL dumbbell",
+            "Calf stand on riser",
+            "Calf raise machine",
+            "Hyperextension",
+            "Linear leg press",
+            "Hack squat",
+            "Seated leg press",
+            "Hip adductor",
+            "Hip abductor"
+        ]
     },
     {
         "name": "Abs",
-        "exercises": []
+        "exercises": [
+            "Abdominal machine",
+            "Incline bench sit ups"
+        ]
     }
 ]
