@@ -10,8 +10,8 @@ class PostgresDB:
 
     def save_training_data(self, user_id, muscle_name, exercise_name, set_num, weight, reps):
         query = '''
-            INSERT INTO training (date, user_id, muscle_id, exercise_id, set, weight, reps)
-            VALUES (%s, %s, 
+            INSERT INTO training (id, date, user_id, muscle_id, exercise_id, set, weight, reps)
+            VALUES (%s, %s, %s, 
                 (SELECT id FROM muscles WHERE name = %s LIMIT 1), 
                 (SELECT id FROM exercises WHERE name = %s LIMIT 1), 
                 %s, %s, %s)
@@ -21,7 +21,7 @@ class PostgresDB:
 
     def get_latest_training(self, user_id, body_part, exercise_name):
         query = '''
-            SELECT t.date, t.set, t.weight, t.reps 
+            SELECT t.id, t.date, t.set, t.weight, t.reps 
             FROM training t
             JOIN users u ON t.user_id = u.id
             JOIN muscles m ON t.muscle_id = m.id
