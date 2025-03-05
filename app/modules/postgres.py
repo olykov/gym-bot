@@ -18,6 +18,7 @@ class PostgresDB:
         '''
         self.cursor.execute(query, (id, date, user_id, muscle_name, exercise_name, set_num, weight, reps))
         self.conn.commit()
+        return self.cursor.rowcount
 
     def get_latest_training(self, user_id, body_part, exercise_name):
         query = '''
