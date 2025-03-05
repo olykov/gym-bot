@@ -82,7 +82,7 @@ def generate_enter_weight_markup():
 
     for w in weights:
         btn_row.append(InlineKeyboardButton(text=f"{w}", callback_data=f"{w}kg"))
-        if len(btn_row) == 6:
+        if len(btn_row) == 7:
             inline_keyboard.append(btn_row)
             btn_row = []
 
