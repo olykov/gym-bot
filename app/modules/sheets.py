@@ -14,5 +14,6 @@ class GoogleSheets:
 
     def add_row(self, row_hash, muscle, exercise, set_num, weight, reps):
         current_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-        row_data = [row_hash, current_time, muscle, exercise, set_num, weight, reps]
+        row_data = [str(row_hash), str(current_time), str(muscle), str(exercise), 
+                   str(set_num), str(weight), str(reps)]
         self.sheet.append_row(row_data)
