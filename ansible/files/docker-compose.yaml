@@ -9,6 +9,8 @@ services:
     volumes:
       - ./db_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - core-infra
 
   app:
     image: "${APP_IMAGE}:${APP_TAG}"
@@ -22,5 +24,11 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     ports:
       - "5400:5400"
+    networks:
+      - core-infra
     depends_on:
       - db
+
+networks:
+  core-infra:
+    external: true
