@@ -30,5 +30,5 @@ CREATE TABLE IF NOT EXISTS training (
     exercise_id INT REFERENCES exercises(id),
     set INT,
     weight DECIMAL(5, 2),
-    reps INT
+    reps DECIMAL(5, 2)
 );
