@@ -251,7 +251,11 @@ async def back_to_sets(callback_query: CallbackQuery):
     user_choices[user_id]["set"] = None
     logger.info(f"{user_id}: Back to sets called")
 
-    ikm = markups.generate_select_set_markup()
+    ikm = markups.generate_select_set_markup(
+        user_id,
+        user_choices[user_id]["muscle"],
+        user_choices[user_id]["exercise"]
+    )
     bot = callback_query.bot
     await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                 message_id=callback_query.message.message_id,
