@@ -120,7 +120,11 @@ async def process_exercise(callback_query: CallbackQuery):
     db.add_exercise(exercise_name=user_choices[user_id]["exercise"],
                     muscle_name=user_choices[user_id]["muscle"])
 
-    ikm = markups.generate_select_set_markup()
+    ikm = markups.generate_select_set_markup(
+        user_id,
+        user_choices[user_id]["muscle"],
+        user_choices[user_id]["exercise"]
+    )
     bot = callback_query.bot
     await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                 message_id=callback_query.message.message_id,

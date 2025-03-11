@@ -96,3 +96,18 @@ class PostgresDB:
     def close(self):
         self.cursor.close()
         self.conn.close()
+
+    def get_completed_sets(self, user_id, muscle_name, exercise_name, date):
+        query = '''
+            SELECT DISTINCT t.set
+            FROM training t
+            JOIN muscles m ON t.muscle_id = m.id
+            JOIN exercises e ON t.exercise_id = e.id
+            WHERE t.user_id = %s 
+            AND m.name = %s 
+            AND e.name = %s 
+            AND DATE(t.date) = DATE(%s)
+        '''
+        self.cursor.execute(query, (user_id, muscle_name, exercise_name, date))
+        results = self.cursor.fetchall()
+        return [row[0] for row in results]

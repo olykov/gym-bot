@@ -1,5 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from templates.exercise import exercise_types, sets, weights, reps
+from modules.postgres import PostgresDB as db
+from datetime import datetime
 
 
 def generate_start_markup():
@@ -58,18 +60,29 @@ def generate_exercise_markup(selected_muscle):
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_select_set_markup():
+def generate_select_set_markup(user_id, muscle, exercise):
     inline_keyboard = []
     btn_row = []
 
-    for _set in sets:
-        btn_row.append(InlineKeyboardButton(text=_set["name"], callback_data=_set['id']))
-        if len(btn_row) == 6:
-            inline_keyboard.append(btn_row)
-            btn_row = []
+    # Get today's date at midnight for comparison
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Query database for completed sets today
+    completed_sets = db.get_completed_sets(user_id, muscle, exercise, today)
+    available_sets = [s for s in sets if s['id'] not in completed_sets]
 
-    if btn_row:
-        inline_keyboard.append(btn_row)
+    # If all sets are completed, show message
+    if not available_sets:
+        inline_keyboard.append([InlineKeyboardButton(text="All sets completed!", callback_data="all_completed")])
+    else:
+        for _set in available_sets:
+            btn_row.append(InlineKeyboardButton(text=_set["name"], callback_data=_set['id']))
+            if len(btn_row) == 6:
+                inline_keyboard.append(btn_row)
+                btn_row = []
+
+        if btn_row:
+            inline_keyboard.append(btn_row)
 
     inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="back_to_exercises")])
 
