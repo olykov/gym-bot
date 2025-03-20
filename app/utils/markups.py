@@ -1,8 +1,9 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from templates.exercise import exercise_types, sets, weights, reps
-from modules.postgres import PostgresDB as db
+from modules.postgres import PostgresDB
 from datetime import datetime
 
+db = PostgresDB(db_name="gym_bot_db", user="myuser", password="mypassword")
 
 def generate_start_markup():
     return InlineKeyboardMarkup(
