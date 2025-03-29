@@ -2,6 +2,8 @@ services:
   db:
     image: postgres:16
     container_name: gym_bot_db
+    ports:
+      - '9931:5432' # open to my Group
     environment:
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: mypassword
