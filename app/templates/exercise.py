@@ -140,7 +140,8 @@ exercise_types = [
             "Dumbbell reverse wrist curl",
             "Cable over back wrist curl",
             "Pronator rope",
-            "Pronator plates"
+            "Pronator plates",
+            "Brachioradialis hammer curls"
         ]
     },
     {
