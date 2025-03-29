@@ -119,13 +119,14 @@ exercise_types = [
         "exercises": [
             "Smith barbell shoulders press",
             "Dumbbell shoulders press",
-            "Dumbbell lateral raises",
-            "Upright row",
-            "Cable lateral raises",
             "Sholder press machine",
-            "Cable rope rear delt rows",
+            "Dumbbell lateral raises",
+            "Cable lateral raises",
+            "Cable rope lateral delt rows",
+            "Upright row",
             "Lateral raise machine",
             "Dumbbell rear raises",
+            "Cable rope rear delt rows",
             "Rear delts fly",
             "Cable rear delt fly 45"
         ]
