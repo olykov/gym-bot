@@ -135,6 +135,8 @@ exercise_types = [
         "exercises": [
             "Barbell wrist curl",
             "Barbell reverse wrist curl",
+            "Dumbbell wrist curl",
+            "Dumbbell reverse wrist curl",
             "Cable over back wrist curl",
             "Pronator rope",
             "Pronator plates"
