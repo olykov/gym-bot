@@ -3,7 +3,7 @@ from psycopg2 import sql
 from datetime import datetime
 from .logging import Logger
 
-logger = Logger(name="handlers")
+logger = Logger(name="postgres")
 
 class PostgresDB:
     def __init__(self, db_name, user, password, host='db', port='5432'):
