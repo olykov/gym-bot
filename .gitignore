@@ -8,3 +8,4 @@ db_data/
 app/sa.json
 _aws*
 db.py
+import_data.py
