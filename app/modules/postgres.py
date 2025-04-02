@@ -1,6 +1,9 @@
 import psycopg2
 from psycopg2 import sql
 from datetime import datetime
+from .logging import Logger
+
+logger = Logger(name="handlers")
 
 class PostgresDB:
     def __init__(self, db_name, user, password, host='db', port='5432'):
@@ -145,4 +148,5 @@ class PostgresDB:
         '''
         self.cursor.execute(query, (user_id, muscle_name, exercise_name, date))
         results = self.cursor.fetchall()
+        logger.info(results)
         return [row[0] for row in results]
