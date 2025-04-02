@@ -1,6 +1,9 @@
 import psycopg2
 from psycopg2 import sql
 from datetime import datetime
+from .logging import Logger
+
+logger = Logger(name="handlers")
 
 
 class PostgresDB:
@@ -43,44 +46,84 @@ class PostgresDB:
         self.cursor.execute(query, (user_id,))
         result = self.cursor.fetchone()
         return result
-
+    
     def add_muscle(self, muscle_name):
-        query = '''
-            INSERT INTO muscles (name) 
-            VALUES (%s) 
-            ON CONFLICT (name) DO NOTHING 
-            RETURNING id
-        '''
-        self.cursor.execute(query, (muscle_name,))
+        self.cursor.execute('SELECT id FROM muscles WHERE name = %s', (muscle_name,))
         muscle_id = self.cursor.fetchone()
 
         if not muscle_id:
-            self.cursor.execute('SELECT id FROM muscles WHERE name = %s', (muscle_name,))
+            logger.info(f"New muscle added to DB")
+            query = '''
+                INSERT INTO muscles (name) 
+                VALUES (%s) 
+                RETURNING id
+            '''
+            self.cursor.execute(query, (muscle_name,))
             muscle_id = self.cursor.fetchone()
+            self.conn.commit()
+        logger.info(f"muscle exists")
 
-        self.conn.commit()
         return muscle_id[0] if muscle_id else None
 
+    # def add_muscle(self, muscle_name):
+    #     query = '''
+    #         INSERT INTO muscles (name) 
+    #         VALUES (%s) 
+    #         ON CONFLICT (name) DO NOTHING 
+    #         RETURNING id
+    #     '''
+    #     self.cursor.execute(query, (muscle_name,))
+    #     muscle_id = self.cursor.fetchone()
+
+    #     if not muscle_id:
+    #         self.cursor.execute('SELECT id FROM muscles WHERE name = %s', (muscle_name,))
+    #         muscle_id = self.cursor.fetchone()
+
+    #     self.conn.commit()
+    #     return muscle_id[0] if muscle_id else None
+    
     def add_exercise(self, exercise_name, muscle_name):
         muscle_id = self.add_muscle(muscle_name)
         if not muscle_id:
             return None
 
-        query = '''
-            INSERT INTO exercises (name, muscle) 
-            VALUES (%s, %s) 
-            ON CONFLICT ON CONSTRAINT unique_exercise DO NOTHING 
-            RETURNING id
-        '''
-        self.cursor.execute(query, (exercise_name, muscle_id))
+        self.cursor.execute('SELECT id FROM exercises WHERE name = %s AND muscle = %s', (exercise_name, muscle_id))
         exercise_id = self.cursor.fetchone()
 
         if not exercise_id:
-            self.cursor.execute('SELECT id FROM exercises WHERE name = %s AND muscle = %s', (exercise_name, muscle_id))
+            logger.info(f"New muscle added to DB")
+            query = '''
+                INSERT INTO exercises (name, muscle) 
+                VALUES (%s, %s) 
+                RETURNING id
+            '''
+            self.cursor.execute(query, (exercise_name, muscle_id))
             exercise_id = self.cursor.fetchone()
+            self.conn.commit()
+        logger.info(f"exercise exists")
 
-        self.conn.commit()
         return exercise_id[0] if exercise_id else None
+
+    # def add_exercise(self, exercise_name, muscle_name):
+    #     muscle_id = self.add_muscle(muscle_name)
+    #     if not muscle_id:
+    #         return None
+
+    #     query = '''
+    #         INSERT INTO exercises (name, muscle) 
+    #         VALUES (%s, %s) 
+    #         ON CONFLICT ON CONSTRAINT unique_exercise DO NOTHING 
+    #         RETURNING id
+    #     '''
+    #     self.cursor.execute(query, (exercise_name, muscle_id))
+    #     exercise_id = self.cursor.fetchone()
+
+    #     if not exercise_id:
+    #         self.cursor.execute('SELECT id FROM exercises WHERE name = %s AND muscle = %s', (exercise_name, muscle_id))
+    #         exercise_id = self.cursor.fetchone()
+
+    #     self.conn.commit()
+    #     return exercise_id[0] if exercise_id else None
 
     def save_any_data(self, table_name, data):
         columns = data.keys()
