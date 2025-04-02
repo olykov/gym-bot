@@ -69,7 +69,11 @@ def generate_select_set_markup(user_id, muscle, exercise):
 
     todays_date = datetime.now().strftime('%Y-%m-%d')
     completed_sets = db.get_completed_sets(user_id, muscle, exercise, todays_date)
-    available_sets = [s for s in sets if s['id'] not in completed_sets]
+    try:
+        available_sets = [s for s in sets if int(s['id']) not in completed_sets]
+    except:
+        logger.error("Can't get available sets")
+        available_sets = sets
     logger.info(completed_sets)
     logger.info(available_sets)
 
