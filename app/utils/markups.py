@@ -65,7 +65,8 @@ def generate_select_set_markup(user_id, muscle, exercise):
     inline_keyboard = []
     btn_row = []
 
-    completed_sets = db.get_completed_sets(user_id, muscle, exercise, datetime.now().strftime('%Y-%m-%d'))
+    todays_date = datetime.now().strftime('%Y-%m-%d')
+    completed_sets = db.get_completed_sets(user_id, muscle, exercise, todays_date)
     available_sets = [s for s in sets if s['id'] not in completed_sets]
 
     # If all sets are completed, show message
