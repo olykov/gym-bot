@@ -2,9 +2,6 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from templates.exercise import exercise_types, sets, weights, reps
 from modules.postgres import PostgresDB
 from datetime import datetime
-from modules.logging import Logger
-
-logger = Logger(name="handlers")
 
 db = PostgresDB(db_name="gym_bot_db", user="myuser", password="mypassword")
 
@@ -68,14 +65,8 @@ def generate_select_set_markup(user_id, muscle, exercise):
     inline_keyboard = []
     btn_row = []
 
-    # Get today's date at midnight for comparison
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Query database for completed sets today
-    completed_sets = db.get_completed_sets(user_id, muscle, exercise, today)
-    logger.info(completed_sets)
+    completed_sets = db.get_completed_sets(user_id, muscle, exercise, datetime.now().strftime('%Y-%m-%d'))
     available_sets = [s for s in sets if s['id'] not in completed_sets]
-    logger.info(available_sets)
 
     # If all sets are completed, show message
     if not available_sets:

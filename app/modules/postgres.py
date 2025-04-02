@@ -148,5 +148,5 @@ class PostgresDB:
         '''
         self.cursor.execute(query, (user_id, muscle_name, exercise_name, date))
         results = self.cursor.fetchall()
-        logger.info(results)
+        logger.info(f"result: {results}")
         return [row[0] for row in results]
