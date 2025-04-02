@@ -52,7 +52,6 @@ class PostgresDB:
         muscle_id = self.cursor.fetchone()
 
         if not muscle_id:
-            logger.info(f"New muscle added to DB")
             query = '''
                 INSERT INTO muscles (name) 
                 VALUES (%s) 
@@ -61,7 +60,6 @@ class PostgresDB:
             self.cursor.execute(query, (muscle_name,))
             muscle_id = self.cursor.fetchone()
             self.conn.commit()
-        logger.info(f"muscle exists")
 
         return muscle_id[0] if muscle_id else None
 
@@ -91,7 +89,6 @@ class PostgresDB:
         exercise_id = self.cursor.fetchone()
 
         if not exercise_id:
-            logger.info(f"New muscle added to DB")
             query = '''
                 INSERT INTO exercises (name, muscle) 
                 VALUES (%s, %s) 
@@ -100,7 +97,6 @@ class PostgresDB:
             self.cursor.execute(query, (exercise_name, muscle_id))
             exercise_id = self.cursor.fetchone()
             self.conn.commit()
-        logger.info(f"exercise exists")
 
         return exercise_id[0] if exercise_id else None
 
