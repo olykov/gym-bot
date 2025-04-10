@@ -47,8 +47,11 @@ class PostgresDB:
         return result
     
     def add_muscle(self, muscle_name):
-        self.cursor.execute('SELECT id FROM muscles WHERE name = %s', (muscle_name,))
-        muscle_id = self.cursor.fetchone()
+        try:
+            self.cursor.execute('SELECT id FROM muscles WHERE name = %s', (muscle_name,))
+            muscle_id = self.cursor.fetchone()
+        except:
+            muscle_id = None
 
         if not muscle_id:
             query = '''
