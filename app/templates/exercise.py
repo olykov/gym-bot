@@ -111,7 +111,8 @@ exercise_types = [
             "Triceps pushdown rope straight bar",
             "Close-grip bench press",
             "Cable overhead shoulder extension",
-            "Single-arm cable triceps pushdown"
+            "Single-arm cable triceps pushdown",
+            "Seated dip machine"
         ]
     },
     {
