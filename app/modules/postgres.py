@@ -59,9 +59,12 @@ class PostgresDB:
                 VALUES (%s) 
                 RETURNING id
             '''
-            self.cursor.execute(query, (muscle_name,))
-            muscle_id = self.cursor.fetchone()
-            self.conn.commit()
+            try:
+                self.cursor.execute(query, (muscle_name,))
+                muscle_id = self.cursor.fetchone()
+                self.conn.commit()
+            except:
+                muscle_id = None
 
         return muscle_id[0] if muscle_id else None
 

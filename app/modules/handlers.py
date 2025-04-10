@@ -99,16 +99,22 @@ async def gym(message: Message):
 async def process_muscle(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_choices[user_id]["muscle"] = callback_query.data
-    logger.info(f"{user_id}: {callback_query.data} body part selected")
-    db.add_muscle(user_choices[user_id]["muscle"])
+    if user_choices[user_id]["muscle"]:
+        logger.info(f"{user_id}: {callback_query.data} body part selected")
+        db.add_muscle(user_choices[user_id]["muscle"])
 
-    ikm = markups.generate_exercise_markup(callback_query.data)
-    bot = callback_query.bot
-    await bot.edit_message_text(chat_id=callback_query.message.chat.id,
-                                message_id=callback_query.message.message_id,
-                                text="Select the exercise",
-                                reply_markup=ikm)
-    await callback_query.answer(callback_query.data)
+        ikm = markups.generate_exercise_markup(callback_query.data)
+        bot = callback_query.bot
+        await bot.edit_message_text(chat_id=callback_query.message.chat.id,
+                                    message_id=callback_query.message.message_id,
+                                    text="Select the exercise",
+                                    reply_markup=ikm)
+        await callback_query.answer(callback_query.data)
+    else:
+        user_choices[user_id] = {"muscle": None, "exercise": None, "set": None, "weight": None, "reps": None}
+        ikm = markups.generate_muscle_markup()
+        await callback_query.message.reply("Start this one from scratch", reply_markup=ikm)
+    
 
 
 @router.callback_query(
@@ -116,21 +122,27 @@ async def process_muscle(callback_query: CallbackQuery):
 async def process_exercise(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_choices[user_id]["exercise"] = callback_query.data
-    logger.info(f"{user_id}: {callback_query.data} exercise selected")
-    db.add_exercise(exercise_name=user_choices[user_id]["exercise"],
-                    muscle_name=user_choices[user_id]["muscle"])
+    if user_choices[user_id]["exercise"]:
+        logger.info(f"{user_id}: {callback_query.data} exercise selected")
+        db.add_exercise(exercise_name=user_choices[user_id]["exercise"],
+                        muscle_name=user_choices[user_id]["muscle"])
 
-    ikm = markups.generate_select_set_markup(
-        user_id,
-        user_choices[user_id]["muscle"],
-        user_choices[user_id]["exercise"]
-    )
-    bot = callback_query.bot
-    await bot.edit_message_text(chat_id=callback_query.message.chat.id,
-                                message_id=callback_query.message.message_id,
-                                text="Select set",
-                                reply_markup=ikm)
-    await callback_query.answer(callback_query.data)
+        ikm = markups.generate_select_set_markup(
+            user_id,
+            user_choices[user_id]["muscle"],
+            user_choices[user_id]["exercise"]
+        )
+        bot = callback_query.bot
+        await bot.edit_message_text(chat_id=callback_query.message.chat.id,
+                                    message_id=callback_query.message.message_id,
+                                    text="Select set",
+                                    reply_markup=ikm)
+        await callback_query.answer(callback_query.data)
+    else:
+        user_choices[user_id] = {"muscle": None, "exercise": None, "set": None, "weight": None, "reps": None}
+        ikm = markups.generate_muscle_markup()
+        await callback_query.message.reply("Start this one from scratch", reply_markup=ikm)
+
 
 
 @router.callback_query(lambda c: c.data in [_set["id"] for _set in sets])
@@ -138,14 +150,18 @@ async def process_set(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_choices[user_id]["set"] = callback_query.data
     logger.info(f"{user_id}: Set {callback_query.data} selected")
-
-    ikm = markups.generate_enter_weight_markup()
-    bot = callback_query.bot
-    await bot.edit_message_text(chat_id=callback_query.message.chat.id,
-                                message_id=callback_query.message.message_id,
-                                text=f"Enter weight for set {callback_query.data}",
-                                reply_markup=ikm)
-    await callback_query.answer(callback_query.data)
+    if user_choices[user_id]["set"]:
+        ikm = markups.generate_enter_weight_markup()
+        bot = callback_query.bot
+        await bot.edit_message_text(chat_id=callback_query.message.chat.id,
+                                    message_id=callback_query.message.message_id,
+                                    text=f"Enter weight for set {callback_query.data}",
+                                    reply_markup=ikm)
+        await callback_query.answer(callback_query.data)
+    else:
+        user_choices[user_id] = {"muscle": None, "exercise": None, "set": None, "weight": None, "reps": None}
+        ikm = markups.generate_muscle_markup()
+        await callback_query.message.reply("Start this one from scratch", reply_markup=ikm)
 
 
 @router.callback_query(lambda c: c.data in [f"{w}kg" for w in weights])
@@ -153,14 +169,18 @@ async def process_weight(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_choices[user_id]["weight"] = callback_query.data.replace("kg", "")
     logger.info(f"{user_id}: Weight {user_choices[user_id]['weight']} selected")
-
-    ikm = markups.generate_enter_reps_markup()
-    bot = callback_query.bot
-    await bot.edit_message_text(chat_id=callback_query.message.chat.id,
-                                message_id=callback_query.message.message_id,
-                                text=f"How many reps?",
-                                reply_markup=ikm)
-    await callback_query.answer(callback_query.data)
+    if user_choices[user_id]["weight"]:
+        ikm = markups.generate_enter_reps_markup()
+        bot = callback_query.bot
+        await bot.edit_message_text(chat_id=callback_query.message.chat.id,
+                                    message_id=callback_query.message.message_id,
+                                    text=f"How many reps?",
+                                    reply_markup=ikm)
+        await callback_query.answer(callback_query.data)
+    else:
+        user_choices[user_id] = {"muscle": None, "exercise": None, "set": None, "weight": None, "reps": None}
+        ikm = markups.generate_muscle_markup()
+        await callback_query.message.reply("Start this one from scratch", reply_markup=ikm)
 
 
 @router.callback_query(lambda c: c.data in [f"{r}_r" for r in reps])
@@ -168,50 +188,55 @@ async def process_reps(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_choices[user_id]["reps"] = callback_query.data.replace("_r", "")
     logger.info(f"{user_id}: {user_choices[user_id]['reps']} reps selected")
-
-    id_hash = get_hash(user_choices[user_id]['exercise'], 
-                      datetime.now().strftime('%Y-%m-%d'), 
-                      user_choices[user_id]["set"], 
-                      user_choices[user_id]["weight"], 
-                      user_choices[user_id]["reps"])
-    
-    date_now = datetime.now()
-    
-    save_to_db = db.save_training_data(
-        id_hash,
-        date_now,
-        user_id,
-        user_choices[user_id]['muscle'],
-        user_choices[user_id]['exercise'],
-        user_choices[user_id]["set"],
-        user_choices[user_id]["weight"],
-        user_choices[user_id]["reps"]
-    )
-    logger.info(f"{user_id}: {save_to_db} rows saved to db")
-
-    # Backup
-    if "2107709598" == f"{user_id}":
-        sheets.add_row(
+    if not user_choices[user_id]["reps"]:
+        user_choices[user_id] = {"muscle": None, "exercise": None, "set": None, "weight": None, "reps": None}
+        ikm = markups.generate_muscle_markup()
+        await callback_query.message.reply("Start this one from scratch", reply_markup=ikm)
+    else:
+        id_hash = get_hash(user_choices[user_id]['exercise'], 
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 
+            user_choices[user_id]["set"], 
+            user_choices[user_id]["weight"], 
+            user_choices[user_id]["reps"]
+        )
+        
+        date_now = datetime.now()
+        
+        save_to_db = db.save_training_data(
             id_hash,
-            date_now.strftime('%Y-%m-%d %H:%M:%S'),
+            date_now,
+            user_id,
             user_choices[user_id]['muscle'],
             user_choices[user_id]['exercise'],
             user_choices[user_id]["set"],
             user_choices[user_id]["weight"],
             user_choices[user_id]["reps"]
         )
-    else:
-        logger.info(f"{user_id} is not admin, not saving to sheets")
+        logger.info(f"{user_id}: {save_to_db} rows saved to db")
 
-    message = format_result_message(user_choices, user_id)
-    ikm = markups.generate_muscle_markup()
-    bot = callback_query.bot
-    await bot.edit_message_text(chat_id=callback_query.message.chat.id,
-                                message_id=callback_query.message.message_id,
-                                text=message,
-                                parse_mode="HTML",
-                                reply_markup=ikm)
-    await callback_query.answer(callback_query.data)
+        # Backup
+        if "2107709598" == f"{user_id}":
+            sheets.add_row(
+                id_hash,
+                date_now.strftime('%Y-%m-%d %H:%M:%S'),
+                user_choices[user_id]['muscle'],
+                user_choices[user_id]['exercise'],
+                user_choices[user_id]["set"],
+                user_choices[user_id]["weight"],
+                user_choices[user_id]["reps"]
+            )
+        else:
+            logger.info(f"{user_id} is not admin, not saving to sheets")
+
+        message = format_result_message(user_choices, user_id)
+        ikm = markups.generate_muscle_markup()
+        bot = callback_query.bot
+        await bot.edit_message_text(chat_id=callback_query.message.chat.id,
+                                    message_id=callback_query.message.message_id,
+                                    text=message,
+                                    parse_mode="HTML",
+                                    reply_markup=ikm)
+        await callback_query.answer(callback_query.data)
 
 
 # Back buttons
