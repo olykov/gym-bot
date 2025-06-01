@@ -89,8 +89,9 @@ exercise_types = [
             "Seated wide grip row",
             "Seated neutral grip row",
             "Dumbbell row",
-            "Incline bench dumbbell row",
+            "Barbell row",
             "Row machine",
+            "Incline bench dumbbell row",
             "Pullover",
             "Hammer pullover",
             "Hammer front pulldown",
@@ -135,14 +136,17 @@ exercise_types = [
     {
         "name": "Forearms",
         "exercises": [
-            "Barbell wrist curl",
             "Barbell reverse wrist curl",
-            "Dumbbell wrist curl",
-            "Dumbbell reverse wrist curl",
+            "Barbell wrist curl",
+            "Brachioradialis hammer curls",
             "Cable over back wrist curl",
-            "Pronator rope",
+            "Cable reverse wrist curl",
+            "Dumbbell reverse wrist curl",
+            "Dumbbell wrist curl",
             "Pronator plates",
-            "Brachioradialis hammer curls"
+            "Pronator rope",
+            "Side pressure - cable",
+            "Side pressure - dumbbell"
         ]
     },
     {
@@ -162,7 +166,10 @@ exercise_types = [
             "Hack squat",
             "Seated leg press",
             "Hip adductor",
-            "Hip abductor"
+            "Hip abductor",
+            "Squat - Smith machine",
+            "Lunges - Smith machine",
+
         ]
     },
     {
