@@ -161,6 +161,7 @@ exercise_types = [
             "RDL dumbbell",
             "Calf stand on riser",
             "Calf raise machine",
+            "Hammer belt squat",
             "Hyperextension",
             "Linear leg press",
             "Hack squat",
