@@ -12,7 +12,7 @@ weights = [
     "5", "6", "7.5", "8", "9", "10", "12", "12.5", "14", "15", "15.5", "16", "17", "17.5", "18",
     "20", "22", "22.5", "24", "25", "26", "27", "28", "30", "32", "32.5","34", "35", "36", "38", "40",
     "42", "42.5", "45", "47.5", "50", "52.5", "55", "57.5", "60", "65", "70",
-    "75", "80", "85", "90", "95", "100", "105", "110", "115", "120", "125", "130", "135", "140"
+    "75", "80", "85", "90", "95", "100", "105", "110", "115", "120", "125", "130", "135", "140", "145", "150", "155", "160"
 ]
 
 sets = [
@@ -92,15 +92,19 @@ exercise_types = [
             "Barbell row",
             "Row machine",
             "Incline bench dumbbell row",
+            "One arm seated row",
             "Pullover",
             "Hammer pullover",
             "Hammer front pulldown",
             "Iso lateral row",
             "Iso lateral low row",
+            "Iso lateral low row (traps)",
             "Lats cable",
             "Barbell shrugs",
             "Dumbbell shrugs",
-            "Assist chin"
+            "Hyperextension (back)",
+            "Assist chin",
+            "Pull ups"
         ]
     },
     {
@@ -113,7 +117,8 @@ exercise_types = [
             "Close-grip bench press",
             "Cable overhead shoulder extension",
             "Single-arm cable triceps pushdown",
-            "Seated dip machine"
+            "Seated dip machine",
+            "Dumbbell triceps extension"
         ]
     },
     {
@@ -168,6 +173,7 @@ exercise_types = [
             "Seated leg press",
             "Hip adductor",
             "Hip abductor",
+            "Hip thrust machine",
             "Squat - Smith machine",
             "Lunges - Smith machine",
 
