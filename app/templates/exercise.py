@@ -152,7 +152,7 @@ exercise_types = [
             "Pronator rope",
             "Side pressure - cable",
             "Side pressure - dumbbell",
-            "Cable Wrist Curl with Thick Grip"
+            "Cable Wrist Curl with Thick Grip",
             "Brachioradialis hammer curls",
             "Cable reverse wrist curl",
         ]
