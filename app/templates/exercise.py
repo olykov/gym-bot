@@ -111,6 +111,7 @@ exercise_types = [
         "name": "Triceps",
         "exercises": [
             "French press",
+            "JM press smith",
             "Triceps pushdown v-bar",
             "Triceps pushdown rope",
             "Triceps pushdown rope straight bar",
@@ -143,15 +144,17 @@ exercise_types = [
         "exercises": [
             "Barbell reverse wrist curl",
             "Barbell wrist curl",
-            "Brachioradialis hammer curls",
-            "Cable over back wrist curl",
-            "Cable reverse wrist curl",
             "Dumbbell reverse wrist curl",
             "Dumbbell wrist curl",
+            "Cable over back wrist curl",
+            "Cable over bench wrist curl",
             "Pronator plates",
             "Pronator rope",
             "Side pressure - cable",
             "Side pressure - dumbbell"
+            "Cable Wrist Curl with Thick Grip"
+            "Brachioradialis hammer curls",
+            "Cable reverse wrist curl",
         ]
     },
     {
@@ -173,6 +176,7 @@ exercise_types = [
             "Seated leg press",
             "Hip adductor",
             "Hip abductor",
+            "Hip thrust",
             "Hip thrust machine",
             "Squat - Smith machine",
             "Lunges - Smith machine",
