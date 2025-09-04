@@ -11,6 +11,9 @@ class PostgresDB:
         self.cursor = self.conn.cursor()
 
     def save_training_data(self, id, date, user_id, muscle_name, exercise_name, set_num, weight, reps):
+        # Add logging to debug
+        logger.info(f"Saving training data: user_id={user_id}, muscle={muscle_name}, exercise={exercise_name}")
+        
         query = '''
             INSERT INTO training (id, date, user_id, muscle_id, exercise_id, set, weight, reps)
             VALUES (%s, %s, %s, 
@@ -18,7 +21,10 @@ class PostgresDB:
                 (SELECT id FROM exercises WHERE name = %s LIMIT 1), 
                 %s, %s, %s)
         '''
-        self.cursor.execute(query, (id, date, user_id, muscle_name, exercise_name, set_num, weight, reps))
+        params = (id, date, user_id, muscle_name, exercise_name, set_num, weight, reps)
+        logger.info(f"Query params: {params}")
+        
+        self.cursor.execute(query, params)
         self.conn.commit()
         return self.cursor.rowcount
 
