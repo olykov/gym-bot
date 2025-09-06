@@ -70,6 +70,7 @@ tg_gym_bot/
 - **Training History Display**: Shows user's last training session for each exercise with detailed set/weight/reps breakdown
 - **Personal Record (PR) Tracking**: Displays user's maximum weight achieved for each exercise with date
 - **Smart Exercise Prioritization**: Shows user's top 5 most-used exercises first for each muscle group
+- **Visual Exercise Rankings**: Top exercises display with emoji medals (🥇🥈🥉🏅🏅) for quick identification
 
 ### User Experience
 - **Inline Keyboard Navigation**: Easy-to-use button-based interface
@@ -79,6 +80,7 @@ tg_gym_bot/
 - **Historical Context**: Automatic display of last training performance when selecting exercises
 - **Personal Record Motivation**: Instant display of personal bests to encourage progression
 - **Personalized Exercise Order**: Most-used exercises appear first for faster access
+- **Visual Exercise Hierarchy**: Emoji rankings provide instant recognition of favorite exercises
 - **First-time User Friendly**: Clear messaging for users who haven't done specific exercises before
 
 ### Data Management
@@ -195,6 +197,7 @@ ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
 3. **Select muscle group**: Choose from 8 available categories
 4. **Pick exercise**: Select from muscle-specific exercises
    - **NEW**: Your top 5 most-used exercises appear first (alphabetically sorted)
+   - **NEW**: Top exercises display with emoji rankings (🥇🥈🥉🏅🏅)
    - Remaining exercises follow in their original order
    - **NEW**: Bot automatically shows your last training history for this exercise
    - Shows formatted table with previous sets, weights, and reps
@@ -259,7 +262,7 @@ User's most frequent Chest exercises:
 5. Hammer flat (3 sessions)
 
 Exercise buttons appear as:
-[Bench press] [Chest press machine] [Dumbbell press flat bench] [Hammer flat] [Incline smith]
+[🥇 Bench press] [🥈 Chest press machine] [🥉 Dumbbell press flat bench] [🏅 Hammer flat] [🏅 Incline smith]
 [Bench press incline] [Dumbbell incline bench press] [Lower chest cable crossover] ...
 ```
 
@@ -271,9 +274,18 @@ Shows exercises in original order from exercise database
 
 This feature provides:
 - **Faster Access**: Your favorite exercises appear first
+- **Visual Recognition**: Emoji medals instantly identify your top exercises
 - **Personalized Experience**: Interface adapts to your training style
 - **Consistent Workflow**: Frequently used exercises always at the top
 - **Progressive Learning**: Bot learns your preferences over time
+
+#### 🏆 Emoji Ranking System
+- **🥇 Gold Medal**: Your #1 most-used exercise
+- **🥈 Silver Medal**: Your #2 most-used exercise  
+- **🥉 Bronze Medal**: Your #3 most-used exercise
+- **🏅 Gold Badge**: Your #4 and #5 most-used exercises
+
+**Data Integrity**: Emojis are display-only and don't affect database storage or exercise recognition.
 
 ## 🔒 Security Features
 
