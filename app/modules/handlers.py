@@ -161,7 +161,7 @@ async def process_muscle(callback_query: CallbackQuery):
         logger.info(f"{user_id}: {callback_query.data} body part selected")
         db.add_muscle(user_choices[user_id]["muscle"])
 
-        ikm = markups.generate_exercise_markup(callback_query.data)
+        ikm = markups.generate_exercise_markup(callback_query.data, user_id)
         bot = callback_query.bot
         await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                     message_id=callback_query.message.message_id,
@@ -341,7 +341,7 @@ async def back_to_exercises(callback_query: CallbackQuery):
     user_choices[user_id]["exercise"] = None
     logger.info(f"{user_id}: Back to exercises called")
 
-    ikm = markups.generate_exercise_markup(user_choices[user_id]["muscle"])
+    ikm = markups.generate_exercise_markup(user_choices[user_id]["muscle"], user_id)
     bot = callback_query.bot
     await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                 message_id=callback_query.message.message_id,

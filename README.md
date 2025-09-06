@@ -69,6 +69,7 @@ tg_gym_bot/
 - **Duplicate Prevention**: Prevents recording the same set twice on the same day
 - **Training History Display**: Shows user's last training session for each exercise with detailed set/weight/reps breakdown
 - **Personal Record (PR) Tracking**: Displays user's maximum weight achieved for each exercise with date
+- **Smart Exercise Prioritization**: Shows user's top 5 most-used exercises first for each muscle group
 
 ### User Experience
 - **Inline Keyboard Navigation**: Easy-to-use button-based interface
@@ -77,6 +78,7 @@ tg_gym_bot/
 - **Formatted Results**: Clean table format for workout summaries
 - **Historical Context**: Automatic display of last training performance when selecting exercises
 - **Personal Record Motivation**: Instant display of personal bests to encourage progression
+- **Personalized Exercise Order**: Most-used exercises appear first for faster access
 - **First-time User Friendly**: Clear messaging for users who haven't done specific exercises before
 
 ### Data Management
@@ -86,6 +88,7 @@ tg_gym_bot/
 - **Data Integrity**: Hash-based unique identifiers for training records
 - **Training History Retrieval**: Efficient queries to fetch user-specific exercise history
 - **Personal Record Calculation**: Optimized queries to find maximum weights across all training sessions
+- **Exercise Frequency Analysis**: Tracks and ranks exercises by usage frequency for personalization
 - **Session Grouping**: Smart grouping of training data by date for historical context
 
 ## 🏃‍♂️ Deployment Modes
@@ -191,6 +194,8 @@ ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
 2. **Begin workout**: Click "Record training" or send `/gym`
 3. **Select muscle group**: Choose from 8 available categories
 4. **Pick exercise**: Select from muscle-specific exercises
+   - **NEW**: Your top 5 most-used exercises appear first (alphabetically sorted)
+   - Remaining exercises follow in their original order
    - **NEW**: Bot automatically shows your last training history for this exercise
    - Shows formatted table with previous sets, weights, and reps
    - **NEW**: Displays your Personal Record (PR) - maximum weight ever lifted for this exercise
@@ -239,6 +244,36 @@ This feature helps you:
 - **Plan Sets**: Make informed decisions about weights and reps
 - **Stay Motivated**: Visual progress tracking across sessions
 - **Consistency**: Maintain workout intensity based on historical data
+
+### 🎯 Smart Exercise Prioritization
+
+When you select a muscle group, the bot automatically reorders exercises based on your training patterns:
+
+**For experienced users:**
+```
+User's most frequent Chest exercises:
+1. Bench press (15 sessions)
+2. Dumbbell press flat bench (12 sessions)  
+3. Incline smith (8 sessions)
+4. Chest press machine (5 sessions)
+5. Hammer flat (3 sessions)
+
+Exercise buttons appear as:
+[Bench press] [Chest press machine] [Dumbbell press flat bench] [Hammer flat] [Incline smith]
+[Bench press incline] [Dumbbell incline bench press] [Lower chest cable crossover] ...
+```
+
+**For new users:**
+```
+Shows exercises in original order from exercise database
+[Bench press] [Bench press incline] [Dumbbell incline bench press] ...
+```
+
+This feature provides:
+- **Faster Access**: Your favorite exercises appear first
+- **Personalized Experience**: Interface adapts to your training style
+- **Consistent Workflow**: Frequently used exercises always at the top
+- **Progressive Learning**: Bot learns your preferences over time
 
 ## 🔒 Security Features
 

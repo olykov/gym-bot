@@ -203,3 +203,31 @@ class PostgresDB:
         result = self.cursor.fetchone()
         logger.info(f"Personal record for user {user_id}, exercise {exercise_name}: {result}")
         return result
+
+    def get_top_exercises_for_muscle(self, user_id, muscle_name, limit=5):
+        """
+        Get the most frequently used exercises for a specific muscle group by user.
+        Returns exercise names ordered by total training sessions (descending), then alphabetically.
+        
+        Args:
+            user_id: User's Telegram ID
+            muscle_name: Name of the muscle group
+            limit: Maximum number of exercises to return (default: 5)
+            
+        Returns:
+            List of tuples: [(exercise_name, frequency), ...] or empty list
+        """
+        query = '''
+            SELECT e.name, COUNT(*) as frequency
+            FROM training t
+            JOIN muscles m ON t.muscle_id = m.id
+            JOIN exercises e ON t.exercise_id = e.id
+            WHERE t.user_id = %s AND m.name = %s
+            GROUP BY e.name
+            ORDER BY frequency DESC, e.name ASC
+            LIMIT %s
+        '''
+        self.cursor.execute(query, (user_id, muscle_name, limit))
+        results = self.cursor.fetchall()
+        logger.info(f"Top exercises for user {user_id}, muscle {muscle_name}: {len(results)} exercises found")
+        return results

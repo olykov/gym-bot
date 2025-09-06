@@ -43,22 +43,64 @@ def generate_muscle_markup():
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_exercise_markup(selected_muscle):
+def generate_exercise_markup(selected_muscle, user_id=None):
+    """
+    Generate exercise selection markup with user's top exercises prioritized.
+    
+    Args:
+        selected_muscle: Name of the selected muscle group
+        user_id: User's Telegram ID for personalization (optional)
+    
+    Returns:
+        InlineKeyboardMarkup with exercises reordered by user preference
+    """
     inline_keyboard = []
     btn_row = []
 
+    # Get all exercises for the selected muscle from exercise.py
+    all_exercises = []
     for ex_type in exercise_types:
         if ex_type["name"] == selected_muscle:
-            for ex in ex_type["exercises"]:
-                btn_row.append(InlineKeyboardButton(text=ex, callback_data=ex))
-                if len(btn_row) == 1:
-                    inline_keyboard.append(btn_row)
-                    btn_row = []
+            all_exercises = ex_type["exercises"]
+            break
 
-            if btn_row:
-                inline_keyboard.append(btn_row)
+    # Reorder exercises based on user's training history
+    if user_id and all_exercises:
+        try:
+            # Get user's top exercises for this muscle group
+            top_exercises_data = db.get_top_exercises_for_muscle(user_id, selected_muscle, 5)
+            top_exercise_names = [name for name, frequency in top_exercises_data]
+            
+            # Sort top exercises alphabetically
+            top_exercises_sorted = sorted(top_exercise_names)
+            
+            # Get remaining exercises (preserve original order from exercise.py)
+            remaining_exercises = [ex for ex in all_exercises if ex not in top_exercise_names]
+            
+            # Combine: top exercises first, then remaining
+            reordered_exercises = top_exercises_sorted + remaining_exercises
+            
+            logger.info(f"User {user_id} top exercises for {selected_muscle}: {top_exercise_names}")
+            
+        except Exception as e:
+            logger.error(f"Error getting top exercises for user {user_id}: {e}")
+            # Fallback to original order on any error
+            reordered_exercises = all_exercises
+    else:
+        # No user_id provided or no exercises - use original order
+        reordered_exercises = all_exercises
 
-            inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="back_to_muscles")])
+    # Generate buttons for reordered exercises
+    for ex in reordered_exercises:
+        btn_row.append(InlineKeyboardButton(text=ex, callback_data=ex))
+        if len(btn_row) == 1:
+            inline_keyboard.append(btn_row)
+            btn_row = []
+
+    if btn_row:
+        inline_keyboard.append(btn_row)
+
+    inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="back_to_muscles")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
