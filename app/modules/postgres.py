@@ -182,3 +182,24 @@ class PostgresDB:
         results = self.cursor.fetchall()
         logger.info(f"Training history for user {user_id}, exercise {exercise_name}: {len(results)} records found")
         return results
+
+    def get_personal_record(self, user_id, muscle_name, exercise_name):
+        """
+        Get the personal record (maximum weight) for a specific user, muscle, and exercise.
+        Returns the maximum weight and the date it was first achieved.
+        """
+        query = '''
+            SELECT t.weight, t.date 
+            FROM training t
+            JOIN muscles m ON t.muscle_id = m.id
+            JOIN exercises e ON t.exercise_id = e.id
+            WHERE t.user_id = %s 
+            AND m.name = %s 
+            AND e.name = %s
+            ORDER BY t.weight DESC, t.date DESC
+            LIMIT 1
+        '''
+        self.cursor.execute(query, (user_id, muscle_name, exercise_name))
+        result = self.cursor.fetchone()
+        logger.info(f"Personal record for user {user_id}, exercise {exercise_name}: {result}")
+        return result

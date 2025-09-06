@@ -96,6 +96,25 @@ def format_last_training_table(training_data, exercise_name):
     return history_text
 
 
+def format_personal_record(pr_data, exercise_name):
+    """
+    Format personal record (PR) for display.
+    
+    Args:
+        pr_data: Tuple of (weight, date) or None if no PR exists
+        exercise_name: Name of the exercise
+    
+    Returns:
+        Formatted PR string or empty string if no PR data
+    """
+    if not pr_data:
+        return ""  # No PR data - return empty string (safe for first-time users)
+    
+    weight, date = pr_data
+    formatted_date = date.strftime('%d-%m-%Y')
+    return f"Your PR: {weight}kg ({formatted_date})\n\n"
+
+
 @router.message(CommandStart())
 async def comm_start(message: Message):
     logger.info(f"{message.from_user.id} /start has been called")
@@ -173,11 +192,19 @@ async def process_exercise(callback_query: CallbackQuery):
             user_choices[user_id]["exercise"]
         )
         
-        # Format training history message
-        history_message = format_last_training_table(training_history, user_choices[user_id]["exercise"])
+        # Get personal record for this exercise
+        pr_data = db.get_personal_record(
+            user_id,
+            user_choices[user_id]["muscle"],
+            user_choices[user_id]["exercise"]
+        )
         
-        # Combine history with set selection message
-        message_text = history_message + "Select set"
+        # Format training history and PR messages
+        history_message = format_last_training_table(training_history, user_choices[user_id]["exercise"])
+        pr_message = format_personal_record(pr_data, user_choices[user_id]["exercise"])
+        
+        # Combine history, PR, and set selection message
+        message_text = history_message + pr_message + "Select set"
 
         ikm = markups.generate_select_set_markup(
             user_id,

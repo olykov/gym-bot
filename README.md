@@ -68,6 +68,7 @@ tg_gym_bot/
 - **Weight & Reps Recording**: Detailed weight (1kg - 180kg) and rep (1-20) tracking
 - **Duplicate Prevention**: Prevents recording the same set twice on the same day
 - **Training History Display**: Shows user's last training session for each exercise with detailed set/weight/reps breakdown
+- **Personal Record (PR) Tracking**: Displays user's maximum weight achieved for each exercise with date
 
 ### User Experience
 - **Inline Keyboard Navigation**: Easy-to-use button-based interface
@@ -75,6 +76,7 @@ tg_gym_bot/
 - **Progress Tracking**: Visual feedback on completed sets
 - **Formatted Results**: Clean table format for workout summaries
 - **Historical Context**: Automatic display of last training performance when selecting exercises
+- **Personal Record Motivation**: Instant display of personal bests to encourage progression
 - **First-time User Friendly**: Clear messaging for users who haven't done specific exercises before
 
 ### Data Management
@@ -83,6 +85,7 @@ tg_gym_bot/
 - **User Registration**: Automatic user registration on first interaction
 - **Data Integrity**: Hash-based unique identifiers for training records
 - **Training History Retrieval**: Efficient queries to fetch user-specific exercise history
+- **Personal Record Calculation**: Optimized queries to find maximum weights across all training sessions
 - **Session Grouping**: Smart grouping of training data by date for historical context
 
 ## 🏃‍♂️ Deployment Modes
@@ -132,7 +135,7 @@ training (
     weight DECIMAL(5,2),             -- Weight in kg
     reps DECIMAL(5,2)                -- Number of repetitions
 )
--- Used for training history display and progress tracking
+-- Used for training history display, personal record calculation, and progress tracking
 ```
 
 ## 🛠️ Setup & Installation
@@ -190,6 +193,7 @@ ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
 4. **Pick exercise**: Select from muscle-specific exercises
    - **NEW**: Bot automatically shows your last training history for this exercise
    - Shows formatted table with previous sets, weights, and reps
+   - **NEW**: Displays your Personal Record (PR) - maximum weight ever lifted for this exercise
    - If first time doing exercise, shows friendly "You haven't done [exercise] before" message
 5. **Choose set number**: Pick which set you're recording
 6. **Enter weight**: Select weight used
@@ -201,9 +205,9 @@ ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
 - `/gym` - Start recording a new workout
 - `/edit` - Access training editing options
 
-### 📊 Training History Feature
+### 📊 Training History & Personal Records Feature
 
-When you select an exercise, the bot automatically displays your most recent training session for that exercise:
+When you select an exercise, the bot automatically displays your most recent training session and personal record:
 
 **For existing exercises:**
 ```
@@ -217,6 +221,8 @@ When you select an exercise, the bot automatically displays your most recent tra
 | Set 3 | 65kg        | 6    |
 +-------+-------------+------+
 
+Your PR: 80kg (10-12-2024)
+
 Select set
 ```
 
@@ -229,6 +235,7 @@ Select set
 
 This feature helps you:
 - **Track Progress**: See your previous performance instantly
+- **Beat Personal Records**: Know your current PR to aim higher
 - **Plan Sets**: Make informed decisions about weights and reps
 - **Stay Motivated**: Visual progress tracking across sessions
 - **Consistency**: Maintain workout intensity based on historical data
