@@ -2,6 +2,7 @@ __pycache__/
 .idea/
 .venv/
 .python-version
+.cursor/
 chat/
 db_data/
 

@@ -162,3 +162,23 @@ class PostgresDB:
         results = self.cursor.fetchall()
         logger.info(f"result: {results}")
         return [row[0] for row in results]
+
+    def get_last_training_history(self, user_id, muscle_name, exercise_name):
+        """
+        Get the last training history for a specific user, muscle, and exercise.
+        Returns all training records for this exercise ordered by date (most recent first).
+        """
+        query = '''
+            SELECT t.date, t.set, t.weight, t.reps 
+            FROM training t
+            JOIN muscles m ON t.muscle_id = m.id
+            JOIN exercises e ON t.exercise_id = e.id
+            WHERE t.user_id = %s 
+            AND m.name = %s 
+            AND e.name = %s
+            ORDER BY t.date DESC, t.set ASC
+        '''
+        self.cursor.execute(query, (user_id, muscle_name, exercise_name))
+        results = self.cursor.fetchall()
+        logger.info(f"Training history for user {user_id}, exercise {exercise_name}: {len(results)} records found")
+        return results

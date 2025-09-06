@@ -57,6 +57,45 @@ def format_result_message(results, user_id):
     return f'<pre>{table}</pre>'
 
 
+def format_last_training_table(training_data, exercise_name):
+    """
+    Format last training history as a table for display.
+    
+    Args:
+        training_data: List of tuples (date, set, weight, reps)
+        exercise_name: Name of the exercise
+    
+    Returns:
+        Formatted HTML string with table or message if no data
+    """
+    if not training_data:
+        return f"📝 You haven't done {exercise_name} before.\n\n"
+    
+    # Group data by date to show training sessions
+    from collections import defaultdict
+    sessions = defaultdict(list)
+    
+    for date, set_num, weight, reps in training_data:
+        session_date = date.strftime('%d-%m-%Y')
+        sessions[session_date].append((set_num, weight, reps))
+    
+    # Create table for the most recent session
+    most_recent_date = list(sessions.keys())[0]  # Already ordered by date DESC
+    recent_session = sessions[most_recent_date]
+    
+    table = pt.PrettyTable(['Set', 'Weight (kg)', 'Reps'])
+    table.align = 'l'
+    
+    # Sort sets by set number
+    recent_session.sort(key=lambda x: x[0])
+    
+    for set_num, weight, reps in recent_session:
+        table.add_row([f"Set {set_num}", f"{weight}kg", f"{reps}"])
+    
+    history_text = f"📊 Your last training for {exercise_name} ({most_recent_date}):\n\n<pre>{table}</pre>\n\n"
+    return history_text
+
+
 @router.message(CommandStart())
 async def comm_start(message: Message):
     logger.info(f"{message.from_user.id} /start has been called")
@@ -127,6 +166,19 @@ async def process_exercise(callback_query: CallbackQuery):
         db.add_exercise(exercise_name=user_choices[user_id]["exercise"],
                         muscle_name=user_choices[user_id]["muscle"])
 
+        # Get last training history for this exercise
+        training_history = db.get_last_training_history(
+            user_id,
+            user_choices[user_id]["muscle"],
+            user_choices[user_id]["exercise"]
+        )
+        
+        # Format training history message
+        history_message = format_last_training_table(training_history, user_choices[user_id]["exercise"])
+        
+        # Combine history with set selection message
+        message_text = history_message + "Select set"
+
         ikm = markups.generate_select_set_markup(
             user_id,
             user_choices[user_id]["muscle"],
@@ -135,7 +187,8 @@ async def process_exercise(callback_query: CallbackQuery):
         bot = callback_query.bot
         await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                     message_id=callback_query.message.message_id,
-                                    text="Select set",
+                                    text=message_text,
+                                    parse_mode="HTML",
                                     reply_markup=ikm)
         await callback_query.answer(callback_query.data)
     else:
