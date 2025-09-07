@@ -8,30 +8,6 @@ logger = Logger(name="markups")
 db = PostgresDB(db_name="gym_bot_db", user="myuser", password="mypassword")
 
 
-def get_exercise_display_text(exercise_name, rank=None):
-    """
-    Get display text for exercise with emoji if it's a top exercise.
-    
-    Args:
-        exercise_name: Clean exercise name from exercise.py
-        rank: Position in top exercises (1-5) or None
-    
-    Returns:
-        Display text with emoji for top exercises, clean name otherwise
-    """
-    if rank is None or rank > 5:
-        return exercise_name
-    
-    emoji_map = {
-        1: "🥇",
-        2: "🥈", 
-        3: "🥉",
-        4: "🏅",
-        5: "🏅"
-    }
-    
-    emoji = emoji_map.get(rank, "")
-    return f"{emoji} {exercise_name}" if emoji else exercise_name
 
 def generate_start_markup():
     return InlineKeyboardMarkup(
@@ -120,18 +96,10 @@ def generate_exercise_markup(selected_muscle, user_id=None):
         # No user_id provided or no exercises - use original order
         reordered_exercises = all_exercises
 
-    # Generate buttons for reordered exercises with emoji rankings
-    for index, ex in enumerate(reordered_exercises):
-        # Determine rank (only for top exercises that were actually prioritized)
-        rank = None
-        if top_exercises_sorted and ex in top_exercises_sorted:
-            rank = top_exercises_sorted.index(ex) + 1
-        
-        # Get display text with emoji for top exercises
-        display_text = get_exercise_display_text(ex, rank)
-        
-        # Create button with separate display text and clean callback data
-        btn_row.append(InlineKeyboardButton(text=display_text, callback_data=ex))
+    # Generate buttons for reordered exercises (smart prioritization without emojis)
+    for ex in reordered_exercises:
+        # Create button with clean exercise name for both text and callback data
+        btn_row.append(InlineKeyboardButton(text=ex, callback_data=ex))
         if len(btn_row) == 1:
             inline_keyboard.append(btn_row)
             btn_row = []
