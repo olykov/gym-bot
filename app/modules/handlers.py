@@ -19,6 +19,23 @@ router = Router()
 user_choices = {}
 
 
+def ensure_user_context(user_id, muscle_name=None):
+    """
+    Ensure user context is valid and preserved.
+    
+    Args:
+        user_id: User's Telegram ID
+        muscle_name: Optional muscle name to validate/restore context
+    """
+    if user_id not in user_choices:
+        user_choices[user_id] = {"muscle": None, "exercise": None, "set": None, "weight": None, "reps": None}
+    
+    if muscle_name and user_choices[user_id]["muscle"] != muscle_name:
+        logger.warning(f"Restoring muscle context for user {user_id}: {muscle_name}")
+        user_choices[user_id]["muscle"] = muscle_name
+        user_choices[user_id]["exercise"] = None  # Reset exercise when muscle changes
+
+
 def get_hash(*args):
     """Create a hash from multiple arguments"""
     combined = ''.join(str(arg) for arg in args)
@@ -161,7 +178,7 @@ async def process_muscle(callback_query: CallbackQuery):
         logger.info(f"{user_id}: {callback_query.data} body part selected")
         db.add_muscle(user_choices[user_id]["muscle"])
 
-        ikm = markups.generate_exercise_markup(callback_query.data, user_id)
+        ikm = markups.generate_exercise_markup(callback_query.data, user_id, show_all=False)
         bot = callback_query.bot
         await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                     message_id=callback_query.message.message_id,
@@ -319,6 +336,34 @@ async def process_reps(callback_query: CallbackQuery):
         await callback_query.answer(callback_query.data)
 
 
+@router.callback_query(lambda c: c.data.startswith("show_all_exercises_"))
+async def process_show_all_exercises(callback_query: CallbackQuery):
+    """
+    Handle 'Show All' button click - preserve user context and show full exercise list.
+    """
+    user_id = callback_query.from_user.id
+    
+    # Extract muscle name from callback data
+    muscle_name = callback_query.data.replace("show_all_exercises_", "")
+    
+    # CRITICAL: Ensure user context is preserved
+    ensure_user_context(user_id, muscle_name)
+    
+    logger.info(f"{user_id}: Show all exercises requested for {muscle_name}")
+    
+    # Generate full exercise list with prioritization
+    ikm = markups.generate_exercise_markup(muscle_name, user_id, show_all=True)
+    
+    bot = callback_query.bot
+    await bot.edit_message_text(
+        chat_id=callback_query.message.chat.id,
+        message_id=callback_query.message.message_id,
+        text="Select the exercise",
+        reply_markup=ikm
+    )
+    await callback_query.answer("Showing all exercises")
+
+
 # Back buttons
 @router.callback_query(lambda c: c.data == "back_to_muscles")
 async def back_to_muscles(callback_query: CallbackQuery):
@@ -341,7 +386,7 @@ async def back_to_exercises(callback_query: CallbackQuery):
     user_choices[user_id]["exercise"] = None
     logger.info(f"{user_id}: Back to exercises called")
 
-    ikm = markups.generate_exercise_markup(user_choices[user_id]["muscle"], user_id)
+    ikm = markups.generate_exercise_markup(user_choices[user_id]["muscle"], user_id, show_all=False)
     bot = callback_query.bot
     await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                 message_id=callback_query.message.message_id,

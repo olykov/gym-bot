@@ -70,6 +70,7 @@ tg_gym_bot/
 - **Training History Display**: Shows user's last training session for each exercise with detailed set/weight/reps breakdown
 - **Personal Record (PR) Tracking**: Displays user's maximum weight achieved for each exercise with date
 - **Smart Exercise Prioritization**: Shows user's top 5 most-used exercises first for each muscle group
+- **Compact Exercise View**: Displays only top exercises initially with "Show All" option for full access
 
 ### User Experience
 - **Inline Keyboard Navigation**: Easy-to-use button-based interface
@@ -79,6 +80,7 @@ tg_gym_bot/
 - **Historical Context**: Automatic display of last training performance when selecting exercises
 - **Personal Record Motivation**: Instant display of personal bests to encourage progression
 - **Personalized Exercise Order**: Most-used exercises appear first for faster access
+- **Streamlined Interface**: See only relevant exercises initially with optional full access
 - **First-time User Friendly**: Clear messaging for users who haven't done specific exercises before
 
 ### Data Management
@@ -194,8 +196,9 @@ ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
 2. **Begin workout**: Click "Record training" or send `/gym`
 3. **Select muscle group**: Choose from 8 available categories
 4. **Pick exercise**: Select from muscle-specific exercises
-   - **NEW**: Your top 5 most-used exercises appear first (alphabetically sorted)
-   - Remaining exercises follow in their original order
+   - **NEW**: Smart compact view shows only your top exercises (1-5 based on training history)
+   - **NEW**: "Show All" button provides access to complete exercise list when needed
+   - If no training history, shows all exercises (same as before)
    - **NEW**: Bot automatically shows your last training history for this exercise
    - Shows formatted table with previous sets, weights, and reps
    - **NEW**: Displays your Personal Record (PR) - maximum weight ever lifted for this exercise
@@ -246,11 +249,11 @@ This feature helps you:
 - **Consistency**: Maintain workout intensity based on historical data
 - **Clear Reference**: Shows only complete previous sessions, not today's incomplete progress
 
-### 🎯 Smart Exercise Prioritization
+### 🎯 Smart Exercise Prioritization & Compact View
 
-When you select a muscle group, the bot automatically reorders exercises based on your training patterns:
+When you select a muscle group, the bot shows a streamlined interface based on your training patterns:
 
-**For experienced users:**
+**For experienced users (Compact View):**
 ```
 User's most frequent Chest exercises:
 1. Bench press (15 sessions)
@@ -259,22 +262,36 @@ User's most frequent Chest exercises:
 4. Chest press machine (5 sessions)
 5. Hammer flat (3 sessions)
 
-Exercise buttons appear as:
+Initial display (Compact View):
+[Bench press] [Chest press machine] [Dumbbell press flat bench] [Hammer flat] [Incline smith]
+[Show All] [Back]
+
+After clicking "Show All":
 [Bench press] [Chest press machine] [Dumbbell press flat bench] [Hammer flat] [Incline smith]
 [Bench press incline] [Dumbbell incline bench press] [Lower chest cable crossover] ...
+[Back]
+```
+
+**For users with some history (1-4 exercises):**
+```
+Shows only exercises you've done before:
+[Bench press] [Incline smith]
+[Show All] [Back]
 ```
 
 **For new users:**
 ```
-Shows exercises in original order from exercise database
+Shows all exercises (current behavior):
 [Bench press] [Bench press incline] [Dumbbell incline bench press] ...
+[Back]
 ```
 
 This feature provides:
-- **Faster Access**: Your favorite exercises appear first
-- **Personalized Experience**: Interface adapts to your training style
-- **Consistent Workflow**: Frequently used exercises always at the top
-- **Progressive Learning**: Bot learns your preferences over time
+- **Faster Access**: See only your favorite exercises initially
+- **Clean Interface**: No scrolling through irrelevant exercises
+- **Full Access**: "Show All" always available when needed
+- **Smart Adaptation**: Interface automatically adapts to your experience level
+- **Progressive Learning**: Bot learns and improves recommendations over time
 
 ### 🧠 Smart Training History Logic
 

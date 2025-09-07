@@ -8,6 +8,32 @@ logger = Logger(name="markups")
 db = PostgresDB(db_name="gym_bot_db", user="myuser", password="mypassword")
 
 
+def determine_exercise_display_mode(user_id, muscle_name):
+    """
+    Determine whether to show compact (top N) or full exercise list.
+    
+    Args:
+        user_id: User's Telegram ID
+        muscle_name: Selected muscle group name
+        
+    Returns:
+        tuple: (show_compact: bool, top_exercises: list)
+    """
+    if not user_id:
+        return False, []  # Show all for users without ID
+    
+    try:
+        top_exercises = db.get_top_exercises_for_muscle(user_id, muscle_name, 5)
+        
+        if len(top_exercises) == 0:
+            return False, []  # No training history - show all
+        
+        return True, top_exercises  # Show compact with these exercises
+    except Exception as e:
+        logger.error(f"Error determining display mode for user {user_id}: {e}")
+        return False, []  # Fallback to show all on error
+
+
 
 def generate_start_markup():
     return InlineKeyboardMarkup(
@@ -45,16 +71,17 @@ def generate_muscle_markup():
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_exercise_markup(selected_muscle, user_id=None):
+def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
     """
-    Generate exercise selection markup with user's top exercises prioritized.
+    Generate exercise selection markup with smart compact/full display.
     
     Args:
         selected_muscle: Name of the selected muscle group
         user_id: User's Telegram ID for personalization (optional)
+        show_all: If True, show all exercises; if False, show smart compact view
     
     Returns:
-        InlineKeyboardMarkup with exercises reordered by user preference
+        InlineKeyboardMarkup with exercises in compact or full view
     """
     inline_keyboard = []
     btn_row = []
@@ -66,39 +93,58 @@ def generate_exercise_markup(selected_muscle, user_id=None):
             all_exercises = ex_type["exercises"]
             break
 
-    # Initialize variables for ranking
-    top_exercises_sorted = []
-    
-    # Reorder exercises based on user's training history
-    if user_id and all_exercises:
-        try:
-            # Get user's top exercises for this muscle group
-            top_exercises_data = db.get_top_exercises_for_muscle(user_id, selected_muscle, 5)
-            top_exercise_names = [name for name, frequency in top_exercises_data]
-            
-            # Sort top exercises alphabetically
-            top_exercises_sorted = sorted(top_exercise_names)
-            
-            # Get remaining exercises (preserve original order from exercise.py)
-            remaining_exercises = [ex for ex in all_exercises if ex not in top_exercise_names]
-            
-            # Combine: top exercises first, then remaining
-            reordered_exercises = top_exercises_sorted + remaining_exercises
-            
-            logger.info(f"User {user_id} top exercises for {selected_muscle}: {top_exercise_names}")
-            
-        except Exception as e:
-            logger.error(f"Error getting top exercises for user {user_id}: {e}")
-            # Fallback to original order on any error
-            reordered_exercises = all_exercises
-            top_exercises_sorted = []  # Reset on error
-    else:
-        # No user_id provided or no exercises - use original order
-        reordered_exercises = all_exercises
+    # Determine what exercises to show based on mode
+    if show_all:
+        # Show all exercises with smart prioritization (existing behavior)
+        if user_id and all_exercises:
+            try:
+                # Get user's top exercises for prioritization
+                top_exercises_data = db.get_top_exercises_for_muscle(user_id, selected_muscle, 5)
+                top_exercise_names = [name for name, frequency in top_exercises_data]
+                
+                # Sort top exercises alphabetically
+                top_exercises_sorted = sorted(top_exercise_names)
+                
+                # Get remaining exercises (preserve original order from exercise.py)
+                remaining_exercises = [ex for ex in all_exercises if ex not in top_exercise_names]
+                
+                # Combine: top exercises first, then remaining
+                exercises_to_show = top_exercises_sorted + remaining_exercises
+                
+                logger.info(f"User {user_id} showing all exercises for {selected_muscle} with prioritization")
+                
+            except Exception as e:
+                logger.error(f"Error getting top exercises for user {user_id}: {e}")
+                exercises_to_show = all_exercises
+        else:
+            exercises_to_show = all_exercises
 
-    # Generate buttons for reordered exercises (smart prioritization without emojis)
-    for ex in reordered_exercises:
-        # Create button with clean exercise name for both text and callback data
+        # Bottom buttons for "show all" mode
+        bottom_buttons = [InlineKeyboardButton(text="Back", callback_data="back_to_muscles")]
+
+    else:
+        # Smart compact view - show only top exercises or all if no history
+        show_compact, top_exercises_data = determine_exercise_display_mode(user_id, selected_muscle)
+        
+        if show_compact:
+            # Show only top exercises (1-5 depending on user history)
+            top_exercise_names = [name for name, frequency in top_exercises_data]
+            exercises_to_show = sorted(top_exercise_names)  # Alphabetical order
+            
+            logger.info(f"User {user_id} compact view for {selected_muscle}: {len(exercises_to_show)} exercises")
+            
+            # Bottom buttons for compact mode
+            bottom_buttons = [
+                InlineKeyboardButton(text="Show All", callback_data=f"show_all_exercises_{selected_muscle}"),
+                InlineKeyboardButton(text="Back", callback_data="back_to_muscles")
+            ]
+        else:
+            # No training history - show all exercises (current behavior for new users)
+            exercises_to_show = all_exercises
+            bottom_buttons = [InlineKeyboardButton(text="Back", callback_data="back_to_muscles")]
+
+    # Generate buttons for exercises
+    for ex in exercises_to_show:
         btn_row.append(InlineKeyboardButton(text=ex, callback_data=ex))
         if len(btn_row) == 1:
             inline_keyboard.append(btn_row)
@@ -107,7 +153,8 @@ def generate_exercise_markup(selected_muscle, user_id=None):
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="back_to_muscles")])
+    # Add bottom buttons
+    inline_keyboard.append(bottom_buttons)
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
