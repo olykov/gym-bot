@@ -166,6 +166,7 @@ class PostgresDB:
     def get_last_training_history(self, user_id, muscle_name, exercise_name):
         """
         Get the last training history for a specific user, muscle, and exercise.
+        Excludes today's training to show only previous complete sessions.
         Returns all training records for this exercise ordered by date (most recent first).
         """
         query = '''
@@ -176,11 +177,12 @@ class PostgresDB:
             WHERE t.user_id = %s 
             AND m.name = %s 
             AND e.name = %s
+            AND DATE(t.date) < DATE(CURRENT_DATE)
             ORDER BY t.date DESC, t.set ASC
         '''
         self.cursor.execute(query, (user_id, muscle_name, exercise_name))
         results = self.cursor.fetchall()
-        logger.info(f"Training history for user {user_id}, exercise {exercise_name}: {len(results)} records found")
+        logger.info(f"Training history for user {user_id}, exercise {exercise_name}: {len(results)} records found (excluding today)")
         return results
 
     def get_personal_record(self, user_id, muscle_name, exercise_name):

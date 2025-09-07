@@ -215,7 +215,7 @@ ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
 
 ### 📊 Training History & Personal Records Feature
 
-When you select an exercise, the bot automatically displays your most recent training session and personal record:
+When you select an exercise, the bot automatically displays your most recent **previous** training session and personal record:
 
 **For existing exercises:**
 ```
@@ -247,6 +247,7 @@ This feature helps you:
 - **Plan Sets**: Make informed decisions about weights and reps
 - **Stay Motivated**: Visual progress tracking across sessions
 - **Consistency**: Maintain workout intensity based on historical data
+- **Clear Reference**: Shows only complete previous sessions, not today's incomplete progress
 
 ### 🎯 Smart Exercise Prioritization
 
@@ -286,6 +287,29 @@ This feature provides:
 - **🏅 Gold Badge**: Your #4 and #5 most-used exercises
 
 **Data Integrity**: Emojis are display-only and don't affect database storage or exercise recognition.
+
+### 🧠 Smart Training History Logic
+
+The bot intelligently handles training history display to provide the most useful reference information:
+
+**Scenario: User completes Set 1 today, then selects same exercise again**
+```
+❌ OLD BEHAVIOR (confusing):
+"📊 Your last training for Bench press (15-01-2025):
+Set 1 | 60kg | 8 reps"  ← Shows today's incomplete session
+
+✅ NEW BEHAVIOR (helpful):
+"📊 Your last training for Bench press (10-01-2025):
+Set 1 | 55kg | 10 reps
+Set 2 | 60kg | 8 reps
+Set 3 | 60kg | 6 reps"  ← Shows previous complete session for reference
+```
+
+**Benefits:**
+- **🎯 Relevant Reference**: Always shows a complete previous workout session
+- **📊 Better Planning**: Compare with full training data, not partial current session
+- **🚫 No Confusion**: Eliminates seeing incomplete current progress as "last training"
+- **🧠 Intelligent Logic**: Bot understands the difference between current and reference data
 
 ## 🔒 Security Features
 
