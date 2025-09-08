@@ -93,7 +93,7 @@ def format_last_training_table(training_data, exercise_name):
     sessions = defaultdict(list)
     
     for date, set_num, weight, reps in training_data:
-        session_date = date.strftime('%d-%m-%Y')
+        session_date = date.strftime('%d %B %Y')
         sessions[session_date].append((set_num, weight, reps))
     
     # Create table for the most recent session
@@ -128,7 +128,7 @@ def format_personal_record(pr_data, exercise_name):
         return ""  # No PR data - return empty string (safe for first-time users)
     
     weight, reps, date = pr_data
-    formatted_date = date.strftime('%d-%m-%Y')
+    formatted_date = date.strftime('%d %B %Y')
     return f"Your PR: {weight}kg for {reps} reps ({formatted_date})\n\n"
 
 

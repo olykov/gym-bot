@@ -229,7 +229,7 @@ When you select an exercise, the bot automatically displays your most recent **p
 | Set 3 | 65kg        | 6    |
 +-------+-------------+------+
 
-Your PR: 80kg for 5 reps (10-12-2024)
+Your PR: 80kg for 5 reps (10 December 2024)
 
 Select set
 ```
