@@ -264,26 +264,26 @@ User's most frequent Chest exercises:
 
 Initial display (Compact View):
 [Bench press] [Chest press machine] [Dumbbell press flat bench] [Hammer flat] [Incline smith]
-[Show All] [Back]
+[Show All] [⬅️ Go back]
 
 After clicking "Show All":
 [Bench press] [Chest press machine] [Dumbbell press flat bench] [Hammer flat] [Incline smith]
 [Bench press incline] [Dumbbell incline bench press] [Lower chest cable crossover] ...
-[Back]
+[⬅️ Go back]
 ```
 
 **For users with some history (1-4 exercises):**
 ```
 Shows only exercises you've done before:
 [Bench press] [Incline smith]
-[Show All] [Back]
+[Show All] [⬅️ Go back]
 ```
 
 **For new users:**
 ```
 Shows all exercises (current behavior):
 [Bench press] [Bench press incline] [Dumbbell incline bench press] ...
-[Back]
+[⬅️ Go back]
 ```
 
 This feature provides:

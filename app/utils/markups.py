@@ -66,7 +66,7 @@ def generate_muscle_markup():
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="/start")])
+    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="/start")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
@@ -120,7 +120,7 @@ def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
             exercises_to_show = all_exercises
 
         # Bottom buttons for "show all" mode
-        bottom_buttons = [InlineKeyboardButton(text="Back", callback_data="back_to_muscles")]
+        bottom_buttons = [InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")]
 
     else:
         # Smart compact view - show only top exercises or all if no history
@@ -136,12 +136,12 @@ def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
             # Bottom buttons for compact mode
             bottom_buttons = [
                 InlineKeyboardButton(text="Show All", callback_data=f"show_all_exercises_{selected_muscle}"),
-                InlineKeyboardButton(text="Back", callback_data="back_to_muscles")
+                InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")
             ]
         else:
             # No training history - show all exercises (current behavior for new users)
             exercises_to_show = all_exercises
-            bottom_buttons = [InlineKeyboardButton(text="Back", callback_data="back_to_muscles")]
+            bottom_buttons = [InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")]
 
     # Generate buttons for exercises
     for ex in exercises_to_show:
@@ -186,7 +186,7 @@ def generate_select_set_markup(user_id, muscle, exercise):
         if btn_row:
             inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="back_to_exercises")])
+    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_exercises")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
@@ -204,7 +204,7 @@ def generate_enter_weight_markup():
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="back_to_sets")])
+    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_sets")])
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
@@ -221,5 +221,5 @@ def generate_enter_reps_markup():
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="Back", callback_data="back_to_sets")])
+    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_sets")])
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
