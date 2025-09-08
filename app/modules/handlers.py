@@ -118,7 +118,7 @@ def format_personal_record(pr_data, exercise_name):
     Format personal record (PR) for display.
     
     Args:
-        pr_data: Tuple of (weight, date) or None if no PR exists
+        pr_data: Tuple of (weight, reps, date) or None if no PR exists
         exercise_name: Name of the exercise
     
     Returns:
@@ -127,9 +127,9 @@ def format_personal_record(pr_data, exercise_name):
     if not pr_data:
         return ""  # No PR data - return empty string (safe for first-time users)
     
-    weight, date = pr_data
+    weight, reps, date = pr_data
     formatted_date = date.strftime('%d-%m-%Y')
-    return f"Your PR: {weight}kg ({formatted_date})\n\n"
+    return f"Your PR: {weight}kg for {reps} reps ({formatted_date})\n\n"
 
 
 @router.message(CommandStart())

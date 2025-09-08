@@ -68,7 +68,7 @@ tg_gym_bot/
 - **Weight & Reps Recording**: Detailed weight (1kg - 180kg) and rep (1-20) tracking
 - **Duplicate Prevention**: Prevents recording the same set twice on the same day
 - **Training History Display**: Shows user's last training session for each exercise with detailed set/weight/reps breakdown
-- **Personal Record (PR) Tracking**: Displays user's maximum weight achieved for each exercise with date
+- **Personal Record (PR) Tracking**: Displays user's maximum weight achieved for each exercise with reps and date
 - **Smart Exercise Prioritization**: Shows user's top 5 most-used exercises first for each muscle group
 - **Compact Exercise View**: Displays only top exercises initially with "Show All" option for full access
 
@@ -78,7 +78,7 @@ tg_gym_bot/
 - **Progress Tracking**: Visual feedback on completed sets
 - **Formatted Results**: Clean table format for workout summaries
 - **Historical Context**: Automatic display of last training performance when selecting exercises
-- **Personal Record Motivation**: Instant display of personal bests to encourage progression
+- **Personal Record Motivation**: Instant display of personal bests with complete context (weight + reps) to encourage progression
 - **Personalized Exercise Order**: Most-used exercises appear first for faster access
 - **Streamlined Interface**: See only relevant exercises initially with optional full access
 - **First-time User Friendly**: Clear messaging for users who haven't done specific exercises before
@@ -201,7 +201,7 @@ ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
    - If no training history, shows all exercises (same as before)
    - **NEW**: Bot automatically shows your last training history for this exercise
    - Shows formatted table with previous sets, weights, and reps
-   - **NEW**: Displays your Personal Record (PR) - maximum weight ever lifted for this exercise
+   - **NEW**: Displays your Personal Record (PR) - maximum weight ever lifted for this exercise with reps
    - If first time doing exercise, shows friendly "You haven't done [exercise] before" message
 5. **Choose set number**: Pick which set you're recording
 6. **Enter weight**: Select weight used
@@ -229,7 +229,7 @@ When you select an exercise, the bot automatically displays your most recent **p
 | Set 3 | 65kg        | 6    |
 +-------+-------------+------+
 
-Your PR: 80kg (10-12-2024)
+Your PR: 80kg for 5 reps (10-12-2024)
 
 Select set
 ```

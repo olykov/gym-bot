@@ -191,7 +191,7 @@ class PostgresDB:
         Returns the maximum weight and the date it was first achieved.
         """
         query = '''
-            SELECT t.weight, t.date 
+            SELECT t.weight, t.reps, t.date 
             FROM training t
             JOIN muscles m ON t.muscle_id = m.id
             JOIN exercises e ON t.exercise_id = e.id
