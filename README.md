@@ -155,7 +155,6 @@ training (
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token
 GOOGLE_SHEET_ID=your_sheet_id        # Optional
-DATABASE_URL=postgres://myuser:mypassword@db:5432/gym_bot_db
 ```
 
 ### Docker Deployment

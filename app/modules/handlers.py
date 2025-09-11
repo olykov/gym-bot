@@ -12,7 +12,13 @@ from .logging import Logger
 from utils import markups
 import os
 
-db = PostgresDB(db_name="gym_bot_db", user="myuser", password="mypassword")
+db = PostgresDB(
+    db_name=os.environ.get("DB_NAME"),
+    user=os.environ.get("DB_USER"),
+    password=os.environ.get("DB_PASSWORD"),
+    host=os.environ.get("DB_HOST"),
+    port=os.environ.get("DB_PORT")
+)
 sheets = GoogleSheets(os.environ.get("GOOGLE_SHEET_ID"), 'exercises')
 logger = Logger(name="handlers")
 router = Router()

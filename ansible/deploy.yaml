@@ -21,10 +21,19 @@
       ansible.builtin.copy:
         dest: "{{ work_dir }}/.env"
         content: |
-          APP_IMAGE={{ lookup('env', 'DOCKER_IMAGE') }}
-          APP_TAG={{ lookup('env', 'DOCKER_TAG') }}
+          BOT_IMAGE={{ lookup('env', 'BOT_IMAGE') }}
+          BOT_TAG={{ lookup('env', 'BOT_TAG') }}
+          FRONTEND_IMAGE={{ lookup('env', 'FRONTEND_IMAGE') }}
+          FRONTEND_TAG={{ lookup('env', 'FRONTEND_TAG') }}
           GOOGLE_SHEET_ID={{ lookup('env', 'GOOGLE_SHEET_ID') }}
           TELEGRAM_BOT_TOKEN={{ lookup('env', 'TELEGRAM_BOT_TOKEN') }}
+          NEXTAUTH_SECRET={{ lookup('env', 'NEXTAUTH_SECRET') }}
+          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME={{ lookup('env', 'NEXT_PUBLIC_TELEGRAM_BOT_USERNAME') }}
+          DB_USER={{ lookup('env', 'DB_USER') }}
+          DB_HOST={{ lookup('env', 'DB_HOST') }}
+          DB_NAME={{ lookup('env', 'DB_NAME') }}
+          DB_PASSWORD={{ lookup('env', 'DB_PASSWORD') }}
+          DB_PORT={{ lookup('env', 'DB_PORT') }}
     
     - name: Prepare sa.json
       tags: ["app"]
@@ -36,13 +45,13 @@
     - name: Ensure init.sql exists
       tags: ["app"]
       ansible.builtin.copy:
-        src: "{{inventory_dir}}/files/init.sql"
+        src: "{{inventory_dir}}/../init.sql"
         dest: "{{ work_dir }}/init.sql"
 
     - name: Ensure docker-compose.yml is updated
       tags: ["app"]
       ansible.builtin.template:
-        src: "{{inventory_dir}}/files/docker-compose.yaml"
+        src: "{{inventory_dir}}/../docker-compose.yaml"
         dest: "{{ work_dir }}/docker-compose.yml"
       register: _docker_compose
     

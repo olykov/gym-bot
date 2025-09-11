@@ -1,0 +1,66 @@
+services:
+  gymbot_db:
+    image: postgres:16
+    container_name: gymbot_db
+    hostname: gymbot_db
+    restart: always
+    ports:
+      - '${DB_PORT}:5432'
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - core-infra
+
+  gymbot_backend:
+    image: "${BOT_IMAGE}:${BOT_TAG}"
+    restart: always
+    container_name: gymbot_backend
+    hostname: gymbot_backend
+    volumes:
+      - ./sa.json:/app/app/sa.json:ro
+    environment:
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@gymbot_db:5432/${DB_NAME}
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DB_USER: ${DB_USER}
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: ${DB_PORT}
+    ports:
+      - "5400:5400"
+    networks:
+      - core-infra
+    depends_on:
+      - gymbot_db
+
+  gymbot_frontend:
+    image: "${FRONTEND_IMAGE}:${FRONTEND_TAG}"
+    restart: always
+    container_name: gymbot_frontend
+    hostname: gymbot_frontend
+    environment:
+      NEXTAUTH_URL: https://gymbot.olykov.com
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
+      DB_USER: ${DB_USER}
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: ${DB_PORT}
+    expose:
+      - 3000
+    networks:
+      - core-infra
+    depends_on:
+      - gymbot_db
+
+networks:
+  core-infra:
+    external: true

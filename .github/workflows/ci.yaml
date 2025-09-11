@@ -5,8 +5,13 @@ on:
     branches:
       - main
 
+env:
+  BUILD_TAG: ${{ github.run_number }}-${{ github.sha }}
+  BOT_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot-app
+  FRONTEND_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot-frontend
+
 jobs:
-  build-and-deploy:
+  build-bot:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -17,17 +22,32 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
       
-      - name: Prepare tag and image name
+      - name: Build and push bot Docker image
         run: |
-          TAG=$(date +%Y%m%d%H%M%S)
-          echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
-          echo "IMAGE_NAME=${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot" >> $GITHUB_ENV
-          echo "Using image tag: $TAG and image name: $IMAGE_NAME"
+          docker build -f app/Dockerfile -t ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }} app/
+          docker push ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }}
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
       
-      - name: Build and push Docker image
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      
+      - name: Build and push frontend Docker image
         run: |
-          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
-          docker push ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          docker build -f site/Dockerfile -t ${{ env.FRONTEND_IMAGE }}:${{ env.BUILD_TAG }} site/
+          docker push ${{ env.FRONTEND_IMAGE }}:${{ env.BUILD_TAG }}
+
+  deploy:
+    needs: [build-bot, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
       
       - name: Install Ansible
         run: sudo apt update && sudo apt install -y ansible
@@ -42,18 +62,25 @@ jobs:
           echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_ADDRESS }} >> ~/.ssh/known_hosts
-  
       - name: Run Ansible Playbook
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
           SERVER_ADDRESS: "${{ secrets.SERVER_ADDRESS }}"
           SERVER_USER: "${{ secrets.SERVER_USER }}"
           SERVER_PORT: "${{ secrets.SERVER_PORT }}"
-          DOCKER_IMAGE: ${{ env.IMAGE_NAME }}
-          DOCKER_TAG: ${{ env.IMAGE_TAG }}
+          BOT_IMAGE: ${{ env.BOT_IMAGE }}
+          BOT_TAG: ${{ env.BUILD_TAG }}
+          FRONTEND_IMAGE: ${{ env.FRONTEND_IMAGE }}
+          FRONTEND_TAG: ${{ env.BUILD_TAG }}
           GOOGLE_SHEET_ID: "${{ secrets.GOOGLE_SHEET_ID }}"
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
           SA: "${{ secrets.SA }}"
+          NEXTAUTH_SECRET: "${{ secrets.NEXTAUTH_SECRET }}"
+          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: olykov_gym_bot
+          # Database secrets (pg container in the same project)
+          DB_USER: myuser
+          DB_HOST: gymbot_db
+          DB_NAME: gym_bot_db
+          DB_PASSWORD: mypassword
+          DB_PORT: 5432
         run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
-      
-        

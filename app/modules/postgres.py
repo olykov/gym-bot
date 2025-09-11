@@ -6,7 +6,7 @@ from .logging import Logger
 logger = Logger(name="postgres")
 
 class PostgresDB:
-    def __init__(self, db_name, user, password, host='db', port='5432'):
+    def __init__(self, db_name, user, password, host, port):
         self.conn = psycopg2.connect(dbname=db_name, user=user, password=password, host=host, port=port)
         self.cursor = self.conn.cursor()
 

@@ -3,10 +3,16 @@ from templates.exercise import exercise_types, sets, weights, reps
 from modules.postgres import PostgresDB
 from modules.logging import Logger
 from datetime import datetime
+import os
 
 logger = Logger(name="markups")
-db = PostgresDB(db_name="gym_bot_db", user="myuser", password="mypassword")
-
+db = PostgresDB(
+    db_name=os.environ.get("DB_NAME"),
+    user=os.environ.get("DB_USER"),
+    password=os.environ.get("DB_PASSWORD"),
+    host=os.environ.get("DB_HOST"),
+    port=os.environ.get("DB_PORT")
+)
 
 def determine_exercise_display_mode(user_id, muscle_name):
     """

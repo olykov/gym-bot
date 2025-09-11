@@ -6,7 +6,20 @@ __pycache__/
 chat/
 db_data/
 
+# Docker compose overrides for local development
+docker-compose.override.yml
+docker-compose.*.yml
+
+# Site-specific ignores instead of entire site/ folder
+site/node_modules/
+site/.next/
+site/.env.local
+site/tsconfig.tsbuildinfo
+
 app/sa.json
 _aws*
 db.py
 import_data.py
+
+CLAUDE.md
+PROJECT.md
