@@ -325,7 +325,7 @@ async def process_reps(callback_query: CallbackQuery):
             user_choices[user_id]['muscle'],
             user_choices[user_id]['exercise'],
             user_choices[user_id]["set"],
-            user_choices[user_id]["weight"],
+            normalize_weight_format(user_choices[user_id]["weight"]),
             user_choices[user_id]["reps"]
         )
 
