@@ -283,7 +283,7 @@ async def process_set(callback_query: CallbackQuery):
 @router.callback_query(lambda c: c.data in [f"{w}kg" for w in weights])
 async def process_weight(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    user_choices[user_id]["weight"] = callback_query.data.replace("kg", "") #normalize_weight_format(callback_query.data.replace("kg", ""))
+    user_choices[user_id]["weight"] = normalize_weight_format(callback_query.data.replace("kg", ""))
     logger.info(f"{user_id}: Weight {user_choices[user_id]['weight']} selected")
     if user_choices[user_id]["weight"]:
         ikm = markups.generate_enter_reps_markup()
@@ -325,8 +325,7 @@ async def process_reps(callback_query: CallbackQuery):
             user_choices[user_id]['muscle'],
             user_choices[user_id]['exercise'],
             user_choices[user_id]["set"],
-            user_choices[user_id]["weight"],
-            #normalize_weight_format(user_choices[user_id]["weight"]),
+            normalize_weight_format(user_choices[user_id]["weight"]),
             user_choices[user_id]["reps"]
         )
 
