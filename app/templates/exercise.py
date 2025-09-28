@@ -47,17 +47,22 @@ exercise_types = [
         "name": "Chest",
         "exercises": [
             "Bench press",
-            "Bench press incline",
-            "Dumbbell incline bench press",
-            "Lower chest cable crossover",
-            "Upper chest cable crossover",
+            # "Dumbbell press flat bench"
+            "Bench press dumbbell",
+            # "Bench press incline",
+            "Bench press incline barbell",
+            # "Dumbbell incline bench press",
+            "Bench press incline dumbbell",
+            "Bench press incline smith",
+            #"Incline smith"
             "Hammer incline",
             "Hammer flat",
             "Hammer decline",
+            "Lower chest cable crossover",
+            "Upper chest cable crossover",
             "Peck Deck",
-            "Chest press machine",
-            "Dumbbell press flat bench",
-            "Incline smith"
+            "Chest press machine"
+            
         ]
     },
     {
