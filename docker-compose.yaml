@@ -5,7 +5,7 @@ services:
     hostname: gymbot_db
     restart: always
     ports:
-      - '${DB_PORT}:5432'
+      - '9981:${DB_PORT}'
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
