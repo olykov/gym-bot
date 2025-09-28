@@ -13,20 +13,26 @@ class PostgresDB:
     def save_training_data(self, id, date, user_id, muscle_name, exercise_name, set_num, weight, reps):
         # Add logging to debug
         logger.info(f"Saving training data: user_id={user_id}, muscle={muscle_name}, exercise={exercise_name}")
-        
+
         query = '''
             INSERT INTO training (id, date, user_id, muscle_id, exercise_id, set, weight, reps)
-            VALUES (%s, %s, %s, 
-                (SELECT id FROM muscles WHERE name = %s LIMIT 1), 
-                (SELECT id FROM exercises WHERE name = %s LIMIT 1), 
+            VALUES (%s, %s, %s,
+                (SELECT id FROM muscles WHERE name = %s LIMIT 1),
+                (SELECT id FROM exercises WHERE name = %s LIMIT 1),
                 %s, %s, %s)
         '''
         params = (id, date, user_id, muscle_name, exercise_name, set_num, weight, reps)
         logger.info(f"Query params: {params}")
-        
-        self.cursor.execute(query, params)
-        self.conn.commit()
-        return self.cursor.rowcount
+
+        try:
+            self.cursor.execute(query, params)
+            self.conn.commit()
+            logger.info(f"Successfully saved training data for user {user_id}")
+            return {"success": True, "rows": self.cursor.rowcount}
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Database error saving training data: {e}")
+            return {"success": False, "error": str(e)}
 
     def get_latest_training(self, user_id, body_part, exercise_name):
         query = '''

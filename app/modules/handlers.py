@@ -12,6 +12,19 @@ from .logging import Logger
 from utils import markups
 import os
 
+
+def normalize_weight_format(weight_str: str) -> str:
+    """Convert comma decimal to dot decimal for PostgreSQL compatibility.
+
+    Args:
+        weight_str: Weight value as string (e.g., "2,5" or "2.5")
+
+    Returns:
+        Weight value with dot decimal format (e.g., "2.5")
+    """
+    return weight_str.replace(',', '.') if ',' in weight_str else weight_str
+
+
 db = PostgresDB(
     db_name=os.environ.get("DB_NAME"),
     user=os.environ.get("DB_USER"),
@@ -270,7 +283,7 @@ async def process_set(callback_query: CallbackQuery):
 @router.callback_query(lambda c: c.data in [f"{w}kg" for w in weights])
 async def process_weight(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    user_choices[user_id]["weight"] = callback_query.data.replace("kg", "")
+    user_choices[user_id]["weight"] = normalize_weight_format(callback_query.data.replace("kg", ""))
     logger.info(f"{user_id}: Weight {user_choices[user_id]['weight']} selected")
     if user_choices[user_id]["weight"]:
         ikm = markups.generate_enter_reps_markup()
@@ -312,28 +325,39 @@ async def process_reps(callback_query: CallbackQuery):
             user_choices[user_id]['muscle'],
             user_choices[user_id]['exercise'],
             user_choices[user_id]["set"],
-            user_choices[user_id]["weight"],
+            normalize_weight_format(user_choices[user_id]["weight"]),
             user_choices[user_id]["reps"]
         )
-        logger.info(f"{user_id}: {save_to_db} rows saved to db")
 
-        # Backup
-        if "2107709598" == f"{user_id}":
-            sheets.add_row(
-                id_hash,
-                date_now.strftime('%Y-%m-%d %H:%M:%S'),
-                user_choices[user_id]['muscle'],
-                user_choices[user_id]['exercise'],
-                user_choices[user_id]["set"],
-                user_choices[user_id]["weight"],
-                user_choices[user_id]["reps"]
-            )
-        else:
-            logger.info(f"{user_id} is not admin, not saving to sheets")
-
-        message = format_result_message(user_choices, user_id)
-        ikm = markups.generate_muscle_markup()
         bot = callback_query.bot
+
+        # Check if database save was successful
+        if save_to_db["success"]:
+            logger.info(f"{user_id}: {save_to_db['rows']} rows saved to db")
+
+            # Backup to Google Sheets only if DB save succeeded
+            if "2107709598" == f"{user_id}":
+                sheets.add_row(
+                    id_hash,
+                    date_now.strftime('%Y-%m-%d %H:%M:%S'),
+                    user_choices[user_id]['muscle'],
+                    user_choices[user_id]['exercise'],
+                    user_choices[user_id]["set"],
+                    user_choices[user_id]["weight"],
+                    user_choices[user_id]["reps"]
+                )
+            else:
+                logger.info(f"{user_id} is not admin, not saving to sheets")
+
+            # Show success message with workout summary
+            message = format_result_message(user_choices, user_id)
+            ikm = markups.generate_muscle_markup()
+        else:
+            # Database save failed - show error message
+            logger.error(f"{user_id}: Database save failed - {save_to_db['error']}")
+            message = "❌ Error writing to database. Please try again."
+            ikm = markups.generate_muscle_markup()
+
         await bot.edit_message_text(chat_id=callback_query.message.chat.id,
                                     message_id=callback_query.message.message_id,
                                     text=message,
