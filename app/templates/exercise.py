@@ -47,14 +47,10 @@ exercise_types = [
         "name": "Chest",
         "exercises": [
             "Bench press",
-            # "Dumbbell press flat bench"
             "Bench press dumbbell",
-            # "Bench press incline",
             "Bench press incline barbell",
-            # "Dumbbell incline bench press",
             "Bench press incline dumbbell",
             "Bench press incline smith",
-            #"Incline smith"
             "Hammer incline",
             "Hammer flat",
             "Hammer decline",
@@ -68,18 +64,24 @@ exercise_types = [
     {
         "name": "Biceps",
         "exercises": [
-            "EZ-bar bicep curl",
-            "Straight-bar biceps curl",
-            "Cross body hammer curl",
-            "Biceps supinated",
-            "Standing single-arm cable biceps curl",
-            "One-arm dumbbell curl over bench",
-            "Standing rope biceps curl",
-            "African curls",
-            "Biceps curl machine",
-            "Dumbbell brachialis curls",
-            "Barbell reverse curl",
-            "Dumbbell side pressure"
+            "Bicep curl barbell EZ bar",
+            "Bicep curl barbell straight bar",
+            "Biceps curl dumbbell supinated",
+            "Biceps curl dumbbell straight",
+            "Biceps curl dumbbell standing", # "African curls",
+            "Reverse curl barbell",
+            "Reverse curl dumbbell",
+            "Biceps curl cable rope",
+            "Biceps curl cable straight bar",
+            "Drag curl cable single arm",
+            "Drag curl cable straight bar"
+            "Hammer curl cross body",
+            "Hammer curl straight",
+            "Preacher curl EZ bar",
+            "Preacher curl dumbbell",
+            "Preacher curl machine",
+            "Arm curl machine",
+            "Side pressure dumbbell"
         ]
     },
     {
@@ -95,11 +97,13 @@ exercise_types = [
             "Seated close-grip row",
             "Seated wide grip row",
             "Seated neutral grip row",
+            "Seated single arm row",
             "Dumbbell row",
             "Barbell row",
             "Row machine",
             "Incline bench dumbbell row",
-            "One arm seated row",
+
+            
             "Pullover",
             "Hammer pullover",
             "Hammer front pulldown",
@@ -127,10 +131,7 @@ exercise_types = [
             "Triceps pushdown cable one arm",
             "Triceps extension reverse one arm",
             "Triceps extension cable overhead",
-            "Triceps extension dumbbell overhead",
-            # "Cable overhead shoulder extension",
-            # "Single-arm cable triceps pushdown",
-            # "Dumbbell triceps extension"
+            "Triceps extension dumbbell overhead"
         ]
     },
     {
