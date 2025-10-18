@@ -74,7 +74,7 @@ exercise_types = [
             "Biceps curl cable rope",
             "Biceps curl cable straight bar",
             "Drag curl cable single arm",
-            "Drag curl cable straight bar"
+            "Drag curl cable straight bar",
             "Hammer curl cross body",
             "Hammer curl straight",
             "Preacher curl EZ bar",
@@ -99,11 +99,9 @@ exercise_types = [
             "Seated neutral grip row",
             "Seated single arm row",
             "Dumbbell row",
+            "Dumbbell row incline",
             "Barbell row",
             "Row machine",
-            "Incline bench dumbbell row",
-
-            
             "Pullover",
             "Hammer pullover",
             "Hammer front pulldown",
@@ -146,7 +144,7 @@ exercise_types = [
             "Upright row",
             "Lateral raise machine",
             "Dumbbell rear raises",
-            "Cable rope rear delt rows",
+            "Face-pulls",
             "Rear delts fly",
             "Cable rear delt fly 45"
         ]
@@ -193,6 +191,8 @@ exercise_types = [
             "Squat Hack machine"
             "Squat Hammer belt",
             "Squat smith machine",
+            "Sumo deadlift smith",
+            "Sumo deadlift dumbbell",
             "Hyperextension",
             # "Linear leg press",
             # "Seated leg press",
