@@ -3,20 +3,19 @@ __pycache__/
 .venv/
 .python-version
 .cursor/
+.env
 chat/
 db_data/
+
+# Old site folder (deprecated)
+site_old/
 
 # Docker compose overrides for local development
 docker-compose.override.yml
 docker-compose.*.yml
 
-# Site-specific ignores instead of entire site/ folder
-site/node_modules/
-site/.next/
-site/.env.local
-site/tsconfig.tsbuildinfo
-
 app/sa.json
+app/migrate_user_specific.py
 _aws*
 db.py
 import_data.py

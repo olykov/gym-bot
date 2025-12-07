@@ -1,5 +1,5 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from templates.exercise import exercise_types, sets, weights, reps
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from templates.exercise import sets, weights, reps
 from modules.postgres import PostgresDB
 from modules.logging import Logger
 from datetime import datetime
@@ -42,10 +42,18 @@ def determine_exercise_display_mode(user_id, muscle_name):
 
 
 def generate_start_markup():
+    web_app_url = os.environ.get("WEB_APP_URL")
+    if not web_app_url:
+        logger.error("WEB_APP_URL not set in environment variables")
+        # Fallback to avoid crash, but button won't work as expected
+        web_app_url = "https://google.com"
+    elif not web_app_url.startswith("https://"):
+        web_app_url = f"https://{web_app_url}"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[[
             InlineKeyboardButton(text="Record training", callback_data="/gym"),
-            InlineKeyboardButton(text="Edit trainings", callback_data="/edit")
+            InlineKeyboardButton(text="Edit trainings", web_app=WebAppInfo(url=web_app_url))
         ]]
     )
 
@@ -59,12 +67,15 @@ def generate_edit_markup():
     )
 
 
-def generate_muscle_markup():
+def generate_muscle_markup(user_id=None):
     inline_keyboard = []
     btn_row = []
 
-    for ex_type in exercise_types:
-        btn_row.append(InlineKeyboardButton(text=ex_type["name"], callback_data=ex_type["name"]))
+    # Get muscles from database
+    muscles = db.get_all_muscles(user_id)
+    
+    for muscle in muscles:
+        btn_row.append(InlineKeyboardButton(text=muscle, callback_data=f"mus_{muscle}"))
         if len(btn_row) == 3:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -72,6 +83,8 @@ def generate_muscle_markup():
     if btn_row:
         inline_keyboard.append(btn_row)
 
+    # Add "Add Muscle" button
+    inline_keyboard.append([InlineKeyboardButton(text="➕ Add Muscle", callback_data="add_muscle_btn")])
     inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="/start")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -80,24 +93,12 @@ def generate_muscle_markup():
 def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
     """
     Generate exercise selection markup with smart compact/full display.
-    
-    Args:
-        selected_muscle: Name of the selected muscle group
-        user_id: User's Telegram ID for personalization (optional)
-        show_all: If True, show all exercises; if False, show smart compact view
-    
-    Returns:
-        InlineKeyboardMarkup with exercises in compact or full view
     """
     inline_keyboard = []
     btn_row = []
 
-    # Get all exercises for the selected muscle from exercise.py
-    all_exercises = []
-    for ex_type in exercise_types:
-        if ex_type["name"] == selected_muscle:
-            all_exercises = ex_type["exercises"]
-            break
+    # Get all exercises for the selected muscle from database
+    all_exercises = db.get_exercises_by_muscle(selected_muscle, user_id)
 
     # Determine what exercises to show based on mode
     if show_all:
@@ -151,7 +152,7 @@ def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
 
     # Generate buttons for exercises
     for ex in exercises_to_show:
-        btn_row.append(InlineKeyboardButton(text=ex, callback_data=ex))
+        btn_row.append(InlineKeyboardButton(text=ex, callback_data=f"ex_{ex}"))
         if len(btn_row) == 1:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -159,8 +160,39 @@ def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
     if btn_row:
         inline_keyboard.append(btn_row)
 
+    # Add "Add/Delete Exercise" buttons
+    inline_keyboard.append([
+        InlineKeyboardButton(text="➕ Add Exercise", callback_data="add_exercise_btn"),
+        InlineKeyboardButton(text="❌ Delete Exercise", callback_data="delete_exercise_btn")
+    ])
+
     # Add bottom buttons
     inline_keyboard.append(bottom_buttons)
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def generate_delete_exercise_markup(selected_muscle, user_id=None):
+    """
+    Generate markup for deleting exercises.
+    """
+    inline_keyboard = []
+    btn_row = []
+
+    # Get all exercises for the selected muscle
+    all_exercises = db.get_exercises_by_muscle(selected_muscle, user_id)
+
+    for ex in all_exercises:
+        # Use del_ex_ prefix for deletion callbacks
+        btn_row.append(InlineKeyboardButton(text=f"❌ {ex}", callback_data=f"del_ex_{ex}"))
+        if len(btn_row) == 1:
+            inline_keyboard.append(btn_row)
+            btn_row = []
+
+    if btn_row:
+        inline_keyboard.append(btn_row)
+
+    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Cancel", callback_data="back_to_exercises")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 

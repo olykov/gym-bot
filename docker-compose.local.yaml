@@ -17,19 +17,21 @@ services:
       - core-infra
 
   gymbot_backend:
-    image: "${BOT_IMAGE}:${BOT_TAG}"
+    build: ./app
     restart: always
     container_name: gymbot_backend
     hostname: gymbot_backend
     environment:
       DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@gymbot_db:5432/${DB_NAME}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      WEB_APP_URL: ${WEB_APP_URL}
       DB_USER: ${DB_USER}
       DB_HOST: ${DB_HOST}
       DB_NAME: ${DB_NAME}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_PORT: ${DB_PORT}
+      WEB_APP_URL: ${WEB_APP_URL}
+    volumes:
+      - ./app:/app
     ports:
       - "5400:5400"
     networks:
@@ -37,8 +39,30 @@ services:
     depends_on:
       - gymbot_db
 
+  # gymbot_frontend:
+  #   build: ./site
+  #   restart: always
+  #   container_name: gymbot_frontend
+  #   hostname: gymbot_frontend
+  #   environment:
+  #     NEXTAUTH_URL: https://gymbot.olykov.com
+  #     NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+  #     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+  #     NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
+  #     DB_USER: ${DB_USER}
+  #     DB_HOST: ${DB_HOST}
+  #     DB_NAME: ${DB_NAME}
+  #     DB_PASSWORD: ${DB_PASSWORD}
+  #     DB_PORT: ${DB_PORT}
+  #   expose:
+  #     - 3000
+  #   networks:
+  #     - core-infra
+  #   depends_on:
+  #     - gymbot_db
+
   admin_backend:
-    image: "${ADMIN_BACKEND_IMAGE}:${ADMIN_BACKEND_TAG}"
+    build: ./admin_panel/backend
     restart: always
     container_name: admin_backend
     hostname: admin_backend
@@ -48,6 +72,8 @@ services:
       DB_HOST: gymbot_db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
     ports:
       - "8001:8000"
     networks:
@@ -56,7 +82,7 @@ services:
       - gymbot_db
 
   admin_frontend:
-    image: "${ADMIN_FRONTEND_IMAGE}:${ADMIN_FRONTEND_TAG}"
+    build: ./admin_panel/frontend
     restart: always
     container_name: admin_frontend
     hostname: admin_frontend

@@ -23,10 +23,13 @@
         content: |
           BOT_IMAGE={{ lookup('env', 'BOT_IMAGE') }}
           BOT_TAG={{ lookup('env', 'BOT_TAG') }}
-          FRONTEND_IMAGE={{ lookup('env', 'FRONTEND_IMAGE') }}
-          FRONTEND_TAG={{ lookup('env', 'FRONTEND_TAG') }}
+          ADMIN_BACKEND_IMAGE={{ lookup('env', 'ADMIN_BACKEND_IMAGE') }}
+          ADMIN_BACKEND_TAG={{ lookup('env', 'ADMIN_BACKEND_TAG') }}
+          ADMIN_FRONTEND_IMAGE={{ lookup('env', 'ADMIN_FRONTEND_IMAGE') }}
+          ADMIN_FRONTEND_TAG={{ lookup('env', 'ADMIN_FRONTEND_TAG') }}
           GOOGLE_SHEET_ID={{ lookup('env', 'GOOGLE_SHEET_ID') }}
           TELEGRAM_BOT_TOKEN={{ lookup('env', 'TELEGRAM_BOT_TOKEN') }}
+          WEB_APP_URL={{ lookup('env', 'WEB_APP_URL') }}
           NEXTAUTH_SECRET={{ lookup('env', 'NEXTAUTH_SECRET') }}
           NEXT_PUBLIC_TELEGRAM_BOT_USERNAME={{ lookup('env', 'NEXT_PUBLIC_TELEGRAM_BOT_USERNAME') }}
           DB_USER={{ lookup('env', 'DB_USER') }}

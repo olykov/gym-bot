@@ -26,14 +26,20 @@ dp.callback_query.middleware(CallbackAnswerMiddleware(pre=True, text="🤔"))
 # Application lifespan management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    webhook_url = "https://2f49-149-3-86-53.ngrok-free.app/webhook"
+    web_app_url = os.getenv("WEB_APP_URL")
+    if not web_app_url:
+        raise ValueError("WEB_APP_URL not set. Please configure WEB_APP_URL in your environment.")
+    
+    # Construct webhook URL from domain
+    webhook_url = f"https://{web_app_url}/webhook"
+    
     try:
         await bot.set_webhook(
             url=webhook_url,
             allowed_updates=dp.resolve_used_update_types(),
             drop_pending_updates=True,
         )
-        logger.info("Webhook successfully set.")
+        logger.info(f"Webhook successfully set to: {webhook_url}")
         yield
     finally:
         await bot.delete_webhook()

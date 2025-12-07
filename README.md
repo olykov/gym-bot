@@ -99,7 +99,7 @@ The bot supports three deployment modes:
 
 1. **Hybrid Mode** (`main.py`): Runs both polling and webhook simultaneously
 2. **Long Polling** (`main_longpolling.py`): Traditional polling mode
-3. **Webhook Mode** (`main_webhook.py`): Webhook-based with ngrok integration
+3. **Webhook Mode** (`main_webhook.py`): Webhook-based with configurable URL via WEB_APP_URL environment variable
 
 ## 💾 Database Schema
 
@@ -349,7 +349,6 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## 🐛 Known Issues
 
-- Webhook URL is hardcoded in `main_webhook.py` (line 29)
 - Google Sheets integration requires manual service account setup
 - Admin user ID is hardcoded for backup functionality
 
