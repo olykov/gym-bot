@@ -43,6 +43,7 @@ services:
     container_name: admin_backend
     hostname: admin_backend
     environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_HOST: gymbot_db
