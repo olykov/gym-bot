@@ -163,14 +163,14 @@ class PostgresDB:
         Returns the maximum weight and the date it was first achieved.
         """
         query = '''
-            SELECT t.weight, t.reps, t.date 
+            SELECT t.weight, t.reps, t.date
             FROM training t
             JOIN muscles m ON t.muscle_id = m.id
             JOIN exercises e ON t.exercise_id = e.id
-            WHERE t.user_id = %s 
-            AND m.name = %s 
+            WHERE t.user_id = %s
+            AND m.name = %s
             AND e.name = %s
-            ORDER BY t.weight DESC, t.date DESC
+            ORDER BY t.weight DESC, t.reps DESC, t.date DESC
             LIMIT 1
         '''
         self.cursor.execute(query, (user_id, muscle_name, exercise_name))

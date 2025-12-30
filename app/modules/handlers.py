@@ -163,7 +163,7 @@ def format_personal_record(pr_data, exercise_name):
     
     weight, reps, date = pr_data
     formatted_date = date.strftime('%d %B %Y')
-    return f"Your PR: {weight}kg for {reps} reps ({formatted_date})\n\n"
+    return f"🥇 Your PR: {weight}kg for {int(reps)} reps ({formatted_date})\n\n"
 
 
 @router.message(CommandStart())
