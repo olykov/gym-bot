@@ -3,9 +3,11 @@ __pycache__/
 .venv/
 .python-version
 .cursor/
+.claude/
 .env
 chat/
 db_data/
+db_data.zip
 
 # Old site folder (deprecated)
 site_old/
@@ -20,5 +22,7 @@ _aws*
 db.py
 import_data.py
 
-CLAUDE.md
+CLAUDE*
 PROJECT.md
+IMPLEMENTATION*
+TODO*

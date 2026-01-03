@@ -73,7 +73,7 @@ def generate_muscle_markup(user_id=None):
 
     # Get muscles from database
     muscles = db.get_all_muscles(user_id)
-    
+
     for muscle in muscles:
         btn_row.append(InlineKeyboardButton(text=muscle, callback_data=f"mus_{muscle}"))
         if len(btn_row) == 3:
@@ -88,6 +88,52 @@ def generate_muscle_markup(user_id=None):
     inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="/start")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def generate_post_set_markup(user_id, muscle_name, exercise_name, current_date=None):
+    """
+    Generate markup after completing a set.
+    Shows 'Continue {exercise}' if sets remain, otherwise returns to muscle selection.
+
+    Args:
+        user_id: User's Telegram ID
+        muscle_name: Selected muscle group name
+        exercise_name: Selected exercise name
+        current_date: Date string (YYYY-MM-DD format), defaults to today
+
+    Returns:
+        InlineKeyboardMarkup with appropriate buttons based on remaining sets
+    """
+    if current_date is None:
+        current_date = datetime.now().strftime('%Y-%m-%d')
+
+    try:
+        # Check how many sets are completed
+        completed_sets = db.get_completed_sets(user_id, muscle_name, exercise_name, current_date)
+        total_sets = len(sets)  # From templates/exercise.py (currently 6 sets)
+
+        # Scenario 1: Sets remaining → Show "Continue" + "New Exercise"
+        if len(completed_sets) < total_sets:
+            inline_keyboard = [
+                [InlineKeyboardButton(
+                    text=f"Continue {exercise_name}",
+                    callback_data=f"continue_ex||{muscle_name}||{exercise_name}"
+                )],
+                [InlineKeyboardButton(
+                    text="New Exercise",
+                    callback_data="back_to_muscles"
+                )]
+            ]
+            return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+        # Scenario 2: All sets completed → Return to muscle selection
+        else:
+            return generate_muscle_markup(user_id)
+
+    except Exception as e:
+        logger.error(f"Error generating post-set markup: {e}")
+        # Fallback to muscle selection if we can't determine remaining sets
+        return generate_muscle_markup(user_id)
 
 
 def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):

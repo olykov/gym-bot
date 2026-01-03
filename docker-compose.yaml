@@ -1,4 +1,20 @@
 services:
+  gymbot_redis:
+    image: redis:7-alpine
+    container_name: gymbot_redis
+    hostname: gymbot_redis
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - core-infra
+
   gymbot_db:
     image: postgres:16
     container_name: gymbot_db
@@ -24,18 +40,25 @@ services:
     environment:
       DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@gymbot_db:5432/${DB_NAME}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
       WEB_APP_URL: ${WEB_APP_URL}
       DB_USER: ${DB_USER}
       DB_HOST: ${DB_HOST}
       DB_NAME: ${DB_NAME}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_PORT: ${DB_PORT}
+      REDIS_HOST: gymbot_redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     ports:
       - "5400:5400"
     networks:
       - core-infra
     depends_on:
-      - gymbot_db
+      gymbot_redis:
+        condition: service_healthy
+      gymbot_db:
+        condition: service_started
 
   admin_backend:
     image: "${ADMIN_BACKEND_IMAGE}:${ADMIN_BACKEND_TAG}"
@@ -67,6 +90,9 @@ services:
       - core-infra
     depends_on:
       - admin_backend
+
+volumes:
+  redis_data:
 
 networks:
   core-infra:

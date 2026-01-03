@@ -29,6 +29,7 @@
           ADMIN_FRONTEND_TAG={{ lookup('env', 'ADMIN_FRONTEND_TAG') }}
           GOOGLE_SHEET_ID={{ lookup('env', 'GOOGLE_SHEET_ID') }}
           TELEGRAM_BOT_TOKEN={{ lookup('env', 'TELEGRAM_BOT_TOKEN') }}
+          TELEGRAM_WEBHOOK_SECRET={{ lookup('env', 'TELEGRAM_WEBHOOK_SECRET') }}
           WEB_APP_URL={{ lookup('env', 'WEB_APP_URL') }}
           NEXTAUTH_SECRET={{ lookup('env', 'NEXTAUTH_SECRET') }}
           NEXT_PUBLIC_TELEGRAM_BOT_USERNAME={{ lookup('env', 'NEXT_PUBLIC_TELEGRAM_BOT_USERNAME') }}
@@ -37,6 +38,9 @@
           DB_NAME={{ lookup('env', 'DB_NAME') }}
           DB_PASSWORD={{ lookup('env', 'DB_PASSWORD') }}
           DB_PORT={{ lookup('env', 'DB_PORT') }}
+          REDIS_HOST=gymbot_redis
+          REDIS_PORT=6379
+          REDIS_PASSWORD={{ lookup('env', 'REDIS_PASSWORD') }}
     
     - name: Prepare sa.json
       tags: ["app"]

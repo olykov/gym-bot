@@ -93,6 +93,7 @@ jobs:
           ADMIN_FRONTEND_TAG: ${{ env.BUILD_TAG }}
           GOOGLE_SHEET_ID: "${{ secrets.GOOGLE_SHEET_ID }}"
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          TELEGRAM_WEBHOOK_SECRET: "${{ secrets.TELEGRAM_WEBHOOK_SECRET }}"
           WEB_APP_URL: "${{ secrets.WEB_APP_URL }}"
           SA: "${{ secrets.SA }}"
           NEXTAUTH_SECRET: "${{ secrets.NEXTAUTH_SECRET }}"
@@ -103,4 +104,6 @@ jobs:
           DB_NAME: gym_bot_db
           DB_PASSWORD: mypassword
           DB_PORT: 5432
+          # Redis secrets
+          REDIS_PASSWORD: "${{ secrets.REDIS_PASSWORD }}"
         run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
