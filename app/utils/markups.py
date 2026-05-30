@@ -1,4 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.enums import ButtonStyle
 from templates.exercise import sets, weights, reps
 from modules.postgres import PostgresDB
 from modules.logging import Logger
@@ -52,7 +53,7 @@ def generate_start_markup():
 
     return InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text="Record training", callback_data="/gym"),
+            InlineKeyboardButton(text="Record training", callback_data="/gym", style=ButtonStyle.PRIMARY),
             InlineKeyboardButton(text="Edit trainings", web_app=WebAppInfo(url=web_app_url))
         ]]
     )
@@ -61,7 +62,7 @@ def generate_start_markup():
 def generate_edit_markup():
     return InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text="Edit today's training", callback_data="edit_today_training"),
+            InlineKeyboardButton(text="Edit today's training", callback_data="edit_today_training", style=ButtonStyle.PRIMARY),
             InlineKeyboardButton(text="Close", callback_data="/start")
         ]]
     )
@@ -84,7 +85,7 @@ def generate_muscle_markup(user_id=None):
         inline_keyboard.append(btn_row)
 
     # Add "Add Muscle" button
-    inline_keyboard.append([InlineKeyboardButton(text="➕ Add Muscle", callback_data="add_muscle_btn")])
+    inline_keyboard.append([InlineKeyboardButton(text="➕ Add Muscle", callback_data="add_muscle_btn", style=ButtonStyle.SUCCESS)])
     inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="/start")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -117,7 +118,8 @@ def generate_post_set_markup(user_id, muscle_name, exercise_name, current_date=N
             inline_keyboard = [
                 [InlineKeyboardButton(
                     text=f"Continue {exercise_name}",
-                    callback_data=f"continue_ex||{muscle_name}||{exercise_name}"
+                    callback_data=f"continue_ex||{muscle_name}||{exercise_name}",
+                    style=ButtonStyle.PRIMARY
                 )],
                 [InlineKeyboardButton(
                     text="New Exercise",
@@ -208,8 +210,8 @@ def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
 
     # Add "Add/Delete Exercise" buttons
     inline_keyboard.append([
-        InlineKeyboardButton(text="➕ Add Exercise", callback_data="add_exercise_btn"),
-        InlineKeyboardButton(text="❌ Delete Exercise", callback_data="delete_exercise_btn")
+        InlineKeyboardButton(text="➕ Add Exercise", callback_data="add_exercise_btn", style=ButtonStyle.SUCCESS),
+        InlineKeyboardButton(text="❌ Delete Exercise", callback_data="delete_exercise_btn", style=ButtonStyle.DANGER)
     ])
 
     # Add bottom buttons
@@ -230,7 +232,7 @@ def generate_delete_exercise_markup(selected_muscle, user_id=None):
 
     for ex in all_exercises:
         # Use del_ex_ prefix for deletion callbacks
-        btn_row.append(InlineKeyboardButton(text=f"❌ {ex}", callback_data=f"del_ex_{ex}"))
+        btn_row.append(InlineKeyboardButton(text=f"❌ {ex}", callback_data=f"del_ex_{ex}", style=ButtonStyle.DANGER))
         if len(btn_row) == 1:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -259,7 +261,7 @@ def generate_select_set_markup(user_id, muscle, exercise):
 
     # If all sets are completed, show message
     if not available_sets:
-        inline_keyboard.append([InlineKeyboardButton(text="All sets completed!", callback_data="/start")])
+        inline_keyboard.append([InlineKeyboardButton(text="All sets completed!", callback_data="/start", style=ButtonStyle.SUCCESS)])
     else:
         for _set in available_sets:
             btn_row.append(InlineKeyboardButton(text=_set["name"], callback_data=_set['id']))
