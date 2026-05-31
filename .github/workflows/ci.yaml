@@ -99,10 +99,10 @@ jobs:
           NEXTAUTH_SECRET: "${{ secrets.NEXTAUTH_SECRET }}"
           NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: olykov_gym_bot
           # Database secrets (pg container in the same project)
-          DB_USER: myuser
+          DB_USER: ${{ secrets.DB_USER }}
           DB_HOST: gymbot_db
-          DB_NAME: gym_bot_db
-          DB_PASSWORD: mypassword
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_PORT: 5432
           # Redis secrets
           REDIS_PASSWORD: "${{ secrets.REDIS_PASSWORD }}"
