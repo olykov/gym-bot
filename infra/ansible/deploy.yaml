@@ -62,19 +62,15 @@
         dest: "{{ work_dir }}/docker-compose.yml"
       register: _docker_compose
     
-    - name: Check container
-      # when: _docker_compose is changed
+    - name: Ensure app containers are running
+      # pull: always fetches new images; compose recreates only containers
+      # whose image or config changed. Stateful services (gymbot_db,
+      # gymbot_redis) use pinned images that do not change between app
+      # deploys, so they are left untouched — no DB/Redis downtime.
       tags: ["app"]
-      block:
-        - name: Ensure app container is absent
-          community.docker.docker_compose_v2:
-            project_src: "{{ work_dir }}"
-            state: absent
-
-        - name: Ensure app container is running
-          community.docker.docker_compose_v2:
-            project_src: "{{ work_dir }}"
-            pull: always
-            state: present
-          register: _docker_compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ work_dir }}"
+        pull: always
+        state: present
+      register: _docker_compose
 
