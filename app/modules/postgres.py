@@ -204,6 +204,36 @@ class PostgresDB:
             logger.info(f"Personal record for user {user_id}, exercise {exercise_name}: {result}")
             return result
 
+    def get_max_reps_for_weight(self, user_id, muscle_name, exercise_name, weight):
+        """
+        Get the maximum reps ever performed at a specific weight for an exercise.
+
+        Args:
+            user_id: User's Telegram ID
+            muscle_name: Name of the muscle group
+            exercise_name: Name of the exercise
+            weight: Weight value to filter by (normalized string, e.g. "45" or "2.5")
+
+        Returns:
+            Maximum reps value at this weight, or None if no history exists.
+        """
+        query = '''
+            SELECT MAX(t.reps)
+            FROM training t
+            JOIN muscles m ON t.muscle_id = m.id
+            JOIN exercises e ON t.exercise_id = e.id
+            WHERE t.user_id = %s
+            AND m.name = %s
+            AND e.name = %s
+            AND t.weight = %s
+        '''
+        with self.get_cursor() as cursor:
+            cursor.execute(query, (user_id, muscle_name, exercise_name, weight))
+            result = cursor.fetchone()
+            max_reps = result[0] if result else None
+            logger.info(f"Max reps for user {user_id}, {exercise_name} @ {weight}kg: {max_reps}")
+            return max_reps
+
     def get_top_exercises_for_muscle(self, user_id, muscle_name, limit=5):
         """
         Get the most frequently used exercises for a specific muscle group by user.

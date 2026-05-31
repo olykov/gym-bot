@@ -271,7 +271,11 @@ async def process_set(callback_query: CallbackQuery, state: FSMContext):
 
     logger.info(f"{user_id}: Set {set_number} selected")
 
-    ikm = markups.generate_enter_weight_markup()
+    # Pass context so the PR (max weight) button is highlighted in green
+    data = await state.get_data()
+    ikm = markups.generate_enter_weight_markup(
+        user_id, data.get("muscle"), data.get("exercise")
+    )
     bot = callback_query.bot
     await bot.edit_message_text(
         chat_id=callback_query.message.chat.id,
@@ -297,7 +301,10 @@ async def process_weight(callback_query: CallbackQuery, state: FSMContext):
 
     logger.info(f"{user_id}: Weight {weight_value} selected")
 
-    ikm = markups.generate_enter_reps_markup()
+    # Pass context so the max-reps button for this weight is highlighted in green
+    ikm = markups.generate_enter_reps_markup(
+        user_id, data.get("muscle"), data.get("exercise"), weight_value
+    )
     bot = callback_query.bot
     await bot.edit_message_text(
         chat_id=callback_query.message.chat.id,

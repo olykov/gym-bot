@@ -277,12 +277,37 @@ def generate_select_set_markup(user_id, muscle, exercise):
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_enter_weight_markup():
+def _is_peak(button_value, target):
+    """Return True if a button label numerically equals the peak target.
+
+    Compares as floats so "5" matches 5.0 and Decimal('45.0') matches "45".
+    Returns False for None target or non-numeric values (graceful fallback).
+    """
+    if target is None:
+        return False
+    try:
+        return float(button_value) == float(target)
+    except (TypeError, ValueError):
+        return False
+
+
+def generate_enter_weight_markup(user_id=None, muscle=None, exercise=None):
     inline_keyboard = []
     btn_row = []
 
+    # Reason: highlight the all-time max weight (PR) for this exercise in green
+    pr_weight = None
+    if user_id and muscle and exercise:
+        try:
+            record = db.get_personal_record(user_id, muscle, exercise)
+            if record:
+                pr_weight = record[0]
+        except Exception as e:
+            logger.error(f"Error getting PR weight for user {user_id}: {e}")
+
     for w in weights:
-        btn_row.append(InlineKeyboardButton(text=f"{w}", callback_data=f"{w}kg"))
+        style = ButtonStyle.SUCCESS if _is_peak(w, pr_weight) else None
+        btn_row.append(InlineKeyboardButton(text=f"{w}", callback_data=f"{w}kg", style=style))
         if len(btn_row) == 7:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -294,12 +319,21 @@ def generate_enter_weight_markup():
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_enter_reps_markup():
+def generate_enter_reps_markup(user_id=None, muscle=None, exercise=None, weight=None):
     inline_keyboard = []
     btn_row = []
 
+    # Reason: highlight the max reps ever done at the selected weight in green
+    max_reps = None
+    if user_id and muscle and exercise and weight is not None:
+        try:
+            max_reps = db.get_max_reps_for_weight(user_id, muscle, exercise, weight)
+        except Exception as e:
+            logger.error(f"Error getting max reps for user {user_id}: {e}")
+
     for r in reps:
-        btn_row.append(InlineKeyboardButton(text=f"{r}", callback_data=f"{r}_r"))
+        style = ButtonStyle.SUCCESS if _is_peak(r, max_reps) else None
+        btn_row.append(InlineKeyboardButton(text=f"{r}", callback_data=f"{r}_r", style=style))
         if len(btn_row) == 8:
             inline_keyboard.append(btn_row)
             btn_row = []
