@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-4
 title: "Add DB indexes on training and users hot columns"
 slug: gym-4-db-indexes
-status: in_progress
+status: done
 priority: high
 type: refactor
 labels: [phase-0, perf, db]
@@ -12,8 +12,8 @@ model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-05-31T16:30:00Z
-finish_date: null
-updated: 2026-05-31T16:30:00Z
+finish_date: 2026-05-31T17:00:00Z
+updated: 2026-05-31T17:00:00Z
 epic: phase-0
 depends_on: []
 blocks: []
@@ -45,3 +45,8 @@ idx_users_username) for fresh DBs, plus an idempotent packages/db/migrations/001
 for the live DB. Code ready. Remaining: apply the migration to the production DB (operator runs the
 psql one-liner on the server, OR we wire an idempotent apply step into the ansible deploy) — then link
 the SHA and close.
+
+### 2026-05-31T17:00:00Z — done
+Operator applied the 3 indexes on prod (CREATE INDEX x3 succeeded). Code in init.sql (fresh DBs) +
+migration 001 committed as d9ac6eb. Note: prod psql emitted a pre-existing collation-version warning
+(glibc 2.36 vs 2.41) unrelated to this change — logged separately as GYM-17.
