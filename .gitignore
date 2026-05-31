@@ -24,6 +24,7 @@ db.py
 import_data.py
 
 CLAUDE*
+!CLAUDE.md
 PROJECT.md
 IMPLEMENTATION*
 TODO*
