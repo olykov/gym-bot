@@ -41,6 +41,9 @@
           REDIS_HOST=gymbot_redis
           REDIS_PORT=6379
           REDIS_PASSWORD={{ lookup('env', 'REDIS_PASSWORD') }}
+          JWT_SECRET={{ lookup('env', 'JWT_SECRET') }}
+          ADMIN_USER={{ lookup('env', 'ADMIN_USER') }}
+          ADMIN_PASSWORD={{ lookup('env', 'ADMIN_PASSWORD') }}
     
     - name: Prepare sa.json
       tags: ["app"]

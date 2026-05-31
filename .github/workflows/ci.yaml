@@ -106,4 +106,8 @@ jobs:
           DB_PORT: 5432
           # Redis secrets
           REDIS_PASSWORD: "${{ secrets.REDIS_PASSWORD }}"
+          # Admin API secrets
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_USER: ${{ secrets.ADMIN_USER }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: ansible-playbook -i infra/ansible/inventory.yaml infra/ansible/deploy.yaml

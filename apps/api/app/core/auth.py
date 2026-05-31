@@ -6,15 +6,14 @@ from typing import Optional
 
 from jose import JWTError, jwt
 
+from app.core.config import get_settings
+
 # Admin whitelist
 ADMIN_TELEGRAM_IDS = ["2107709598"]
 
-# Hardcoded admin credentials
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "olykov"
-
-# JWT settings
-JWT_SECRET = os.environ.get("JWT_SECRET", "your-secret-key-change-in-production")
+# JWT settings — secret sourced from Settings; fails at startup if unset.
+_settings = get_settings()
+JWT_SECRET: str = _settings.JWT_SECRET
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24 * 7  # 7 days
 
@@ -226,21 +225,27 @@ def verify_telegram_webapp_auth(init_data: str) -> Optional[dict]:
 
 def verify_admin_credentials(username: str, password: str) -> Optional[dict]:
     """
-    Verify admin username and password.
-    
+    Verify admin username and password against env-sourced credentials.
+
+    The password-admin path is disabled (returns None) when ADMIN_USER or
+    ADMIN_PASSWORD are not configured; settings validation guarantees they are
+    set at startup, so at runtime this function always has valid values to
+    compare against.
+
     Args:
-        username: Admin username
-        password: Admin password
-        
+        username: Admin username supplied by the caller.
+        password: Admin password supplied by the caller.
+
     Returns:
-        User data if valid, None otherwise
+        User data dict if credentials match, None otherwise.
     """
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    settings = get_settings()
+    if username == settings.ADMIN_USER and password == settings.ADMIN_PASSWORD:
         return {
             "id": "admin",
             "first_name": "Admin",
-            "username": "admin",
-            "auth_type": "password"
+            "username": settings.ADMIN_USER,
+            "auth_type": "password",
         }
     return None
 
