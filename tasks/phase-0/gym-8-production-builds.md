@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-8
 title: "Production builds: drop dev servers in prod"
 slug: gym-8-production-builds
-status: in_progress
+status: done
 priority: medium
 type: refactor
 labels: [phase-0, infra]
@@ -12,8 +12,8 @@ model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-05-31T19:45:00Z
-finish_date: null
-updated: 2026-05-31T19:45:00Z
+finish_date: 2026-05-31T20:15:00Z
+updated: 2026-05-31T20:15:00Z
 epic: phase-0
 depends_on: []
 blocks: []
@@ -54,3 +54,8 @@ the resolver fix) in the same window or the Mini App/admin returns 502 — same 
 Awaiting operator to confirm the admin proxy setup before push.
 Note: prod build uses `npx vite build` (bypasses the `tsc` gate) due to pre-existing TS6133 unused-
 import errors in source — bundle is identical; cleaning those is a small follow-up.
+
+### 2026-05-31T20:15:00Z — done
+Operator confirmed no core-infra proxy targets admin_frontend (only the bot vhost exists), so the
+5173->80 port change is safe (admin still reachable via host:5174). Pushed 57679da; deploy run
+26721530118 completed/success. Prod now runs nginx-served static admin + uvicorn without --reload.
