@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-6
 title: "Remove hardcoded admin creds and default JWT secret in apps/api"
 slug: gym-6-remove-hardcoded-admin-jwt
-status: in_progress
+status: review
 priority: high
 type: chore
 labels: [phase-0, security]
@@ -13,7 +13,7 @@ reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-05-31T18:45:00Z
 finish_date: null
-updated: 2026-05-31T18:45:00Z
+updated: 2026-05-31T19:00:00Z
 epic: phase-0
 depends_on: [GYM-5]
 blocks: []
@@ -50,3 +50,11 @@ no hardcoded admin/JWT default remains.
 BLOCKED ON OPERATOR: secret ADMIN_PASSWORD is NOT yet set (only ADMIN_USER/JWT_SECRET/DB_PASSWORD
 exist). apps/api fails fast without it, so the push is held. Once ADMIN_PASSWORD is added, push ->
 the deploy applies the new admin creds + JWT + the rotated DB_PASSWORD in one go -> verify -> close.
+
+### 2026-05-31T19:00:00Z — deployed, awaiting smoke (status: review)
+All 5 secrets present; pushed e445890 in cf3b2c3; deploy run 26720724491 completed/success. Moved to
+REVIEW (not done) because deploy success only means containers started — it does not prove apps/api
+passed fail-fast or that the rotated DB password matches. Operator to verify on the server side:
+(1) bot /start works (DB connects with the rotated password — if the DB_PASSWORD secret value differs
+from the ALTER ROLE value, the bot is down); (2) admin login works with the new ADMIN_USER/ADMIN_PASSWORD
+and the old admin/olykov is rejected. On confirmation -> done.
