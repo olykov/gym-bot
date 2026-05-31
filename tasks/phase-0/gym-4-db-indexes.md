@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-4
 title: "Add DB indexes on training and users hot columns"
 slug: gym-4-db-indexes
-status: backlog
+status: in_progress
 priority: high
 type: refactor
 labels: [phase-0, perf, db]
@@ -11,14 +11,14 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
-start_date: null
+start_date: 2026-05-31T16:30:00Z
 finish_date: null
-updated: 2026-05-31T16:00:00Z
+updated: 2026-05-31T16:30:00Z
 epic: phase-0
 depends_on: []
 blocks: []
 related: []
-commits: []
+commits: ["d9ac6eb"]
 tests: []
 design_reports: []
 review_reports: []
@@ -38,3 +38,10 @@ Add indexes: training(user_id, date), training(exercise_id), users(username). Up
 
 ### 2026-05-31T16:00:00Z — task created
 Kills the full-scan root cause before the website rebuild (GYM-12).
+
+### 2026-05-31T16:30:00Z — in progress
+Added 3 indexes to packages/db/init.sql (idx_training_user_date, idx_training_exercise_id,
+idx_users_username) for fresh DBs, plus an idempotent packages/db/migrations/001_add_hot_indexes.sql
+for the live DB. Code ready. Remaining: apply the migration to the production DB (operator runs the
+psql one-liner on the server, OR we wire an idempotent apply step into the ansible deploy) — then link
+the SHA and close.
