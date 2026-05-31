@@ -53,7 +53,7 @@ def generate_start_markup():
 
     return InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text="Record training", callback_data="/gym", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton(text="Record training", callback_data="/gym", style=ButtonStyle.SUCCESS),
             InlineKeyboardButton(text="Edit trainings", web_app=WebAppInfo(url=web_app_url))
         ]]
     )
@@ -85,7 +85,7 @@ def generate_muscle_markup(user_id=None):
         inline_keyboard.append(btn_row)
 
     # Add "Add Muscle" button
-    inline_keyboard.append([InlineKeyboardButton(text="➕ Add Muscle", callback_data="add_muscle_btn", style=ButtonStyle.SUCCESS)])
+    inline_keyboard.append([InlineKeyboardButton(text="➕ Add Muscle", callback_data="add_muscle_btn")])
     inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="/start")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -119,7 +119,7 @@ def generate_post_set_markup(user_id, muscle_name, exercise_name, current_date=N
                 [InlineKeyboardButton(
                     text=f"Continue {exercise_name}",
                     callback_data=f"continue_ex||{muscle_name}||{exercise_name}",
-                    style=ButtonStyle.PRIMARY
+                    style=ButtonStyle.SUCCESS
                 )],
                 [InlineKeyboardButton(
                     text="New Exercise",
@@ -210,7 +210,7 @@ def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
 
     # Add "Add/Delete Exercise" buttons
     inline_keyboard.append([
-        InlineKeyboardButton(text="➕ Add Exercise", callback_data="add_exercise_btn", style=ButtonStyle.SUCCESS),
+        InlineKeyboardButton(text="➕ Add Exercise", callback_data="add_exercise_btn"),
         InlineKeyboardButton(text="❌ Delete Exercise", callback_data="delete_exercise_btn", style=ButtonStyle.DANGER)
     ])
 
