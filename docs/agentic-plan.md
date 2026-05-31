@@ -1,8 +1,8 @@
 # Agentic Plan — project subagents
 
-> Status: **plan** (not yet created). Captures the subagent setup agreed on 2026-05-31.
-> Create these **after the monorepo restructure** ([docs/ROADMAP.md](ROADMAP.md) Phase 1), because their scopes reference `apps/` and `packages/` which don't exist yet.
-> Exception: **`security-auditor`** is useful on the current code and can be created now.
+> Status: **created** (2026-05-31). All 7 agents live in `.claude/agents/` (git-tracked).
+> Built after the Phase 1 monorepo restructure, so scopes reference the real `apps/` and `packages/` layout.
+> From Phase 2 onward, the main session orchestrates: delegate per seam, `security-auditor` reviews, synthesize.
 
 ## How Claude Code subagents work
 

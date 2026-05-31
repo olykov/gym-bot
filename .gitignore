@@ -5,6 +5,7 @@ __pycache__/
 .cursor/
 .claude/*
 !.claude/skills/
+!.claude/agents/
 .env
 chat/
 db_data/
