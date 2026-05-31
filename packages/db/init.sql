@@ -55,3 +55,9 @@ CREATE TABLE IF NOT EXISTS training (
     weight DECIMAL(5, 2),
     reps DECIMAL(5, 2)
 );
+
+-- Hot-path indexes (GYM-4): every analytics query filters user_id and joins/sorts on
+-- date/exercise; without these the training table is sequentially scanned each request.
+CREATE INDEX IF NOT EXISTS idx_training_user_date ON training (user_id, date);
+CREATE INDEX IF NOT EXISTS idx_training_exercise_id ON training (exercise_id);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
