@@ -38,7 +38,7 @@ This Telegram bot helps users track their gym workouts by guiding them through a
 
 ```
 tg_gym_bot/
-├── app/                          # Main application directory
+├── apps/bot/                     # Telegram bot (aiogram)
 │   ├── main_webhook.py           # Production webhook entry point (ACTIVE)
 │   ├── main.py                   # Development/hybrid mode
 │   ├── Dockerfile                # Bot container configuration
@@ -51,21 +51,19 @@ tg_gym_bot/
 │   │   └── exercise.py          # Exercise types, weights, reps definitions
 │   └── utils/                   # Utility functions
 │       └── markups.py           # Telegram inline keyboard markup generators
-├── admin_panel/                 # Web-based admin interface
-│   ├── backend/                 # FastAPI admin backend
-│   │   ├── main.py              # Admin API entry point
-│   │   ├── app/api/v1/          # API routes (muscles, exercises, training)
-│   │   └── Dockerfile           # Backend container
-│   └── frontend/                # Admin web UI
-│       └── Dockerfile           # Frontend container
-├── src/                         # Static assets
-│   ├── img01.PNG                # Bot screenshot 1
-│   ├── img02.PNG                # Bot screenshot 2
-│   ├── img03.PNG                # Bot screenshot 3
-│   └── graph.png                # Analytics graph
-├── docker-compose.yaml          # Multi-container orchestration
-├── init.sql                     # Database schema initialization
-└── requirements.txt             # Python dependencies
+├── apps/api/                    # Core/Admin API (FastAPI)
+│   ├── main.py                 # API entry point
+│   ├── app/api/v1/             # API routes (muscles, exercises, training)
+│   └── Dockerfile              # API container
+├── apps/admin/                  # Admin + Mini App web UI (React/Vite)
+│   └── Dockerfile              # Frontend container
+├── packages/db/init.sql         # Database schema initialization
+├── packages/{api-contract,shared}/  # scaffolds (Phase 2)
+├── infra/ansible/               # Deployment automation
+├── scripts/                     # One-off scripts (db.py, import_data.py)
+├── src/                         # Static assets (README screenshots)
+├── docs/                        # ARCHITECTURE.md, ROADMAP.md, agentic-plan.md
+└── docker-compose.yaml          # Multi-container orchestration
 ```
 
 ## 🚀 Technologies Used
@@ -298,13 +296,13 @@ curl https://api.telegram.org/bot<YOUR_TOKEN>/getWebhookInfo
 #### Production Deployment
 ```bash
 # Build and push Docker images
-docker build -t your_registry/gymbot:latest ./app
+docker build -t your_registry/gymbot:latest ./apps/bot
 docker push your_registry/gymbot:latest
 
-docker build -t your_registry/admin-backend:latest ./admin_panel/backend
+docker build -t your_registry/admin-backend:latest ./apps/api
 docker push your_registry/admin-backend:latest
 
-docker build -t your_registry/admin-frontend:latest ./admin_panel/frontend
+docker build -t your_registry/admin-frontend:latest ./apps/admin
 docker push your_registry/admin-frontend:latest
 
 # On production server

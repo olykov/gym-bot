@@ -15,18 +15,18 @@ A Telegram gym training-logger that is being grown into a multi-client platform.
 
 | Component | Path | Stack | Status |
 |-----------|------|-------|--------|
-| Telegram bot | `app/` | aiogram 3.28 + FastAPI webhook, Redis FSM | live (prod) |
-| Admin API | `admin_panel/backend` | FastAPI + SQLAlchemy, JWT | live |
-| Mini App + Admin UI | `admin_panel/frontend` | React 18 + Vite + Tailwind | live (this is the in-Telegram Mini App) |
+| Telegram bot | `apps/bot/` | aiogram 3.28 + FastAPI webhook, Redis FSM | live (prod) |
+| Admin/Core API | `apps/api/` | FastAPI + SQLAlchemy, JWT | live |
+| Mini App + Admin UI | `apps/admin/` | React 18 + Vite + Tailwind | live (this is the in-Telegram Mini App) |
 | Data stores | compose | postgres:16, redis:7 | live |
 | Legacy website | `site_old/` | Next.js (direct DB access) | deprecated, off — to be rebuilt |
 
-`src/` is just README images. `db.py` / `import_data.py` / `migrate_user_specific.py` are one-off scripts.
+Layout: `apps/` (services), `packages/` (db schema, future api-contract & shared), `infra/` (ansible, future k8s), `scripts/` (one-off: db.py, import_data.py), `docs/`. `src/` is just README images.
 
 ## Architecture Invariants (do NOT regress)
 
 These were hard-won in the webhook migration and must stay:
-- **Bot transport**: webhook only (`app/main_webhook.py`), with `X-Telegram-Bot-Api-Secret-Token` validation. Not polling.
+- **Bot transport**: webhook only (`apps/bot/main_webhook.py`), with `X-Telegram-Bot-Api-Secret-Token` validation. Not polling.
 - **State**: aiogram FSM backed by **Redis** (`RedisStorage`). ❌ Never an in-memory dict for user state.
 - **DB access**: **connection pool** (`ThreadedConnectionPool`) via `get_cursor()` context manager. ❌ Never a single global connection/cursor.
 
@@ -235,11 +235,11 @@ Commit/push only when the user asks. Direct commits to `main` are the norm here 
 | Phased plan | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Subagent plan | [docs/agentic-plan.md](docs/agentic-plan.md) |
 | Telegram UI design skill | [.claude/skills/telegram-design/](.claude/skills/telegram-design/) |
-| Bot entry point | [app/main_webhook.py](app/main_webhook.py) |
-| Bot handlers | [app/modules/handlers.py](app/modules/handlers.py) |
-| DB layer | [app/modules/postgres.py](app/modules/postgres.py) |
-| FSM states | [app/modules/states.py](app/modules/states.py) |
-| Admin API | [admin_panel/backend/](admin_panel/backend/) |
-| DB schema bootstrap | [init.sql](init.sql) |
+| Bot entry point | [apps/bot/main_webhook.py](apps/bot/main_webhook.py) |
+| Bot handlers | [apps/bot/modules/handlers.py](apps/bot/modules/handlers.py) |
+| DB layer | [apps/bot/modules/postgres.py](apps/bot/modules/postgres.py) |
+| FSM states | [apps/bot/modules/states.py](apps/bot/modules/states.py) |
+| Admin/Core API | [apps/api/](apps/api/) |
+| DB schema bootstrap | [packages/db/init.sql](packages/db/init.sql) |
 
 > `TODO.md` and `IMPLEMENTATION.md` exist but are **stale** (they describe the already-completed webhook migration). Treat [docs/ROADMAP.md](docs/ROADMAP.md) as the current plan, not those files.

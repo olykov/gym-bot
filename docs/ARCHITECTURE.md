@@ -11,9 +11,9 @@ Single git repo, deployed as one Docker-Compose stack on one host behind an exte
 
 | # | Component | Path | Stack | Data access |
 |---|-----------|------|-------|-------------|
-| 1 | Telegram bot | `app/` | aiogram 3.28 + FastAPI webhook, Redis FSM | **Direct Postgres** (raw psycopg2) |
-| 2 | Admin API | `admin_panel/backend` | FastAPI + SQLAlchemy, JWT | Direct Postgres (ORM) |
-| 3 | Mini App + Admin UI | `admin_panel/frontend` | React 18 + Vite + Tailwind | Through Admin API (clean) |
+| 1 | Telegram bot | `apps/bot/` | aiogram 3.28 + FastAPI webhook, Redis FSM | **Direct Postgres** (raw psycopg2) |
+| 2 | Admin API | `apps/api/` | FastAPI + SQLAlchemy, JWT | Direct Postgres (ORM) |
+| 3 | Mini App + Admin UI | `apps/admin/` | React 18 + Vite + Tailwind | Through Admin API (clean) |
 | 4 | Legacy website | `site_old/` (deprecated, off) | Next.js 15 + **`pg` in the frontend** | **Frontend → Postgres directly** |
 | 5 | Data stores | compose | postgres:16, redis:7 | — |
 
@@ -83,7 +83,7 @@ Exactly one service holds DB credentials and runs SQL. Every client (bot, Mini A
                                 managed/StatefulSet                  sessions, bot FSM)
 ```
 
-`admin_panel/backend` is already ~60% of this Core API (FastAPI, SQLAlchemy models for all tables, JWT, three Telegram auth flows). We grow it into the single owner rather than start from zero.
+`apps/api` is already ~60% of this Core API (FastAPI, SQLAlchemy models for all tables, JWT, three Telegram auth flows). We grow it into the single owner rather than start from zero.
 
 ### 3.2 Monorepo layout (decided)
 
@@ -169,7 +169,7 @@ The component boundaries are already clean, so the build side is split-ready; th
 |----------|--------|-----------|
 | Repo strategy | **Monorepo** with `apps/` + `packages/` | Shared contract, atomic cross-client PRs, parallel agents/devs, one CI. |
 | DB ownership | **Single Core API owns all SQL** | Unblocks RLS, subscriptions, AI, scaling, client reuse. |
-| Core API seed | Grow `admin_panel/backend` | Already ~60% there (auth, models, schemas). |
+| Core API seed | Grow `apps/api` | Already ~60% there (auth, models, schemas). |
 | Parallel-dev mechanism | `packages/api-contract` (OpenAPI + generated clients) | Clients built independently against a typed contract. |
 | Migrations | Adopt **Alembic** | Replace hand-run SQL; versioned schema. |
 | Isolation | **Postgres RLS** after single-owner API | DB-enforced, not per-client hand-filtering. |

@@ -52,13 +52,13 @@
     - name: Ensure init.sql exists
       tags: ["app"]
       ansible.builtin.copy:
-        src: "{{inventory_dir}}/../init.sql"
+        src: "{{inventory_dir}}/../../packages/db/init.sql"
         dest: "{{ work_dir }}/init.sql"
 
     - name: Ensure docker-compose.yml is updated
       tags: ["app"]
       ansible.builtin.template:
-        src: "{{inventory_dir}}/../docker-compose.yaml"
+        src: "{{inventory_dir}}/../../docker-compose.yaml"
         dest: "{{ work_dir }}/docker-compose.yml"
       register: _docker_compose
     

@@ -25,7 +25,7 @@ jobs:
       
       - name: Build and push bot Docker image
         run: |
-          docker build -f app/Dockerfile -t ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }} app/
+          docker build -f apps/bot/Dockerfile -t ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }} apps/bot/
           docker push ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }}
 
   build-admin-backend:
@@ -41,7 +41,7 @@ jobs:
       
       - name: Build and push admin backend Docker image
         run: |
-          docker build -f admin_panel/backend/Dockerfile -t ${{ env.ADMIN_BACKEND_IMAGE }}:${{ env.BUILD_TAG }} admin_panel/backend/
+          docker build -f apps/api/Dockerfile -t ${{ env.ADMIN_BACKEND_IMAGE }}:${{ env.BUILD_TAG }} apps/api/
           docker push ${{ env.ADMIN_BACKEND_IMAGE }}:${{ env.BUILD_TAG }}
 
   build-admin-frontend:
@@ -57,7 +57,7 @@ jobs:
       
       - name: Build and push admin frontend Docker image
         run: |
-          docker build -f admin_panel/frontend/Dockerfile -t ${{ env.ADMIN_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }} admin_panel/frontend/
+          docker build -f apps/admin/Dockerfile -t ${{ env.ADMIN_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }} apps/admin/
           docker push ${{ env.ADMIN_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }}
 
   deploy:
@@ -71,7 +71,7 @@ jobs:
       
       - name: Install Ansible requirements
         run: |
-          ansible-galaxy install -f -r ansible/requirements.yaml
+          ansible-galaxy install -f -r infra/ansible/requirements.yaml
       
       - name: Set up SSH Key
         run: |
@@ -106,4 +106,4 @@ jobs:
           DB_PORT: 5432
           # Redis secrets
           REDIS_PASSWORD: "${{ secrets.REDIS_PASSWORD }}"
-        run: ansible-playbook -i ansible/inventory.yaml ansible/deploy.yaml
+        run: ansible-playbook -i infra/ansible/inventory.yaml infra/ansible/deploy.yaml
