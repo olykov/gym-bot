@@ -3,7 +3,8 @@ __pycache__/
 .venv/
 .python-version
 .cursor/
-.claude/
+.claude/*
+!.claude/skills/
 .env
 chat/
 db_data/
