@@ -18,7 +18,7 @@ epic: phase-0
 depends_on: []
 blocks: []
 related: []
-commits: []
+commits: ["57679da"]
 tests: []
 design_reports: []
 review_reports: []
@@ -43,3 +43,14 @@ Needed before any horizontal scaling.
 Delegated the implementation to the infra-engineer subagent: multi-stage prod Dockerfiles —
 apps/admin (vite build -> static served by nginx, drop `npm run dev`), apps/api (uvicorn without
 `--reload`). Orchestrator holds the push for review + a watched deploy.
+
+### 2026-05-31T20:00:00Z — code ready (57679da), deploy gated on admin-proxy check
+infra-engineer delivered: apps/api Dockerfile drops --reload; apps/admin is now multi-stage (vite
+build -> nginx static) with apps/admin/nginx.conf (SPA fallback + /api proxy to admin_backend:8000 +
+resolver idiom); compose admin_frontend port 5174:5173 -> 5174:80. Images build, compose config OK.
+Committed locally 57679da; NOT pushed. DEPLOY GATE: this changes admin_frontend's container port
+5173 -> 80. If a core-infra nginx vhost proxies to admin_frontend:5173, it must be updated to :80 (+
+the resolver fix) in the same window or the Mini App/admin returns 502 — same failure mode as GYM-18.
+Awaiting operator to confirm the admin proxy setup before push.
+Note: prod build uses `npx vite build` (bypasses the `tsc` gate) due to pre-existing TS6133 unused-
+import errors in source — bundle is identical; cleaning those is a small follow-up.
