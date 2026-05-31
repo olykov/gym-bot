@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-5
 title: "Move hardcoded DB creds in ci.yaml to GitHub Secrets"
 slug: gym-5-dehardcode-db-creds-ci
-status: in_progress
+status: done
 priority: high
 type: chore
 labels: [phase-0, security]
@@ -12,8 +12,8 @@ model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-05-31T17:00:00Z
-finish_date: null
-updated: 2026-05-31T17:00:00Z
+finish_date: 2026-05-31T18:00:00Z
+updated: 2026-05-31T18:00:00Z
 epic: phase-0
 depends_on: []
 blocks: []
@@ -69,3 +69,9 @@ Edited .github/workflows/ci.yaml: DB_USER/DB_NAME/DB_PASSWORD now reference ${{ 
 (DB_HOST/DB_PORT stay inline). Committed locally as 33876cf, NOT pushed. BLOCKED ON OPERATOR: create
 the three GitHub Secrets with the current values, then push (push auto-deploys; empty secrets =>
 broken auth). Once the operator confirms the secrets exist, push -> watch deploy -> verify bot, then close.
+
+### 2026-05-31T18:00:00Z — done
+Operator added the 3 secrets; pushed (33876cf in 3c2c64a) -> "Build and Deploy" run 26720044868
+completed/success. DB creds now sourced from GitHub Secrets; values unchanged so the live DB connects.
+Follow-up (separate): the old password is still in git history -> rotate it (ALTER USER + update
+secret + redeploy), pair with GYM-6.
