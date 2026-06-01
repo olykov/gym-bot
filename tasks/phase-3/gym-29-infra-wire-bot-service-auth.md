@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-29
 title: "Infra: wire BOT_SERVICE_TOKEN + API_BASE_URL; build context for shared client"
 slug: gym-29-infra-wire-bot-service-auth
-status: in_progress
+status: done
 priority: high
 type: chore
 labels: [phase-3, api]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-01T11:00:00Z
 start_date: 2026-06-01T11:00:00Z
-finish_date: null
-updated: 2026-06-01T11:00:00Z
+finish_date: 2026-06-01T11:20:00Z
+updated: 2026-06-01T11:20:00Z
 epic: phase-3
 depends_on: []
 blocks: []
-related: [GYM-10]
-commits: []
+related: [GYM-10, GYM-28]
+commits: ["0c7c19f"]
 tests: []
 design_reports: []
 review_reports: []
@@ -38,3 +38,10 @@ Wire BOT_SERVICE_TOKEN through ci.yaml + ansible .env + compose for BOTH the bot
 
 ### 2026-06-01T11:00:00Z — task created
 Can be prepared in parallel with the API/contract work; coordinate the client-packaging choice with GYM-27/GYM-28.
+
+### 2026-06-01T11:20:00Z — done (env scope)
+infra-engineer wired BOT_SERVICE_TOKEN through ci.yaml + ansible .env + both compose files; added
+API_BASE_URL=http://admin_backend:8000/api/v1 to the bot; removed all DB_* (+ DATABASE_URL) from the
+bot service; bot depends_on admin_backend; admin_backend also gets BOT_SERVICE_TOKEN to validate.
+Compose config valid on both files. Committed 0c7c19f. The Docker build-context change for the shared
+api-contract client was intentionally deferred to GYM-28 (bot-engineer owns apps/bot/Dockerfile).
