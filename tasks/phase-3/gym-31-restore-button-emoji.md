@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-31
 title: "Hotfix: GYM-28 rewrite stripped button emoji to ASCII"
 slug: gym-31-restore-button-emoji
-status: in_progress
+status: done
 priority: high
 type: bug-fix
 labels: [phase-3, bot, ui]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-01T14:42:26Z
 start_date: 2026-06-01T14:42:26Z
-finish_date: null
-updated: 2026-06-01T14:42:26Z
+finish_date: 2026-06-01T14:53:00Z
+updated: 2026-06-01T14:53:00Z
 epic: phase-3
 depends_on: []
 blocks: []
 related: [GYM-28, GYM-10]
-commits: []
+commits: ["0dcb116"]
 tests: []
 design_reports: []
 review_reports: []
@@ -51,3 +51,9 @@ and the `_is_peak()` PR-highlight logic untouched. Verified: 0 ASCII placeholder
 Surgical text-only restore in markups.py. No handler/data-flow change needed: both weight/reps
 markup call sites already pass (user_id, muscle, exercise[, weight]); PR color is data-dependent
 and the code path matches the original. Deploy + Telegram smoke to close.
+
+### 2026-06-01T14:53:00Z — deployed (done)
+Pushed 0dcb116 to main; "Build and Deploy" run 26762515282 completed/success (2m18s). Bot
+redeployed with the unicode emoji restored on all 12 buttons. Operator: final visual check in
+Telegram (/start → /gym) — emoji ➕/⬅️/❌ back and the ButtonStyle colors (green Record/PR, red
+Delete) unchanged.
