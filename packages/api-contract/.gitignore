@@ -1,0 +1,6 @@
+# Generated TypeScript client — regenerate with `make gen-typescript`.
+clients/typescript/
+
+# Python caches.
+__pycache__/
+*.pyc

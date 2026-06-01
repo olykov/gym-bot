@@ -1,0 +1,1054 @@
+openapi: 3.1.0
+info:
+  title: Gym Tracker Core API
+  version: 0.1.0
+  description: >
+    Single source-of-truth contract between the Core API (apps/api) and every client
+    (bot, admin, web, miniapp, future mobile). Covers every data operation the bot
+    performs today (so Phase 3 can move the bot off direct SQL) plus the admin operations.
+
+
+    Authentication: a session JWT issued by the auth endpoints, sent as
+    `Authorization: Bearer <token>`. Per-user scoping is derived from the authenticated
+    identity (`sub` claim) — clients never pass `user_id` in the body or query.
+servers:
+  - url: /api/v1
+    description: Core API v1
+
+tags:
+  - name: auth
+    description: Session issuance for bot, web/miniapp and admin clients.
+  - name: users
+    description: User registration and lookup (maps to bot get_user / registration).
+  - name: muscles
+    description: Muscle groups visible to the authenticated user (global minus hidden, plus private).
+  - name: exercises
+    description: Exercises for a muscle, with hide (global) and delete (private) semantics.
+  - name: training
+    description: Training set records (create / update / list).
+  - name: analytics
+    description: Read-only training analytics derived from the user's history.
+  - name: admin
+    description: Global catalog management for muscles and exercises (admin clients).
+
+paths:
+  # ---------------------------------------------------------------- auth
+  /auth/telegram/webapp:
+    post:
+      tags: [auth]
+      summary: Authenticate using Telegram Web App initData
+      operationId: authTelegramWebApp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelegramWebAppAuthRequest'
+      responses:
+        '200':
+          description: Session token and user payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/telegram:
+    post:
+      tags: [auth]
+      summary: Authenticate using the Telegram Login Widget
+      operationId: authTelegramWidget
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelegramLoginRequest'
+      responses:
+        '200':
+          description: Session token and user payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/admin:
+    post:
+      tags: [auth]
+      summary: Authenticate using admin username and password
+      operationId: authAdmin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminAuthRequest'
+      responses:
+        '200':
+          description: Session token and user payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Resolve the current identity from the session token
+      operationId: getCurrentIdentity
+      responses:
+        '200':
+          description: The session claims for the authenticated caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionIdentity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------- users
+  /users/me:
+    get:
+      tags: [users]
+      summary: Get the authenticated user's profile
+      description: >
+        Maps to the bot's `get_user(user_id)`. Returns 404 when the caller has an
+        authenticated identity but no stored user row yet (i.e. not registered).
+      operationId: getMe
+      responses:
+        '200':
+          description: The user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [users]
+      summary: Register or upsert the authenticated user's profile
+      description: >
+        Maps to the bot's registration path (`save_any_data("users", {...})`).
+        The user id is taken from the authenticated identity, never the body.
+        Idempotent: creating an already-registered user updates the profile.
+      operationId: upsertMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '200':
+          description: The registered/updated user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------- muscles
+  /muscles:
+    get:
+      tags: [muscles]
+      summary: List muscle groups visible to the authenticated user
+      description: >
+        Maps to `get_all_muscles(user_id)`: global muscles not hidden by the user,
+        plus the user's private muscles, ordered by name.
+      operationId: listMuscles
+      responses:
+        '200':
+          description: Visible muscle groups.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Muscle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [muscles]
+      summary: Add a muscle group for the authenticated user
+      description: >
+        Maps to `add_muscle(name, user_id)`. Creates a private muscle owned by the
+        caller (or returns the existing global/private one with the same name).
+      operationId: createMuscle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MuscleCreate'
+      responses:
+        '200':
+          description: The existing or newly created muscle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Muscle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /muscles/{muscle_id}/hidden:
+    put:
+      tags: [muscles]
+      summary: Hide a global muscle for the authenticated user
+      description: >
+        Reserved for parity with exercise hiding. The bot does not yet expose a
+        hide-muscle operation; see README "Coverage gaps". Additive and safe.
+      operationId: hideMuscle
+      parameters:
+        - $ref: '#/components/parameters/MuscleId'
+      responses:
+        '204':
+          description: Muscle hidden for the caller.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [muscles]
+      summary: Unhide a previously hidden global muscle
+      operationId: unhideMuscle
+      parameters:
+        - $ref: '#/components/parameters/MuscleId'
+      responses:
+        '204':
+          description: Muscle visible again for the caller.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /muscles/{muscle_id}:
+    delete:
+      tags: [muscles]
+      summary: Delete a private muscle owned by the authenticated user
+      description: >
+        Parity with private-exercise deletion. Only the caller's own private muscle
+        can be removed. See README "Coverage gaps".
+      operationId: deletePrivateMuscle
+      parameters:
+        - $ref: '#/components/parameters/MuscleId'
+      responses:
+        '204':
+          description: Private muscle deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------- exercises
+  /muscles/{muscle_id}/exercises:
+    get:
+      tags: [exercises]
+      summary: List exercises for a muscle, visible to the authenticated user
+      description: >
+        Maps to `get_exercises_by_muscle(muscle, user_id)`: global exercises not
+        hidden by the user plus the user's private exercises for that muscle.
+      operationId: listExercisesByMuscle
+      parameters:
+        - $ref: '#/components/parameters/MuscleId'
+      responses:
+        '200':
+          description: Visible exercises for the muscle.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Exercise'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /exercises:
+    post:
+      tags: [exercises]
+      summary: Add an exercise for the authenticated user
+      description: >
+        Maps to `add_exercise(name, muscle_name, user_id)`. Creates a private
+        exercise owned by the caller under the given muscle, creating the muscle
+        if needed. Returns the existing or newly created exercise.
+      operationId: createExercise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseCreate'
+      responses:
+        '200':
+          description: The existing or newly created exercise.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /exercises/{exercise_id}/hidden:
+    put:
+      tags: [exercises]
+      summary: Hide a global exercise for the authenticated user
+      description: Maps to `hide_exercise(user_id, exercise_name, muscle_name)`.
+      operationId: hideExercise
+      parameters:
+        - $ref: '#/components/parameters/ExerciseId'
+      responses:
+        '204':
+          description: Exercise hidden for the caller.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [exercises]
+      summary: Unhide a previously hidden global exercise
+      operationId: unhideExercise
+      parameters:
+        - $ref: '#/components/parameters/ExerciseId'
+      responses:
+        '204':
+          description: Exercise visible again for the caller.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /exercises/{exercise_id}:
+    delete:
+      tags: [exercises]
+      summary: Delete a private exercise owned by the authenticated user
+      description: Maps to `delete_private_exercise(user_id, exercise_name, muscle_name)`.
+      operationId: deletePrivateExercise
+      parameters:
+        - $ref: '#/components/parameters/ExerciseId'
+      responses:
+        '204':
+          description: Private exercise deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------- training
+  /training:
+    get:
+      tags: [training]
+      summary: List the authenticated user's training records
+      description: Maps to the existing user training listing, newest first.
+      operationId: listTraining
+      parameters:
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Training records for the caller.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Training'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [training]
+      summary: Record a training set for the authenticated user
+      description: >
+        Maps to `save_training_data(...)`. The server assigns `id` and `date` and
+        derives `user_id` from the identity; the client sends the muscle, exercise,
+        set, weight and reps.
+      operationId: createTraining
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingCreate'
+      responses:
+        '201':
+          description: The created training record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Training'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /training/{training_id}:
+    put:
+      tags: [training]
+      summary: Update weight and reps of an existing training record
+      description: >
+        Maps to `update_training_data(training_id, user_id, weight, reps)`. Only the
+        caller's own record can be updated; only weight and reps are mutable.
+      operationId: updateTraining
+      parameters:
+        - $ref: '#/components/parameters/TrainingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingUpdate'
+      responses:
+        '200':
+          description: The updated training record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Training'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------- analytics
+  /analytics/completed-sets:
+    get:
+      tags: [analytics]
+      summary: Set numbers already recorded for an exercise on a given date
+      description: Maps to `get_completed_sets(user, muscle, exercise, date)`.
+      operationId: getCompletedSets
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ExerciseNameQuery'
+        - name: date
+          in: query
+          required: true
+          description: Calendar date to filter by (date part only).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Distinct completed set numbers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletedSets'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/history:
+    get:
+      tags: [analytics]
+      summary: Previous training history for an exercise (excludes today)
+      description: Maps to `get_last_training_history(user, muscle, exercise)`.
+      operationId: getTrainingHistory
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ExerciseNameQuery'
+      responses:
+        '200':
+          description: History entries, newest date first then set ascending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrainingHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/personal-record:
+    get:
+      tags: [analytics]
+      summary: Personal record (max weight) for an exercise
+      description: Maps to `get_personal_record(user, muscle, exercise)`.
+      operationId: getPersonalRecord
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ExerciseNameQuery'
+      responses:
+        '200':
+          description: The personal record, or null when no history exists.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/PersonalRecord'
+                  - type: 'null'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/max-reps:
+    get:
+      tags: [analytics]
+      summary: Maximum reps ever performed at a given weight for an exercise
+      description: Maps to `get_max_reps_for_weight(user, muscle, exercise, weight)`.
+      operationId: getMaxRepsForWeight
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ExerciseNameQuery'
+        - name: weight
+          in: query
+          required: true
+          description: Weight value to filter by.
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Maximum reps at the weight, or null when no history exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaxReps'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/top-exercises:
+    get:
+      tags: [analytics]
+      summary: Most frequently used exercises for a muscle
+      description: Maps to `get_top_exercises_for_muscle(user, muscle, limit)`.
+      operationId: getTopExercises
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of exercises to return.
+          schema:
+            type: integer
+            default: 5
+            minimum: 1
+      responses:
+        '200':
+          description: Exercises ranked by training frequency.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TopExercise'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ---------------------------------------------------------------- admin catalog
+  /admin/muscles:
+    post:
+      tags: [admin]
+      summary: Create a global muscle group (admin)
+      description: Maps to the admin POST /muscles endpoint in apps/api.
+      operationId: adminCreateMuscle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MuscleCreate'
+      responses:
+        '200':
+          description: The created global muscle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Muscle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/muscles/{muscle_id}:
+    put:
+      tags: [admin]
+      summary: Rename a global muscle group (admin)
+      operationId: adminUpdateMuscle
+      parameters:
+        - $ref: '#/components/parameters/MuscleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MuscleCreate'
+      responses:
+        '200':
+          description: The updated muscle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Muscle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/exercises:
+    post:
+      tags: [admin]
+      summary: Create a global exercise (admin)
+      operationId: adminCreateExercise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminExerciseCreate'
+      responses:
+        '200':
+          description: The created global exercise.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/exercises/{exercise_id}:
+    put:
+      tags: [admin]
+      summary: Update a global exercise (admin)
+      operationId: adminUpdateExercise
+      parameters:
+        - $ref: '#/components/parameters/ExerciseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminExerciseCreate'
+      responses:
+        '200':
+          description: The updated exercise.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/training:
+    get:
+      tags: [admin]
+      summary: List training records across all users (admin)
+      operationId: adminListTraining
+      parameters:
+        - $ref: '#/components/parameters/Skip'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Training records, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Training'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/static-data:
+    get:
+      tags: [admin]
+      summary: Static dropdown data (sets, weights, reps)
+      description: Maps to GET /static-data in apps/api.
+      operationId: getStaticData
+      responses:
+        '200':
+          description: Allowed values for set, weight and reps pickers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaticData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Session JWT issued by the /auth endpoints.
+
+  parameters:
+    MuscleId:
+      name: muscle_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    ExerciseId:
+      name: exercise_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    TrainingId:
+      name: training_id
+      in: path
+      required: true
+      schema:
+        type: string
+    MuscleNameQuery:
+      name: muscle
+      in: query
+      required: true
+      description: Muscle group name.
+      schema:
+        type: string
+    ExerciseNameQuery:
+      name: exercise
+      in: query
+      required: true
+      description: Exercise name.
+      schema:
+        type: string
+    Skip:
+      name: skip
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 100
+        minimum: 1
+
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid session token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found or not accessible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+
+    # ---- auth
+    TelegramWebAppAuthRequest:
+      type: object
+      required: [initData]
+      properties:
+        initData:
+          type: string
+          description: Raw Telegram Web App initData query string.
+
+    TelegramLoginRequest:
+      type: object
+      required: [id, first_name, auth_date, hash]
+      properties:
+        id:
+          type: integer
+          format: int64
+        first_name:
+          type: string
+        last_name:
+          type: string
+        username:
+          type: string
+        photo_url:
+          type: string
+        auth_date:
+          type: integer
+        hash:
+          type: string
+
+    AdminAuthRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/SessionIdentity'
+
+    SessionIdentity:
+      type: object
+      description: Claims carried in the session token.
+      required: [sub]
+      properties:
+        sub:
+          type: string
+          description: Subject — the user id (Telegram id) or admin username.
+        role:
+          type: string
+          enum: [user, admin]
+      additionalProperties: true
+
+    # ---- users
+    User:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Telegram user id.
+        first_name:
+          type: ['string', 'null']
+        lastname:
+          type: ['string', 'null']
+        username:
+          type: ['string', 'null']
+        bio:
+          type: ['string', 'null']
+        registration_date:
+          type: ['string', 'null']
+          format: date-time
+        last_interaction:
+          type: ['string', 'null']
+          format: date-time
+
+    UserRegistration:
+      type: object
+      description: Profile fields supplied at registration; id comes from the identity.
+      properties:
+        first_name:
+          type: ['string', 'null']
+        lastname:
+          type: ['string', 'null']
+        username:
+          type: ['string', 'null']
+        bio:
+          type: ['string', 'null']
+
+    # ---- muscles
+    Muscle:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        is_global:
+          type: boolean
+          description: True for the shared catalog; false for a user's private muscle.
+        created_by:
+          type: ['integer', 'null']
+          format: int64
+          description: Owning user id for a private muscle; null for global.
+
+    MuscleCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    # ---- exercises
+    Exercise:
+      type: object
+      required: [id, name, muscle]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        muscle:
+          type: integer
+          description: Owning muscle id.
+        is_global:
+          type: boolean
+        created_by:
+          type: ['integer', 'null']
+          format: int64
+
+    ExerciseCreate:
+      type: object
+      description: Create a private exercise under a muscle (referenced by name, matching the bot).
+      required: [name, muscle_name]
+      properties:
+        name:
+          type: string
+        muscle_name:
+          type: string
+
+    AdminExerciseCreate:
+      type: object
+      description: Create/update a global exercise referencing the muscle by id.
+      required: [name, muscle]
+      properties:
+        name:
+          type: string
+        muscle:
+          type: integer
+
+    # ---- training
+    Training:
+      type: object
+      required: [id, date, user_id, muscle_id, exercise_id, set, weight, reps]
+      properties:
+        id:
+          type: string
+          description: Server-assigned record id.
+        date:
+          type: string
+          format: date-time
+        user_id:
+          type: integer
+          format: int64
+        muscle_id:
+          type: integer
+        exercise_id:
+          type: integer
+        set:
+          type: integer
+        weight:
+          type: number
+        reps:
+          type: number
+
+    TrainingCreate:
+      type: object
+      description: >
+        Record a set. Muscle and exercise are referenced by name (matching the bot's
+        save_training_data); id, date and user_id are assigned by the server.
+      required: [muscle_name, exercise_name, set, weight, reps]
+      properties:
+        muscle_name:
+          type: string
+        exercise_name:
+          type: string
+        set:
+          type: integer
+        weight:
+          type: number
+        reps:
+          type: number
+
+    TrainingUpdate:
+      type: object
+      required: [weight, reps]
+      properties:
+        weight:
+          type: number
+        reps:
+          type: number
+
+    # ---- analytics
+    CompletedSets:
+      type: object
+      required: [sets]
+      properties:
+        sets:
+          type: array
+          items:
+            type: integer
+          description: Distinct set numbers already recorded for the exercise on the date.
+
+    TrainingHistoryEntry:
+      type: object
+      required: [date, set, weight, reps]
+      properties:
+        date:
+          type: string
+          format: date-time
+        set:
+          type: integer
+        weight:
+          type: number
+        reps:
+          type: number
+
+    PersonalRecord:
+      type: object
+      required: [weight, reps, date]
+      properties:
+        weight:
+          type: number
+        reps:
+          type: number
+        date:
+          type: string
+          format: date-time
+
+    MaxReps:
+      type: object
+      required: [max_reps]
+      properties:
+        max_reps:
+          type: ['number', 'null']
+          description: Maximum reps at the queried weight, or null when no history exists.
+
+    TopExercise:
+      type: object
+      required: [name, frequency]
+      properties:
+        name:
+          type: string
+        frequency:
+          type: integer
+          description: Number of recorded sessions for the exercise.
+
+    # ---- static data
+    StaticData:
+      type: object
+      required: [sets, weights, reps]
+      properties:
+        sets:
+          type: array
+          items:
+            type: string
+        weights:
+          type: array
+          items:
+            type: string
+        reps:
+          type: array
+          items:
+            type: string
+
+security:
+  - bearerAuth: []
