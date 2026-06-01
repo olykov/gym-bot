@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'tasks/**'
+      - '.claude/**'
+      - 'docs/**'
+      - '**.md'
 
 env:
   BUILD_TAG: ${{ github.run_number }}-${{ github.sha }}
