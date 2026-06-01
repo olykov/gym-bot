@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-22
 title: "apps/api endpoint coverage + de-dup isolation + unify ID"
 slug: gym-22-api-endpoints-dedup-isolation
-status: backlog
+status: in_progress
 priority: high
 type: feature
 labels: [phase-2, api]
@@ -11,9 +11,9 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-01T08:00:00Z
-start_date: null
+start_date: 2026-06-01T08:50:00Z
 finish_date: null
-updated: 2026-06-01T08:00:00Z
+updated: 2026-06-01T08:50:00Z
 epic: phase-2
 depends_on: [GYM-21]
 blocks: []
