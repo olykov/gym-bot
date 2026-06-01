@@ -5,30 +5,27 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
-from app.core.auth import verify_session_token
+from app.middleware.permissions import get_current_user, require_admin
 
 router = APIRouter()
 
-def get_current_user(authorization: Optional[str] = Header(None)):
-    """Dependency to get current user from JWT token"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    token = authorization.replace("Bearer ", "")
-    user_data = verify_session_token(token)
-    
-    if not user_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
-    return user_data
 
 @router.get("/muscles", response_model=List[schemas.Muscle])
-def read_muscles(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def read_muscles(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
     muscles = db.query(models.Muscle).offset(skip).limit(limit).all()
     return muscles
 
 @router.post("/muscles", response_model=schemas.Muscle)
-def create_muscle(muscle: schemas.MuscleCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def create_muscle(
+    muscle: schemas.MuscleCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
     db_muscle = models.Muscle(name=muscle.name)
     db.add(db_muscle)
     try:
@@ -40,31 +37,45 @@ def create_muscle(muscle: schemas.MuscleCreate, db: Session = Depends(get_db), c
     return db_muscle
 
 @router.put("/muscles/{muscle_id}", response_model=schemas.Muscle)
-def update_muscle(muscle_id: int, muscle: schemas.MuscleCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def update_muscle(
+    muscle_id: int,
+    muscle: schemas.MuscleCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
     db_muscle = db.query(models.Muscle).filter(models.Muscle.id == muscle_id).first()
     if not db_muscle:
         raise HTTPException(status_code=404, detail="Muscle group not found")
-    
+
     db_muscle.name = muscle.name
-    
+
     try:
         db.commit()
         db.refresh(db_muscle)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Muscle group with this name already exists")
-    
+
     return db_muscle
 
 @router.get("/exercises", response_model=List[schemas.Exercise])
-def read_exercises(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def read_exercises(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
     exercises = db.query(models.Exercise).offset(skip).limit(limit).all()
     return exercises
 
 from sqlalchemy.exc import IntegrityError
 
 @router.post("/exercises", response_model=schemas.Exercise)
-def create_exercise(exercise: schemas.ExerciseCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def create_exercise(
+    exercise: schemas.ExerciseCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
     db_exercise = models.Exercise(name=exercise.name, muscle=exercise.muscle)
     db.add(db_exercise)
     try:
@@ -76,25 +87,35 @@ def create_exercise(exercise: schemas.ExerciseCreate, db: Session = Depends(get_
     return db_exercise
 
 @router.put("/exercises/{exercise_id}", response_model=schemas.Exercise)
-def update_exercise(exercise_id: int, exercise: schemas.ExerciseCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def update_exercise(
+    exercise_id: int,
+    exercise: schemas.ExerciseCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
     db_exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
     if not db_exercise:
         raise HTTPException(status_code=404, detail="Exercise not found")
-    
+
     db_exercise.name = exercise.name
     db_exercise.muscle = exercise.muscle
-    
+
     try:
         db.commit()
         db.refresh(db_exercise)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Exercise with this name already exists for this muscle group")
-    
+
     return db_exercise
 
 @router.get("/training", response_model=List[schemas.Training])
-def read_training(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def read_training(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
     training = db.query(models.Training).order_by(models.Training.date.desc()).offset(skip).limit(limit).all()
     return training
 
@@ -116,48 +137,17 @@ def get_static_data(current_user: dict = Depends(get_current_user)):
 
 @router.get("/user/muscles")
 def get_user_muscles(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    """Get muscles visible to the current user"""
-    # We need to use the PostgresDB class directly or add a method to the SQLAlchemy repository
-    # Since the original code uses raw SQL in PostgresDB class, we should probably use that if possible,
-    # OR replicate the logic in SQLAlchemy.
-    # Given the project structure mixes SQLAlchemy and raw SQL (via PostgresDB class in app/modules),
-    # and the user wants to use the existing logic, let's try to use the PostgresDB instance if available,
-    # or replicate the query using SQLAlchemy.
-    # The `db` dependency is a SQLAlchemy Session.
-    # The `PostgresDB` class is instantiated in `handlers.py` and `markups.py` but not injected here.
-    # However, we can use raw SQL with the SQLAlchemy session.
-    
+    """Get muscles visible to the current user (legacy path — use GET /muscles instead)."""
+    from app.services.visibility import visible_muscles
     user_id = int(current_user['sub'])
-    
-    # Replicating logic from PostgresDB.get_all_muscles using SQLAlchemy
-    # Logic: (is_global = TRUE AND id NOT IN user_hidden_muscles) OR (created_by = user_id)
-    
-    # Subquery for hidden muscles
-    hidden_muscles = db.query(models.UserHiddenMuscle.muscle_id).filter(models.UserHiddenMuscle.user_id == user_id)
-    
-    muscles = db.query(models.Muscle).filter(
-        ((models.Muscle.is_global == True) & (~models.Muscle.id.in_(hidden_muscles))) |
-        (models.Muscle.created_by == user_id)
-    ).order_by(models.Muscle.name).all()
-    
-    return muscles
+    return visible_muscles(db, user_id)
 
 @router.get("/user/exercises")
 def get_user_exercises(muscle_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    """Get exercises for a specific muscle visible to the current user"""
+    """Get exercises for a muscle visible to the current user (legacy path — use GET /muscles/{id}/exercises)."""
+    from app.services.visibility import visible_exercises_for_muscle
     user_id = int(current_user['sub'])
-    
-    # Logic: muscle_id matches AND ((is_global = TRUE AND id NOT IN user_hidden_exercises) OR (created_by = user_id))
-    
-    hidden_exercises = db.query(models.UserHiddenExercise.exercise_id).filter(models.UserHiddenExercise.user_id == user_id)
-    
-    exercises = db.query(models.Exercise).filter(
-        models.Exercise.muscle == muscle_id,
-        ((models.Exercise.is_global == True) & (~models.Exercise.id.in_(hidden_exercises))) |
-        (models.Exercise.created_by == user_id)
-    ).order_by(models.Exercise.name).all()
-    
-    return exercises
+    return visible_exercises_for_muscle(db, user_id, muscle_id)
 
 class TrainingCreate(BaseModel):
     muscle_name: str
