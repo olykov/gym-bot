@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Plus, Edit2 } from 'lucide-react';
 import TrainingModal from '@/components/TrainingModal';

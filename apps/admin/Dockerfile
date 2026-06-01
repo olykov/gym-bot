@@ -7,10 +7,8 @@ COPY package.json .
 RUN npm install
 
 COPY . .
-# Run vite build directly: tsc in "npm run build" acts as a linter gate
-# (pre-existing TS6133 errors), not a compiler — Vite uses esbuild for
-# transpilation. The bundle produced is identical.
-RUN npx vite build
+# npm run build = tsc (type-check gate) && vite build (esbuild transpile).
+RUN npm run build
 
 # Stage 2: serve the static bundle with nginx
 FROM nginx:alpine
