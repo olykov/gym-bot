@@ -38,18 +38,14 @@ services:
     container_name: gymbot_backend
     hostname: gymbot_backend
     environment:
-      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@gymbot_db:5432/${DB_NAME}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
       WEB_APP_URL: ${WEB_APP_URL}
-      DB_USER: ${DB_USER}
-      DB_HOST: ${DB_HOST}
-      DB_NAME: ${DB_NAME}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_PORT: ${DB_PORT}
       REDIS_HOST: gymbot_redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      BOT_SERVICE_TOKEN: ${BOT_SERVICE_TOKEN}
+      API_BASE_URL: ${API_BASE_URL:-http://admin_backend:8000/api/v1}
     ports:
       - "5400:5400"
     networks:
@@ -58,6 +54,8 @@ services:
       gymbot_redis:
         condition: service_healthy
       gymbot_db:
+        condition: service_started
+      admin_backend:
         condition: service_started
 
   admin_backend:
@@ -75,6 +73,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      BOT_SERVICE_TOKEN: ${BOT_SERVICE_TOKEN}
     ports:
       - "8001:8000"
     networks:

@@ -44,6 +44,8 @@
           JWT_SECRET={{ lookup('env', 'JWT_SECRET') }}
           ADMIN_USER={{ lookup('env', 'ADMIN_USER') }}
           ADMIN_PASSWORD={{ lookup('env', 'ADMIN_PASSWORD') }}
+          BOT_SERVICE_TOKEN={{ lookup('env', 'BOT_SERVICE_TOKEN') }}
+          API_BASE_URL=http://admin_backend:8000/api/v1
     
     - name: Prepare sa.json
       tags: ["app"]

@@ -115,4 +115,6 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_USER: ${{ secrets.ADMIN_USER }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          # Bot service auth
+          BOT_SERVICE_TOKEN: ${{ secrets.BOT_SERVICE_TOKEN }}
         run: ansible-playbook -i infra/ansible/inventory.yaml infra/ansible/deploy.yaml
