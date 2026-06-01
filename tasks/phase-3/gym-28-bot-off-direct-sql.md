@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-28
 title: "Bot: replace direct SQL with the Core API client"
 slug: gym-28-bot-off-direct-sql
-status: review
+status: done
 priority: high
 type: refactor
 labels: [phase-3, api]
@@ -12,17 +12,18 @@ model: null
 reporter: oleksii
 created: 2026-06-01T11:00:00Z
 start_date: 2026-06-01T11:35:00Z
-finish_date: null
-updated: 2026-06-01T11:50:00Z
+finish_date: 2026-06-01T12:00:00Z
+updated: 2026-06-01T12:00:00Z
 epic: phase-3
 depends_on: [GYM-26, GYM-27]
 blocks: []
 related: [GYM-10]
-commits: ["69905b2"]
+commits: ["69905b2", "48915e4"]
 tests: []
 design_reports: []
 review_reports: []
-review: {}
+review:
+  security-auditor: pass-with-fixup
 backlog_ref: ""
 ---
 
@@ -48,3 +49,14 @@ builders converted to async + awaited; psycopg2/PostgresDB + DB_* env removed; m
 compose updated). Verified: py_compile, docker build (client installed), import with no psycopg2.
 Committed 69905b2. Moved to REVIEW — security-auditor is auditing the full auth bridge (act_as_user
 provenance per handler, admin-unreachable, token handling) before merge. Then a backup-seeded local e2e.
+
+### 2026-06-01T12:00:00Z — done (security PASS + e2e PASS)
+security-auditor verdict: SAFE TO MERGE — no critical/high. act_as_user is the per-update sender id at
+every call site; service token is constant-time-compared and pinned to role=user (admin unreachable);
+no token leakage; no runtime DB access. Fixup applied (orchestrator): deleted dead apps/bot/modules/
+postgres.py + migrate_user_specific.py, added a root .dockerignore (build context is now repo root) —
+48915e4. Backup-seeded e2e (prod backup -> local postgres + the real admin_backend image, called via
+X-Service-Token + X-Act-As-User): personal-record, max-reps, top-exercises, muscle visibility all MATCH
+direct SQL exactly; cross-user isolation holds (other user -> null); write round-trip creates a uuid
+training row (+1). Phase 3 verified end-to-end. NOT pushed — on branch phase-3/bot-off-sql for the
+operator to merge/deploy.

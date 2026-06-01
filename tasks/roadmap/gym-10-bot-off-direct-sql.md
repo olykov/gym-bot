@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-10
 title: "Phase 3: Move bot off direct SQL to Core API client"
 slug: gym-10-bot-off-direct-sql
-status: in_progress
+status: review
 priority: high
 type: refactor
 labels: [phase-3, bot]
@@ -13,12 +13,12 @@ reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-06-01T11:00:00Z
 finish_date: null
-updated: 2026-06-01T11:00:00Z
+updated: 2026-06-01T12:00:00Z
 epic: roadmap
 depends_on: [GYM-9]
 blocks: []
 related: [GYM-26, GYM-27, GYM-28, GYM-29]
-commits: []
+commits: ["0c7c19f", "2e77855", "4f3961a", "69905b2"]
 tests: []
 design_reports: []
 review_reports: []
@@ -48,3 +48,14 @@ api-contract-guardian), GYM-28 (bot off SQL, bot-engineer), GYM-29 (infra wiring
 then security-auditor review + a backup-seeded local e2e. All on the branch; NOT pushed/deployed until
 the operator says (backups exist: S3 + /opt/gymbot-pg-backup-01062026.zip). BOT_SERVICE_TOKEN secret
 is set. Wave 1: GYM-26 + GYM-27 + GYM-29 in parallel; GYM-28 follows.
+
+### 2026-06-01T12:00:00Z — code complete + e2e verified, awaiting operator deploy (status: review)
+All sub-tasks done on branch phase-3/bot-off-sql: GYM-26 (API service-auth, 2e77855), GYM-27 (contract
++ async python client, 4f3961a), GYM-28 (bot off SQL + hardening, 69905b2 + 48915e4), GYM-29 (infra env,
+0c7c19f). security-auditor: SAFE TO MERGE (no critical/high). Backup-seeded e2e against the real
+admin_backend image + prod data via service auth: reads (PR/max-reps/top-exercises/visibility) all match
+direct SQL, cross-user isolation holds, write round-trip creates a uuid training row. The bot now has NO
+psycopg2/DB env; it calls the Core API over the internal network. Kept in REVIEW (not done) because it is
+NOT merged/deployed — operator merges phase-3/bot-off-sql -> main (auto-deploys) when ready; rollback =
+revert the merge. Operator prerequisite already met: BOT_SERVICE_TOKEN secret is set. Flip to done after
+prod smoke (/start).
