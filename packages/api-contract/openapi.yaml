@@ -8,9 +8,11 @@ info:
     performs today (so Phase 3 can move the bot off direct SQL) plus the admin operations.
 
 
-    Authentication: a session JWT issued by the auth endpoints, sent as
-    `Authorization: Bearer <token>`. Per-user scoping is derived from the authenticated
-    identity (`sub` claim) — clients never pass `user_id` in the body or query.
+    Authentication: a per-user session JWT issued by the auth endpoints, sent as
+    `Authorization: Bearer <token>` (`userJwt`). Per-user scoping is derived from the
+    authenticated identity (`sub` claim) — clients never pass `user_id` in the body or query.
+    Bot-facing operations also accept a service token (`serviceAuth`, the `X-Service-Token`
+    header) together with `X-Act-As-User` (the Telegram id the service acts on behalf of).
 servers:
   - url: /api/v1
     description: Core API v1
@@ -123,6 +125,11 @@ paths:
         Maps to the bot's `get_user(user_id)`. Returns 404 when the caller has an
         authenticated identity but no stored user row yet (i.e. not registered).
       operationId: getMe
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '200':
           description: The user profile.
@@ -142,6 +149,11 @@ paths:
         The user id is taken from the authenticated identity, never the body.
         Idempotent: creating an already-registered user updates the profile.
       operationId: upsertMe
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
       requestBody:
         required: true
         content:
@@ -167,6 +179,11 @@ paths:
         Maps to `get_all_muscles(user_id)`: global muscles not hidden by the user,
         plus the user's private muscles, ordered by name.
       operationId: listMuscles
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '200':
           description: Visible muscle groups.
@@ -185,6 +202,11 @@ paths:
         Maps to `add_muscle(name, user_id)`. Creates a private muscle owned by the
         caller (or returns the existing global/private one with the same name).
       operationId: createMuscle
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
       requestBody:
         required: true
         content:
@@ -209,8 +231,12 @@ paths:
         Reserved for parity with exercise hiding. The bot does not yet expose a
         hide-muscle operation; see README "Coverage gaps". Additive and safe.
       operationId: hideMuscle
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleId'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '204':
           description: Muscle hidden for the caller.
@@ -222,8 +248,12 @@ paths:
       tags: [muscles]
       summary: Unhide a previously hidden global muscle
       operationId: unhideMuscle
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleId'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '204':
           description: Muscle visible again for the caller.
@@ -240,8 +270,12 @@ paths:
         Parity with private-exercise deletion. Only the caller's own private muscle
         can be removed. See README "Coverage gaps".
       operationId: deletePrivateMuscle
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleId'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '204':
           description: Private muscle deleted.
@@ -259,8 +293,12 @@ paths:
         Maps to `get_exercises_by_muscle(muscle, user_id)`: global exercises not
         hidden by the user plus the user's private exercises for that muscle.
       operationId: listExercisesByMuscle
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleId'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '200':
           description: Visible exercises for the muscle.
@@ -284,6 +322,11 @@ paths:
         exercise owned by the caller under the given muscle, creating the muscle
         if needed. Returns the existing or newly created exercise.
       operationId: createExercise
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
       requestBody:
         required: true
         content:
@@ -306,8 +349,12 @@ paths:
       summary: Hide a global exercise for the authenticated user
       description: Maps to `hide_exercise(user_id, exercise_name, muscle_name)`.
       operationId: hideExercise
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/ExerciseId'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '204':
           description: Exercise hidden for the caller.
@@ -319,8 +366,12 @@ paths:
       tags: [exercises]
       summary: Unhide a previously hidden global exercise
       operationId: unhideExercise
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/ExerciseId'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '204':
           description: Exercise visible again for the caller.
@@ -335,8 +386,12 @@ paths:
       summary: Delete a private exercise owned by the authenticated user
       description: Maps to `delete_private_exercise(user_id, exercise_name, muscle_name)`.
       operationId: deletePrivateExercise
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/ExerciseId'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '204':
           description: Private exercise deleted.
@@ -352,9 +407,13 @@ paths:
       summary: List the authenticated user's training records
       description: Maps to the existing user training listing, newest first.
       operationId: listTraining
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/Skip'
         - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '200':
           description: Training records for the caller.
@@ -374,6 +433,11 @@ paths:
         derives `user_id` from the identity; the client sends the muscle, exercise,
         set, weight and reps.
       operationId: createTraining
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
       requestBody:
         required: true
         content:
@@ -400,8 +464,12 @@ paths:
         Maps to `update_training_data(training_id, user_id, weight, reps)`. Only the
         caller's own record can be updated; only weight and reps are mutable.
       operationId: updateTraining
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/TrainingId'
+        - $ref: '#/components/parameters/ActAsUser'
       requestBody:
         required: true
         content:
@@ -427,9 +495,13 @@ paths:
       summary: Set numbers already recorded for an exercise on a given date
       description: Maps to `get_completed_sets(user, muscle, exercise, date)`.
       operationId: getCompletedSets
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleNameQuery'
         - $ref: '#/components/parameters/ExerciseNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
         - name: date
           in: query
           required: true
@@ -453,9 +525,13 @@ paths:
       summary: Previous training history for an exercise (excludes today)
       description: Maps to `get_last_training_history(user, muscle, exercise)`.
       operationId: getTrainingHistory
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleNameQuery'
         - $ref: '#/components/parameters/ExerciseNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '200':
           description: History entries, newest date first then set ascending.
@@ -474,9 +550,13 @@ paths:
       summary: Personal record (max weight) for an exercise
       description: Maps to `get_personal_record(user, muscle, exercise)`.
       operationId: getPersonalRecord
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleNameQuery'
         - $ref: '#/components/parameters/ExerciseNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
       responses:
         '200':
           description: The personal record, or null when no history exists.
@@ -495,9 +575,13 @@ paths:
       summary: Maximum reps ever performed at a given weight for an exercise
       description: Maps to `get_max_reps_for_weight(user, muscle, exercise, weight)`.
       operationId: getMaxRepsForWeight
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleNameQuery'
         - $ref: '#/components/parameters/ExerciseNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
         - name: weight
           in: query
           required: true
@@ -520,8 +604,12 @@ paths:
       summary: Most frequently used exercises for a muscle
       description: Maps to `get_top_exercises_for_muscle(user, muscle, limit)`.
       operationId: getTopExercises
+      security:
+        - userJwt: []
+        - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
         - name: limit
           in: query
           required: false
@@ -682,13 +770,38 @@ paths:
 
 components:
   securitySchemes:
-    bearerAuth:
+    userJwt:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Session JWT issued by the /auth endpoints.
+      description: >
+        Per-user session JWT issued by the /auth endpoints, sent as
+        `Authorization: Bearer <token>`. Per-user scoping is derived from the
+        `sub` claim. Used by web/miniapp/admin and accepted by the bot-facing
+        operations.
+    serviceAuth:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: >
+        Service-to-service token identifying a trusted backend (the bot). Sent
+        as the `X-Service-Token` header. A service request MUST also carry the
+        companion header `X-Act-As-User` (modeled as the `ActAsUser` parameter
+        on each bot-facing operation): the integer Telegram id the service acts
+        on behalf of, used for per-user scoping in place of a JWT `sub` claim.
 
   parameters:
+    ActAsUser:
+      name: X-Act-As-User
+      in: header
+      required: false
+      description: >
+        Telegram id the service acts on behalf of. REQUIRED when authenticating
+        with `serviceAuth` (the X-Service-Token header); ignored when
+        authenticating with a per-user JWT (scoping comes from the `sub` claim).
+      schema:
+        type: integer
+        format: int64
     MuscleId:
       name: muscle_id
       in: path
@@ -1051,4 +1164,4 @@ components:
             type: string
 
 security:
-  - bearerAuth: []
+  - userJwt: []

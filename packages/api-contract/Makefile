@@ -17,7 +17,9 @@ validate:
 
 gen: gen-python gen-typescript
 
-# Python models for the bot (pydantic v2). Phase 3 consumes these.
+# Python models for the bot (pydantic v2), regenerated into the installable
+# gym-api-client package. The async httpx wrapper (client.py) is hand-maintained
+# on top of these models and is NOT regenerated.
 gen-python:
 	mkdir -p $(dir $(PY_OUT))
 	uv run --quiet --with "datamodel-code-generator[http]" datamodel-codegen \

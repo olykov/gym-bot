@@ -12,18 +12,97 @@ client (bot, web, miniapp, admin, future mobile). Clients are generated from the
 ## Layout
 
 ```
-openapi.yaml                       # single source of truth
-Makefile                           # validate + generate clients
-scripts/validate.py                # OpenAPI 3.1 validator
-clients/python/gym_api_client/     # generated pydantic v2 models (for the bot, Phase 3)
-clients/typescript/                # generated TS types (gitignored; regenerate on demand)
+openapi.yaml                          # single source of truth
+Makefile                              # validate + generate clients
+scripts/validate.py                   # OpenAPI 3.1 validator
+clients/python/                       # installable async client package (gym-api-client)
+  pyproject.toml                      #   package metadata (pip install target)
+  gym_api_client/models.py            #   generated pydantic v2 models (make gen-python)
+  gym_api_client/client.py            #   hand-maintained async httpx wrapper (GymApiClient)
+clients/typescript/                   # generated TS types (gitignored; regenerate on demand)
 ```
 
 ## Authentication
 
-A session JWT issued by the `/auth/*` endpoints, sent as `Authorization: Bearer <token>`.
-**Per-user scoping is derived from the authenticated identity** (`sub` claim) — clients never
-pass `user_id` in the body or query. Only the `/auth/*` endpoints are unauthenticated.
+Two security schemes are defined in `components.securitySchemes`:
+
+- **`userJwt`** — `http`/`bearer` JWT. A per-user session token issued by the `/auth/*`
+  endpoints, sent as `Authorization: Bearer <token>`. Per-user scoping is derived from the
+  authenticated identity (`sub` claim). Used by web/miniapp/admin.
+- **`serviceAuth`** — `apiKey` in header `X-Service-Token`. A service-to-service token
+  identifying a trusted backend (the bot). A service request MUST also carry the companion
+  header **`X-Act-As-User`** (the integer Telegram id the service acts on behalf of), modeled
+  as the reusable `ActAsUser` header parameter on each bot-facing operation. Scoping comes from
+  `X-Act-As-User` instead of a JWT `sub` claim.
+
+**Who accepts what:**
+
+- **Bot-facing operations** (`/users/me`, `/muscles*`, `/exercises*`, `/training*`,
+  `/analytics/*`) accept **either** scheme: `security: [{userJwt: []}, {serviceAuth: []}]`,
+  and declare the optional `X-Act-As-User` header.
+- **Admin operations** (`/admin/*`) and `GET /auth/me` keep **`userJwt` only** (the global
+  default).
+- Only `POST /auth/*` (token issuance) is unauthenticated (`security: []`).
+
+Clients never pass `user_id` in the body or query; identity comes from the token (`userJwt`)
+or `X-Act-As-User` (`serviceAuth`).
+
+## Python client for the bot
+
+`clients/python/` is an installable package (`gym-api-client`) providing a **usable async
+httpx client**, not just models:
+
+- `gym_api_client.models` — pydantic v2 models, **generated** from the spec (`make gen-python`).
+- `gym_api_client.GymApiClient` — a thin **hand-maintained** async wrapper with one method per
+  bot-facing operation and per-client / per-request custom-header injection.
+
+Import path: `from gym_api_client import GymApiClient, models`. Install with
+`pip install packages/api-contract/clients/python`.
+
+The bot injects the service-auth headers like this:
+
+```python
+from gym_api_client import GymApiClient, models
+
+async with GymApiClient(
+    base_url="https://api.example.com/api/v1",
+    service_token="<X-Service-Token>",   # set once per client
+) as api:
+    user = await api.get_me(act_as_user=12345)              # X-Act-As-User per request
+    await api.create_training(
+        models.TrainingCreate(muscle_name="Chest", exercise_name="Bench Press",
+                              set=1, weight=60, reps=10),
+        act_as_user=12345,
+    )
+```
+
+`service_token` (constructor) sets `X-Service-Token` on every request; `act_as_user=<id>`
+(per method) sets `X-Act-As-User`. Any header can be overridden per call via `headers={...}`.
+For `userJwt`, pass `token="<jwt>"` to the constructor and omit `act_as_user`.
+
+### Operation -> client method map
+
+| Contract operation        | Client method                                          |
+|---------------------------|--------------------------------------------------------|
+| `getMe`                   | `get_me()`                                              |
+| `upsertMe`                | `upsert_me(body)`                                       |
+| `listMuscles`             | `list_muscles()`                                        |
+| `createMuscle`            | `create_muscle(body)`                                   |
+| `listExercisesByMuscle`   | `list_exercises_by_muscle(muscle_id)`                  |
+| `createExercise`          | `create_exercise(body)`                                 |
+| `hideExercise`            | `hide_exercise(exercise_id)`                            |
+| `unhideExercise`          | `unhide_exercise(exercise_id)`                          |
+| `deletePrivateExercise`   | `delete_private_exercise(exercise_id)`                  |
+| `listTraining`            | `list_training(skip=, limit=)`                          |
+| `createTraining`          | `create_training(body)`                                 |
+| `updateTraining`          | `update_training(training_id, body)`                    |
+| `getCompletedSets`        | `get_completed_sets(muscle=, exercise=, date=)`         |
+| `getTrainingHistory`      | `get_training_history(muscle=, exercise=)`              |
+| `getPersonalRecord`       | `get_personal_record(muscle=, exercise=)`               |
+| `getMaxRepsForWeight`     | `get_max_reps_for_weight(muscle=, exercise=, weight=)`  |
+| `getTopExercises`         | `get_top_exercises(muscle=, limit=)`                    |
+
+Every method takes optional `act_as_user: int` and `headers: dict[str, str]`.
 
 ## Generating clients
 
