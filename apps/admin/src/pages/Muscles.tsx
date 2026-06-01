@@ -29,7 +29,7 @@ const Muscles = () => {
 
     const fetchMuscles = async () => {
         try {
-            const response = await api.get('/muscles');
+            const response = await api.get('/admin/muscles');
             setMuscles(response.data);
         } catch (error) {
             console.error('Error fetching muscles:', error);
@@ -59,7 +59,7 @@ const Muscles = () => {
 
         setIsSubmitting(true);
         try {
-            await api.post('/muscles', {
+            await api.post('/admin/muscles', {
                 name: newMuscleName,
             });
 
@@ -93,7 +93,7 @@ const Muscles = () => {
     const handleSaveEdit = async () => {
         if (!editingId) return;
         try {
-            await api.put(`/muscles/${editingId}`, {
+            await api.put(`/admin/muscles/${editingId}`, {
                 name: editName,
             });
             setEditingId(null);

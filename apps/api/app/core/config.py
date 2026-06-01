@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import List
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,11 +20,20 @@ class Settings(BaseSettings):
     ADMIN_USER: str
     ADMIN_PASSWORD: str
 
+    # CORS — comma-separated list of allowed origins.
+    # Override via CORS_ALLOW_ORIGINS env var in production.
+    CORS_ALLOW_ORIGINS: str = "https://gymbot.olykov.com"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
     )
+
+    @property
+    def cors_origins(self) -> List[str]:
+        """Parse CORS_ALLOW_ORIGINS into a list of origin strings."""
+        return [o.strip() for o in self.CORS_ALLOW_ORIGINS.split(",") if o.strip()]
 
     @field_validator("JWT_SECRET", "ADMIN_USER", "ADMIN_PASSWORD", mode="before")
     @classmethod

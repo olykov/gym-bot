@@ -40,7 +40,7 @@ const Exercises = () => {
     const fetchExercises = async () => {
         try {
             // Fetching a larger limit to ensure we have all exercises for client-side validation
-            const response = await api.get('/exercises?limit=1000');
+            const response = await api.get('/admin/exercises?limit=1000');
             setExercises(response.data);
         } catch (error) {
             console.error('Error fetching exercises:', error);
@@ -49,7 +49,7 @@ const Exercises = () => {
 
     const fetchMuscles = async () => {
         try {
-            const response = await api.get('/muscles');
+            const response = await api.get('/admin/muscles');
             setMuscles(response.data);
         } catch (error) {
             console.error('Error fetching muscles:', error);
@@ -83,7 +83,7 @@ const Exercises = () => {
 
         setIsSubmitting(true);
         try {
-            await api.post('/exercises', {
+            await api.post('/admin/exercises', {
                 name: newExerciseName,
                 muscle: parseInt(newExerciseMuscleId),
             });
@@ -127,7 +127,7 @@ const Exercises = () => {
     const handleSaveEdit = async () => {
         if (!editingId) return;
         try {
-            await api.put(`/exercises/${editingId}`, {
+            await api.put(`/admin/exercises/${editingId}`, {
                 name: editForm.name,
                 muscle: parseInt(editForm.muscleId)
             });

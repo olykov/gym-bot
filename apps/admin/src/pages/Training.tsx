@@ -29,7 +29,7 @@ const Training = () => {
 
     const fetchTrainingData = async () => {
         try {
-            const response = await api.get('/training');
+            const response = await api.get('/admin/training');
             setTrainingData(response.data);
         } catch (error) {
             console.error('Error fetching training data:', error);
