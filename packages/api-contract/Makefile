@@ -29,6 +29,7 @@ gen-python:
 		--output-model-type pydantic_v2.BaseModel \
 		--target-python-version 3.11 \
 		--use-standard-collections \
+		--output-datetime-class datetime \
 		--use-union-operator
 
 # TypeScript types for web/admin/miniapp.

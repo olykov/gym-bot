@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Error(BaseModel):
@@ -55,8 +56,8 @@ class User(BaseModel):
     lastname: str | None = None
     username: str | None = None
     bio: str | None = None
-    registration_date: AwareDatetime | None = None
-    last_interaction: AwareDatetime | None = None
+    registration_date: datetime | None = None
+    last_interaction: datetime | None = None
 
 
 class UserRegistration(BaseModel):
@@ -102,7 +103,7 @@ class AdminExerciseCreate(BaseModel):
 
 class Training(BaseModel):
     id: str = Field(..., description='Server-assigned record id.')
-    date: AwareDatetime
+    date: datetime
     user_id: int
     muscle_id: int
     exercise_id: int
@@ -132,7 +133,7 @@ class CompletedSets(BaseModel):
 
 
 class TrainingHistoryEntry(BaseModel):
-    date: AwareDatetime
+    date: datetime
     set: int
     weight: float
     reps: float
@@ -141,7 +142,7 @@ class TrainingHistoryEntry(BaseModel):
 class PersonalRecord(BaseModel):
     weight: float
     reps: float
-    date: AwareDatetime
+    date: datetime
 
 
 class MaxReps(BaseModel):
