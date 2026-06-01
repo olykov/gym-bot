@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-17
 title: "Postgres collation version mismatch on prod DB (glibc 2.36 vs 2.41)"
 slug: gym-17-db-collation-version-mismatch
-status: backlog
+status: review
 priority: medium
 type: chore
 labels: [tech-debt, db]
@@ -11,9 +11,9 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-05-31T17:00:00Z
-start_date: null
+start_date: 2026-06-01T17:55:00Z
 finish_date: null
-updated: 2026-05-31T17:00:00Z
+updated: 2026-06-01T17:58:00Z
 epic: tech-debt
 depends_on: []
 blocks: []
@@ -43,10 +43,17 @@ On the prod DB, once, during a low-traffic window:
 Alternatively, pin the Postgres image/base so the glibc version stays stable across host changes.
 
 ## Acceptance criteria
-- [ ] Collation warning no longer emitted by psql on prod
-- [ ] Text indexes reindexed
+- [x] Collation warning no longer emitted by psql on prod
+- [x] Text indexes reindexed
 
 ## Comments
 
 ### 2026-05-31T17:00:00Z — task created
 Discovered while applying GYM-4 indexes. Logged per "discovered tangent -> new backlog task".
+
+### 2026-06-01T17:58:00Z — operator ran the fix on prod (review)
+Operator executed on prod `gymbot_db` (postgres:16):
+`REINDEX DATABASE gym_bot_db;` then `ALTER DATABASE gym_bot_db REFRESH COLLATION VERSION;`
+→ `NOTICE: changing version from 2.36 to 2.41` / `ALTER DATABASE`. A fresh `psql` connect (`\q`)
+afterwards emitted no collation warning — mismatch resolved. Ops-only change (no source code);
+this closure commit is the linked evidence.
