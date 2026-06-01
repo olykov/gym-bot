@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-17
 title: "Postgres collation version mismatch on prod DB (glibc 2.36 vs 2.41)"
 slug: gym-17-db-collation-version-mismatch
-status: review
+status: done
 priority: medium
 type: chore
 labels: [tech-debt, db]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-05-31T17:00:00Z
 start_date: 2026-06-01T17:55:00Z
-finish_date: null
-updated: 2026-06-01T17:58:00Z
+finish_date: 2026-06-01T17:58:30Z
+updated: 2026-06-01T17:58:30Z
 epic: tech-debt
 depends_on: []
 blocks: []
 related: [GYM-4]
-commits: []
+commits: ["670be18"]
 tests: []
 design_reports: []
 review_reports: []
