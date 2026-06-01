@@ -1,0 +1,3 @@
+Generic single-database configuration for packages/db.
+
+See packages/db/README.md for adoption instructions (prod stamp vs. fresh upgrade).

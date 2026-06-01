@@ -1,0 +1,7 @@
+# Migration tooling for packages/db. Install where migrations are run
+# (CI, ops shell, or the api image):  pip install -r packages/db/requirements.txt
+#
+# alembic pulls in SQLAlchemy; psycopg2-binary is the Postgres driver, already
+# pinned in apps/api/requirements.txt at the same version.
+alembic==1.18.4
+psycopg2-binary==2.9.9
