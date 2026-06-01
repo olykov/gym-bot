@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-23
 title: "apps/api hardening follow-ups from GYM-22 security review"
 slug: gym-23-api-hardening-followups
-status: backlog
+status: done
 priority: medium
 type: chore
 labels: [phase-2, security, tech-debt]
@@ -11,14 +11,14 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-01T09:30:00Z
-start_date: null
-finish_date: null
-updated: 2026-06-01T09:30:00Z
+start_date: 2026-06-01T09:50:00Z
+finish_date: 2026-06-01T10:10:00Z
+updated: 2026-06-01T10:10:00Z
 epic: phase-2
 depends_on: []
 blocks: []
 related: [GYM-22]
-commits: []
+commits: ["7b306ab"]
 tests: []
 design_reports: []
 review_reports: []
@@ -54,3 +54,14 @@ already fixed in GYM-22). These remain.
 
 ### 2026-06-01T09:30:00Z — task created
 Logged from the GYM-22 review. Non-blocking; the cross-user IDOR/leak must-fixes were resolved in GYM-22.
+
+### 2026-06-01T10:10:00Z — done (two agents, coordinated)
+core-api-engineer (apps/api) + client-frontend-engineer (apps/admin), coordinated on an exact path
+contract. API: admin catalog moved to /api/v1/admin/* (7 routes, all require_admin) — collisions with
+the user-facing GYM-22 routers eliminated (no more mount-order safety dependency); CORS now reads
+CORS_ALLOW_ORIGINS (default https://gymbot.olykov.com), no more "*"+credentials; auth debug print()s
+replaced with logger.debug (no secrets/tokens logged); JWT sub int-cast made consistent. Frontend:
+admin pages (Muscles/Exercises/Training) repointed to /admin/*; user pages (MyTraining/TrainingModal)
+left on /user/*. Verified: admin_backend builds + imports (42 routes, 7 /admin/*); apps/admin vite
+build clean. Changes are all tightening (more restrictive), so no security re-review needed. Committed
+7b306ab. Optional: set CORS_ALLOW_ORIGINS in prod env if origins differ from the default.
