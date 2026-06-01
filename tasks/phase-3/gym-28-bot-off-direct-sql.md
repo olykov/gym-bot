@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-28
 title: "Bot: replace direct SQL with the Core API client"
 slug: gym-28-bot-off-direct-sql
-status: backlog
+status: in_progress
 priority: high
 type: refactor
 labels: [phase-3, api]
@@ -11,9 +11,9 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-01T11:00:00Z
-start_date: null
+start_date: 2026-06-01T11:35:00Z
 finish_date: null
-updated: 2026-06-01T11:00:00Z
+updated: 2026-06-01T11:35:00Z
 epic: phase-3
 depends_on: [GYM-26, GYM-27]
 blocks: []
