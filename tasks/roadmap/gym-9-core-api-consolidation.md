@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-9
 title: "Phase 2: Core API consolidation (Alembic + OpenAPI contract)"
 slug: gym-9-core-api-consolidation
-status: in_progress
+status: done
 priority: high
 type: feature
 labels: [phase-2, api]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-06-01T08:00:00Z
-finish_date: null
-updated: 2026-06-01T08:00:00Z
+finish_date: 2026-06-01T09:35:00Z
+updated: 2026-06-01T09:35:00Z
 epic: roadmap
 depends_on: []
 blocks: []
-related: [GYM-20, GYM-21, GYM-22]
-commits: []
+related: [GYM-20, GYM-21, GYM-22, GYM-23]
+commits: ["b81b2a6", "4a9bdd2", "186050a"]
 tests: []
 design_reports: []
 review_reports: []
@@ -45,3 +45,11 @@ Decomposed into GYM-20 (Alembic baseline, db-migration-steward), GYM-21 (OpenAPI
 api-contract-guardian), GYM-22 (apps/api endpoints + de-dup isolation + unify ID, core-api-engineer).
 Phase 2 is ADDITIVE — the live bot stays on direct SQL until Phase 3 (GYM-10), so prod is not affected.
 Wave 1 (GYM-20 + GYM-21) launched in parallel; GYM-22 follows the contract.
+
+### 2026-06-01T09:35:00Z — phase done
+All three sub-tasks complete: GYM-20 Alembic baseline (b81b2a6), GYM-21 OpenAPI contract + clients
+(4a9bdd2), GYM-22 Core API endpoints + centralized isolation + uuid id, with a security-auditor pass
+and a fixup that admin-gated pre-existing legacy IDOR/leak routes (186050a). admin_backend image builds
+and imports (42 routes). Orchestrated via db-migration-steward, api-contract-guardian, core-api-engineer,
+security-auditor. Non-blocking hardening tracked as GYM-23. Phase 2 was ADDITIVE — the live bot is
+unchanged (still direct SQL until Phase 3 / GYM-10). Next phase: GYM-10 (bot off direct SQL).
