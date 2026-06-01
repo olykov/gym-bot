@@ -1,10 +1,11 @@
-"""Bot-facing endpoints — GYM-22.
+"""Bot-facing endpoints — GYM-22 / GYM-26.
 
 Covers users, muscles, and training operations.  Exercise endpoints are in
 exercises_router.py; analytics are in analytics_router.py.
 
-All routes derive the acting user's id from the JWT ``sub`` claim.  No
-client-supplied user_id in body or query.
+All routes derive the acting user's id from ``get_principal``, which accepts
+EITHER a user JWT (Mini App) OR a service token + X-Act-As-User impersonation
+(the Telegram bot).  No client-supplied user_id in body or query.
 
 Isolation logic is centralised in ``app.services.visibility``.
 
@@ -21,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.middleware.permissions import require_user
+from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
 from app.services.visibility import visible_muscles
@@ -32,35 +33,13 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _user_id(user_data: dict) -> int:
-    """Extract integer user id from JWT payload.
-
-    Args:
-        user_data: Decoded JWT claims dict (``sub`` holds the Telegram id).
-
-    Returns:
-        Integer Telegram user id.
-
-    Raises:
-        HTTPException 401: When ``sub`` is missing or non-numeric.
-    """
-    sub = user_data.get("sub")
-    try:
-        return int(sub)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid identity in token")
-
-
-# ---------------------------------------------------------------------------
 # Users — GET /users/me, PUT /users/me
 # ---------------------------------------------------------------------------
 
+
 @router.get("/users/me", response_model=schemas.User, tags=["users"])
 def get_me(
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.User:
     """Return the authenticated user's profile.
@@ -69,13 +48,13 @@ def get_me(
     a valid identity but no stored user row yet.
 
     Args:
-        user_data: JWT claims injected by ``require_user``.
+        principal: Resolved identity (user_id, role) from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         The user's profile.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     user = db.query(models.User).filter(models.User.id == uid).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -85,7 +64,7 @@ def get_me(
 @router.put("/users/me", response_model=schemas.User, tags=["users"])
 def upsert_me(
     body: schemas.UserRegistration,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.User:
     """Register or update the authenticated user's profile.
@@ -94,13 +73,13 @@ def upsert_me(
 
     Args:
         body: Profile fields supplied by the caller.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         The created or updated user profile.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     user = db.query(models.User).filter(models.User.id == uid).first()
 
     if user is None:
@@ -127,9 +106,10 @@ def upsert_me(
 # Muscles — list, create, hide/unhide, delete
 # ---------------------------------------------------------------------------
 
+
 @router.get("/muscles", response_model=List[schemas.Muscle], tags=["muscles"])
 def list_muscles(
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> List[schemas.Muscle]:
     """List muscle groups visible to the authenticated user.
@@ -138,20 +118,20 @@ def list_muscles(
     ordered by name.
 
     Args:
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         Ordered list of visible muscles.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     return visible_muscles(db, uid)
 
 
 @router.post("/muscles", response_model=schemas.Muscle, tags=["muscles"])
 def create_muscle(
     body: schemas.MuscleCreate,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.Muscle:
     """Add a private muscle for the authenticated user.
@@ -161,13 +141,13 @@ def create_muscle(
 
     Args:
         body: Muscle name.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         Existing or newly created muscle.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     name = body.name.strip()
 
     existing = (
@@ -192,17 +172,17 @@ def create_muscle(
 @router.put("/muscles/{muscle_id}/hidden", status_code=204, tags=["muscles"])
 def hide_muscle(
     muscle_id: int,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     """Hide a global muscle for the authenticated user.
 
     Args:
         muscle_id: Id of the global muscle to hide.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     muscle = db.query(models.Muscle).filter(models.Muscle.id == muscle_id).first()
     if muscle is None:
         raise HTTPException(status_code=404, detail="Muscle not found")
@@ -223,17 +203,17 @@ def hide_muscle(
 @router.delete("/muscles/{muscle_id}/hidden", status_code=204, tags=["muscles"])
 def unhide_muscle(
     muscle_id: int,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     """Unhide a previously hidden global muscle.
 
     Args:
         muscle_id: Id of the muscle to unhide.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     row = (
         db.query(models.UserHiddenMuscle)
         .filter(
@@ -251,17 +231,17 @@ def unhide_muscle(
 @router.delete("/muscles/{muscle_id}", status_code=204, tags=["muscles"])
 def delete_private_muscle(
     muscle_id: int,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     """Delete a private muscle owned by the authenticated user.
 
     Args:
         muscle_id: Id of the private muscle to delete.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     muscle = (
         db.query(models.Muscle)
         .filter(
@@ -281,11 +261,12 @@ def delete_private_muscle(
 # Training — list, create, update
 # ---------------------------------------------------------------------------
 
+
 @router.get("/training", response_model=List[schemas.Training], tags=["training"])
 def list_training(
     skip: int = 0,
     limit: int = 100,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> List[schemas.Training]:
     """List the authenticated user's training records, newest first.
@@ -293,13 +274,13 @@ def list_training(
     Args:
         skip: Pagination offset.
         limit: Maximum records to return.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         Training records for the caller.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     return (
         db.query(models.Training)
         .filter(models.Training.user_id == uid)
@@ -318,7 +299,7 @@ def list_training(
 )
 def create_training(
     body: schemas.TrainingCreate,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.Training:
     """Record a training set for the authenticated user.
@@ -328,13 +309,13 @@ def create_training(
 
     Args:
         body: Set details (muscle_name, exercise_name, set, weight, reps).
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         The created training record.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
 
     muscle = (
         db.query(models.Muscle)
@@ -382,7 +363,7 @@ def create_training(
 def update_training(
     training_id: str,
     body: schemas.TrainingUpdate,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.Training:
     """Update weight and reps of an existing training record.
@@ -393,13 +374,13 @@ def update_training(
     Args:
         training_id: Server-assigned training id.
         body: New weight and reps values.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         The updated training record.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     training = (
         db.query(models.Training)
         .filter(

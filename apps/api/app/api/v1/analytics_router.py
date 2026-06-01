@@ -1,7 +1,9 @@
-"""Analytics endpoints — GYM-22.
+"""Analytics endpoints — GYM-22 / GYM-26.
 
-All analytics reads are scoped by the authenticated user (derived from the JWT
-``sub`` claim).  Queries faithfully mirror the bot's postgres.py implementations:
+All analytics reads are scoped by the authenticated user (derived from
+``get_principal``), which accepts EITHER a user JWT OR service-token
+impersonation.  Queries faithfully mirror the bot's postgres.py
+implementations:
 - get_completed_sets
 - get_last_training_history
 - get_personal_record
@@ -17,32 +19,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.middleware.permissions import require_user
+from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _user_id(user_data: dict) -> int:
-    """Extract integer user id from JWT payload.
-
-    Args:
-        user_data: Decoded JWT claims dict.
-
-    Returns:
-        Integer Telegram user id.
-
-    Raises:
-        HTTPException 401: When ``sub`` is missing or non-numeric.
-    """
-    sub = user_data.get("sub")
-    try:
-        return int(sub)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid identity in token")
 
 
 @router.get(
@@ -54,7 +37,7 @@ def get_completed_sets(
     muscle: str,
     exercise: str,
     date: date,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.CompletedSets:
     """Return set numbers already recorded for an exercise on a given date.
@@ -65,13 +48,13 @@ def get_completed_sets(
         muscle: Muscle group name.
         exercise: Exercise name.
         date: Calendar date (YYYY-MM-DD).
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         Distinct completed set numbers.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
 
     rows = (
         db.query(models.Training.set)
@@ -99,7 +82,7 @@ def get_completed_sets(
 def get_training_history(
     muscle: str,
     exercise: str,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> List[schemas.TrainingHistoryEntry]:
     """Return training history for an exercise, excluding today.
@@ -109,13 +92,13 @@ def get_training_history(
     Args:
         muscle: Muscle group name.
         exercise: Exercise name.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         History entries ordered newest date first, then set ascending.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     today = datetime.utcnow().date()
 
     rows = (
@@ -153,7 +136,7 @@ def get_training_history(
 def get_personal_record(
     muscle: str,
     exercise: str,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> Optional[schemas.PersonalRecord]:
     """Return the personal record (max weight) for an exercise.
@@ -163,13 +146,13 @@ def get_personal_record(
     Args:
         muscle: Muscle group name.
         exercise: Exercise name.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         PersonalRecord or None when no history exists.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
 
     row = (
         db.query(
@@ -207,7 +190,7 @@ def get_max_reps_for_weight(
     muscle: str,
     exercise: str,
     weight: float,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.MaxReps:
     """Return the maximum reps ever performed at a given weight.
@@ -218,13 +201,13 @@ def get_max_reps_for_weight(
         muscle: Muscle group name.
         exercise: Exercise name.
         weight: Weight value to filter by.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         MaxReps (max_reps may be null when no history at that weight).
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
 
     result = (
         db.query(func.max(models.Training.reps))
@@ -250,7 +233,7 @@ def get_max_reps_for_weight(
 def get_top_exercises(
     muscle: str,
     limit: int = 5,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> List[schemas.TopExercise]:
     """Return the most frequently used exercises for a muscle.
@@ -260,13 +243,13 @@ def get_top_exercises(
     Args:
         muscle: Muscle group name.
         limit: Maximum number of exercises to return.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         Exercises ranked by training frequency (descending), then alphabetically.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
 
     rows = (
         db.query(models.Exercise.name, func.count().label("frequency"))

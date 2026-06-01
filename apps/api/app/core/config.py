@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     ADMIN_USER: str
     ADMIN_PASSWORD: str
 
+    # Service-to-service auth — required; the bot presents this token to
+    # impersonate Telegram users without sharing JWT_SECRET.
+    BOT_SERVICE_TOKEN: str
+
     # CORS — comma-separated list of allowed origins.
     # Override via CORS_ALLOW_ORIGINS env var in production.
     CORS_ALLOW_ORIGINS: str = "https://gymbot.olykov.com"
@@ -35,7 +39,7 @@ class Settings(BaseSettings):
         """Parse CORS_ALLOW_ORIGINS into a list of origin strings."""
         return [o.strip() for o in self.CORS_ALLOW_ORIGINS.split(",") if o.strip()]
 
-    @field_validator("JWT_SECRET", "ADMIN_USER", "ADMIN_PASSWORD", mode="before")
+    @field_validator("JWT_SECRET", "ADMIN_USER", "ADMIN_PASSWORD", "BOT_SERVICE_TOKEN", mode="before")
     @classmethod
     def must_not_be_empty(cls, v: str, info: object) -> str:
         """Fail fast if a required secret env var is empty or unset."""

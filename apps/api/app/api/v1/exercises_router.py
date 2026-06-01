@@ -1,8 +1,11 @@
-"""Exercise endpoints — GYM-22.
+"""Exercise endpoints — GYM-22 / GYM-26.
 
 Covers list, create, hide/unhide, and delete for exercises, all scoped to the
 authenticated user.  Isolation (visible exercises) is delegated to
 ``app.services.visibility``.
+
+All routes accept EITHER a user JWT (Mini App) OR a service token +
+X-Act-As-User impersonation (the Telegram bot) via ``get_principal``.
 """
 import logging
 from typing import List
@@ -11,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.middleware.permissions import require_user
+from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
 from app.services.visibility import visible_exercises_for_muscle
@@ -21,25 +24,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _user_id(user_data: dict) -> int:
-    """Extract integer user id from JWT payload.
-
-    Args:
-        user_data: Decoded JWT claims dict.
-
-    Returns:
-        Integer Telegram user id.
-
-    Raises:
-        HTTPException 401: When ``sub`` is missing or non-numeric.
-    """
-    sub = user_data.get("sub")
-    try:
-        return int(sub)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid identity in token")
-
-
 @router.get(
     "/muscles/{muscle_id}/exercises",
     response_model=List[schemas.Exercise],
@@ -47,7 +31,7 @@ def _user_id(user_data: dict) -> int:
 )
 def list_exercises_by_muscle(
     muscle_id: int,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> List[schemas.Exercise]:
     """List exercises for a muscle visible to the authenticated user.
@@ -56,13 +40,13 @@ def list_exercises_by_muscle(
 
     Args:
         muscle_id: Parent muscle id.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         Ordered list of visible exercises.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     muscle = db.query(models.Muscle).filter(models.Muscle.id == muscle_id).first()
     if muscle is None:
         raise HTTPException(status_code=404, detail="Muscle not found")
@@ -72,7 +56,7 @@ def list_exercises_by_muscle(
 @router.post("/exercises", response_model=schemas.Exercise, tags=["exercises"])
 def create_exercise(
     body: schemas.ExerciseCreateByName,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> schemas.Exercise:
     """Add a private exercise for the authenticated user.
@@ -82,13 +66,13 @@ def create_exercise(
 
     Args:
         body: Exercise name and muscle name.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         Existing or newly created exercise.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     muscle_name = body.muscle_name.strip()
     exercise_name = body.name.strip()
 
@@ -138,7 +122,7 @@ def create_exercise(
 )
 def hide_exercise(
     exercise_id: int,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     """Hide a global exercise for the authenticated user.
@@ -147,10 +131,10 @@ def hide_exercise(
 
     Args:
         exercise_id: Id of the global exercise to hide.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     exercise = (
         db.query(models.Exercise)
         .filter(
@@ -182,17 +166,17 @@ def hide_exercise(
 )
 def unhide_exercise(
     exercise_id: int,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     """Unhide a previously hidden global exercise.
 
     Args:
         exercise_id: Id of the exercise to unhide.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     row = (
         db.query(models.UserHiddenExercise)
         .filter(
@@ -210,7 +194,7 @@ def unhide_exercise(
 @router.delete("/exercises/{exercise_id}", status_code=204, tags=["exercises"])
 def delete_private_exercise(
     exercise_id: int,
-    user_data: dict = Depends(require_user),
+    principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     """Delete a private exercise owned by the authenticated user.
@@ -219,10 +203,10 @@ def delete_private_exercise(
 
     Args:
         exercise_id: Id of the private exercise to delete.
-        user_data: JWT claims.
+        principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
-    uid = _user_id(user_data)
+    uid = principal["user_id"]
     exercise = (
         db.query(models.Exercise)
         .filter(
