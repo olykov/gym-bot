@@ -35,7 +35,9 @@ services:
       - core-infra
 
   gymbot_backend:
-    build: ./apps/bot
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
     restart: always
     container_name: gymbot_backend
     hostname: gymbot_backend

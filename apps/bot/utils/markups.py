@@ -1,82 +1,135 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from aiogram.enums import ButtonStyle
-from templates.exercise import sets, weights, reps
-from modules.postgres import PostgresDB
-from modules.logging import Logger
-from datetime import datetime
+"""Inline keyboard markup builders for the Gym Tracker bot.
+
+Functions that read remote data are async; purely static builders stay sync.
+All callback_data prefixes are unchanged for FSM stability.
+"""
+
+from __future__ import annotations
+
 import os
+from datetime import datetime
+
+import httpx
+from aiogram.enums import ButtonStyle
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+from gym_api_client import GymApiClient, models
+from modules.api import api
+from modules.logging import Logger
+from templates.exercise import reps, sets, weights
 
 logger = Logger(name="markups")
-db = PostgresDB(
-    db_name=os.environ.get("DB_NAME"),
-    user=os.environ.get("DB_USER"),
-    password=os.environ.get("DB_PASSWORD"),
-    host=os.environ.get("DB_HOST"),
-    port=os.environ.get("DB_PORT")
-)
 
-def determine_exercise_display_mode(user_id, muscle_name):
-    """
-    Determine whether to show compact (top N) or full exercise list.
-    
-    Args:
-        user_id: User's Telegram ID
-        muscle_name: Selected muscle group name
-        
-    Returns:
-        tuple: (show_compact: bool, top_exercises: list)
-    """
-    if not user_id:
-        return False, []  # Show all for users without ID
-    
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+async def _find_muscle_id(muscle_name: str, user_id: int) -> int | None:
+    """Return the id for a named muscle visible to *user_id*, or None."""
     try:
-        top_exercises = db.get_top_exercises_for_muscle(user_id, muscle_name, 5)
-        
-        if len(top_exercises) == 0:
-            return False, []  # No training history - show all
-        
-        return True, top_exercises  # Show compact with these exercises
-    except Exception as e:
-        logger.error(f"Error determining display mode for user {user_id}: {e}")
-        return False, []  # Fallback to show all on error
+        muscles = await api.list_muscles(act_as_user=user_id)
+        for m in muscles:
+            if m.name == muscle_name:
+                return m.id
+    except httpx.HTTPError as exc:
+        logger.error(f"API error looking up muscle '{muscle_name}': {exc}")
+    return None
 
 
+async def _find_exercise_id(
+    muscle_name: str, exercise_name: str, user_id: int
+) -> int | None:
+    """Return the id for a named exercise under *muscle_name* visible to *user_id*."""
+    muscle_id = await _find_muscle_id(muscle_name, user_id)
+    if muscle_id is None:
+        return None
+    try:
+        exercises = await api.list_exercises_by_muscle(muscle_id, act_as_user=user_id)
+        for e in exercises:
+            if e.name == exercise_name:
+                return e.id
+    except httpx.HTTPError as exc:
+        logger.error(
+            f"API error looking up exercise '{exercise_name}' for muscle id {muscle_id}: {exc}"
+        )
+    return None
 
-def generate_start_markup():
+
+def _is_peak(button_value: object, target: object) -> bool:
+    """Return True when *button_value* numerically equals *target*.
+
+    Compares as floats so "5" matches 5.0.  Returns False on None or
+    non-numeric input.
+    """
+    if target is None:
+        return False
+    try:
+        return float(button_value) == float(target)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Static markup builders (no I/O)
+# ---------------------------------------------------------------------------
+
+def generate_start_markup() -> InlineKeyboardMarkup:
     web_app_url = os.environ.get("WEB_APP_URL")
     if not web_app_url:
         logger.error("WEB_APP_URL not set in environment variables")
-        # Fallback to avoid crash, but button won't work as expected
         web_app_url = "https://google.com"
     elif not web_app_url.startswith("https://"):
         web_app_url = f"https://{web_app_url}"
 
     return InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text="Record training", callback_data="/gym", style=ButtonStyle.SUCCESS),
-            InlineKeyboardButton(text="Edit trainings", web_app=WebAppInfo(url=web_app_url))
+            InlineKeyboardButton(
+                text="Record training",
+                callback_data="/gym",
+                style=ButtonStyle.SUCCESS,
+            ),
+            InlineKeyboardButton(
+                text="Edit trainings",
+                web_app=WebAppInfo(url=web_app_url),
+            ),
         ]]
     )
 
 
-def generate_edit_markup():
+def generate_edit_markup() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text="Edit today's training", callback_data="edit_today_training", style=ButtonStyle.PRIMARY),
-            InlineKeyboardButton(text="Close", callback_data="/start")
+            InlineKeyboardButton(
+                text="Edit today's training",
+                callback_data="edit_today_training",
+                style=ButtonStyle.PRIMARY,
+            ),
+            InlineKeyboardButton(text="Close", callback_data="/start"),
         ]]
     )
 
 
-def generate_muscle_markup(user_id=None):
-    inline_keyboard = []
-    btn_row = []
+# ---------------------------------------------------------------------------
+# Async markup builders (read remote data)
+# ---------------------------------------------------------------------------
 
-    # Get muscles from database
-    muscles = db.get_all_muscles(user_id)
+async def generate_muscle_markup(user_id: int | None = None) -> InlineKeyboardMarkup:
+    """Build the muscle-selection keyboard."""
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
+    btn_row: list[InlineKeyboardButton] = []
 
-    for muscle in muscles:
-        btn_row.append(InlineKeyboardButton(text=muscle, callback_data=f"mus_{muscle}"))
+    try:
+        muscles = await api.list_muscles(act_as_user=user_id)
+        muscle_names = [m.name for m in muscles]
+    except httpx.HTTPError as exc:
+        logger.error(f"API error fetching muscles for user {user_id}: {exc}")
+        muscle_names = []
+
+    for muscle in muscle_names:
+        btn_row.append(
+            InlineKeyboardButton(text=muscle, callback_data=f"mus_{muscle}")
+        )
         if len(btn_row) == 3:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -84,155 +137,203 @@ def generate_muscle_markup(user_id=None):
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    # Add "Add Muscle" button
-    inline_keyboard.append([InlineKeyboardButton(text="➕ Add Muscle", callback_data="add_muscle_btn")])
-    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="/start")])
+    inline_keyboard.append(
+        [InlineKeyboardButton(text="+ Add Muscle", callback_data="add_muscle_btn")]
+    )
+    inline_keyboard.append(
+        [InlineKeyboardButton(text="<- Go back", callback_data="/start")]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_post_set_markup(user_id, muscle_name, exercise_name, current_date=None):
-    """
-    Generate markup after completing a set.
-    Shows 'Continue {exercise}' if sets remain, otherwise returns to muscle selection.
-
-    Args:
-        user_id: User's Telegram ID
-        muscle_name: Selected muscle group name
-        exercise_name: Selected exercise name
-        current_date: Date string (YYYY-MM-DD format), defaults to today
-
-    Returns:
-        InlineKeyboardMarkup with appropriate buttons based on remaining sets
-    """
+async def generate_post_set_markup(
+    user_id: int,
+    muscle_name: str,
+    exercise_name: str,
+    current_date: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Build the post-set keyboard: continue same exercise, or pick a new one."""
     if current_date is None:
-        current_date = datetime.now().strftime('%Y-%m-%d')
+        current_date = datetime.now().strftime("%Y-%m-%d")
 
     try:
-        # Check how many sets are completed
-        completed_sets = db.get_completed_sets(user_id, muscle_name, exercise_name, current_date)
-        total_sets = len(sets)  # From templates/exercise.py (currently 6 sets)
+        result = await api.get_completed_sets(
+            muscle=muscle_name,
+            exercise=exercise_name,
+            date=current_date,
+            act_as_user=user_id,
+        )
+        completed_sets = result.sets
+        total_sets = len(sets)
 
-        # Scenario 1: Sets remaining → Show "Continue" + "New Exercise"
         if len(completed_sets) < total_sets:
-            inline_keyboard = [
-                [InlineKeyboardButton(
-                    text=f"Continue {exercise_name}",
-                    callback_data=f"continue_ex||{muscle_name}||{exercise_name}",
-                    style=ButtonStyle.SUCCESS
-                )],
-                [InlineKeyboardButton(
-                    text="New Exercise",
-                    callback_data="back_to_muscles"
-                )]
-            ]
-            return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+            return InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=f"Continue {exercise_name}",
+                            callback_data=f"continue_ex||{muscle_name}||{exercise_name}",
+                            style=ButtonStyle.SUCCESS,
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="New Exercise",
+                            callback_data="back_to_muscles",
+                        )
+                    ],
+                ]
+            )
+        # All sets done — fall through to muscle list
+    except httpx.HTTPError as exc:
+        logger.error(f"API error fetching completed sets for user {user_id}: {exc}")
 
-        # Scenario 2: All sets completed → Return to muscle selection
-        else:
-            return generate_muscle_markup(user_id)
-
-    except Exception as e:
-        logger.error(f"Error generating post-set markup: {e}")
-        # Fallback to muscle selection if we can't determine remaining sets
-        return generate_muscle_markup(user_id)
+    return await generate_muscle_markup(user_id)
 
 
-def generate_exercise_markup(selected_muscle, user_id=None, show_all=False):
-    """
-    Generate exercise selection markup with smart compact/full display.
-    """
-    inline_keyboard = []
-    btn_row = []
-
-    # Get all exercises for the selected muscle from database
-    all_exercises = db.get_exercises_by_muscle(selected_muscle, user_id)
-
-    # Determine what exercises to show based on mode
-    if show_all:
-        # Show all exercises with smart prioritization (existing behavior)
-        if user_id and all_exercises:
-            try:
-                # Get user's top exercises for prioritization
-                top_exercises_data = db.get_top_exercises_for_muscle(user_id, selected_muscle, 5)
-                top_exercise_names = [name for name, frequency in top_exercises_data]
-                
-                # Sort top exercises alphabetically
-                top_exercises_sorted = sorted(top_exercise_names)
-                
-                # Get remaining exercises (preserve original order from exercise.py)
-                remaining_exercises = [ex for ex in all_exercises if ex not in top_exercise_names]
-                
-                # Combine: top exercises first, then remaining
-                exercises_to_show = top_exercises_sorted + remaining_exercises
-                
-                logger.info(f"User {user_id} showing all exercises for {selected_muscle} with prioritization")
-                
-            except Exception as e:
-                logger.error(f"Error getting top exercises for user {user_id}: {e}")
-                exercises_to_show = all_exercises
-        else:
-            exercises_to_show = all_exercises
-
-        # Bottom buttons for "show all" mode
-        bottom_buttons = [InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")]
-
-    else:
-        # Smart compact view - show only top exercises or all if no history
-        show_compact, top_exercises_data = determine_exercise_display_mode(user_id, selected_muscle)
-        
-        if show_compact:
-            # Show only top exercises (1-5 depending on user history)
-            top_exercise_names = [name for name, frequency in top_exercises_data]
-            exercises_to_show = sorted(top_exercise_names)  # Alphabetical order
-            
-            logger.info(f"User {user_id} compact view for {selected_muscle}: {len(exercises_to_show)} exercises")
-            
-            # Bottom buttons for compact mode
-            bottom_buttons = [
-                InlineKeyboardButton(text="Show All", callback_data=f"show_all_exercises_{selected_muscle}"),
-                InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")
-            ]
-        else:
-            # No training history - show all exercises (current behavior for new users)
-            exercises_to_show = all_exercises
-            bottom_buttons = [InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")]
-
-    # Generate buttons for exercises
+async def _build_exercise_buttons(
+    exercises_to_show: list[str],
+) -> list[list[InlineKeyboardButton]]:
+    rows: list[list[InlineKeyboardButton]] = []
+    btn_row: list[InlineKeyboardButton] = []
     for ex in exercises_to_show:
-        btn_row.append(InlineKeyboardButton(text=ex, callback_data=f"ex_{ex}"))
+        btn_row.append(
+            InlineKeyboardButton(text=ex, callback_data=f"ex_{ex}")
+        )
         if len(btn_row) == 1:
-            inline_keyboard.append(btn_row)
+            rows.append(btn_row)
             btn_row = []
-
     if btn_row:
-        inline_keyboard.append(btn_row)
+        rows.append(btn_row)
+    return rows
 
-    # Add "Add/Delete Exercise" buttons
+
+async def generate_exercise_markup(
+    selected_muscle: str,
+    user_id: int | None = None,
+    show_all: bool = False,
+) -> InlineKeyboardMarkup:
+    """Build the exercise-selection keyboard (compact or full)."""
+    # Resolve muscle id from name
+    muscle_id: int | None = None
+    if user_id:
+        muscle_id = await _find_muscle_id(selected_muscle, user_id)
+
+    all_exercises: list[str] = []
+    if muscle_id is not None:
+        try:
+            raw = await api.list_exercises_by_muscle(muscle_id, act_as_user=user_id)
+            all_exercises = [e.name for e in raw]
+        except httpx.HTTPError as exc:
+            logger.error(
+                f"API error fetching exercises for muscle '{selected_muscle}': {exc}"
+            )
+
+    # Determine display list
+    if show_all:
+        exercises_to_show = await _prioritized_exercises(
+            all_exercises, selected_muscle, user_id
+        )
+        bottom_buttons = [
+            InlineKeyboardButton(text="<- Go back", callback_data="back_to_muscles")
+        ]
+    else:
+        top_items = await _get_top_exercise_names(selected_muscle, user_id)
+        if top_items:
+            exercises_to_show = sorted(top_items)
+            bottom_buttons = [
+                InlineKeyboardButton(
+                    text="Show All",
+                    callback_data=f"show_all_exercises_{selected_muscle}",
+                ),
+                InlineKeyboardButton(
+                    text="<- Go back", callback_data="back_to_muscles"
+                ),
+            ]
+        else:
+            exercises_to_show = all_exercises
+            bottom_buttons = [
+                InlineKeyboardButton(text="<- Go back", callback_data="back_to_muscles")
+            ]
+
+    inline_keyboard = await _build_exercise_buttons(exercises_to_show)
+
     inline_keyboard.append([
-        InlineKeyboardButton(text="➕ Add Exercise", callback_data="add_exercise_btn"),
-        InlineKeyboardButton(text="❌ Delete Exercise", callback_data="delete_exercise_btn", style=ButtonStyle.DANGER)
+        InlineKeyboardButton(text="+ Add Exercise", callback_data="add_exercise_btn"),
+        InlineKeyboardButton(
+            text="X Delete Exercise",
+            callback_data="delete_exercise_btn",
+            style=ButtonStyle.DANGER,
+        ),
     ])
-
-    # Add bottom buttons
     inline_keyboard.append(bottom_buttons)
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_delete_exercise_markup(selected_muscle, user_id=None):
-    """
-    Generate markup for deleting exercises.
-    """
-    inline_keyboard = []
-    btn_row = []
+async def _get_top_exercise_names(
+    muscle_name: str, user_id: int | None
+) -> list[str]:
+    """Return up to 5 top exercise names for the user, empty list on error/no data."""
+    if not user_id:
+        return []
+    try:
+        top = await api.get_top_exercises(
+            muscle=muscle_name, limit=5, act_as_user=user_id
+        )
+        return [t.name for t in top]
+    except httpx.HTTPError as exc:
+        logger.error(
+            f"API error fetching top exercises for muscle '{muscle_name}': {exc}"
+        )
+        return []
 
-    # Get all exercises for the selected muscle
-    all_exercises = db.get_exercises_by_muscle(selected_muscle, user_id)
+
+async def _prioritized_exercises(
+    all_exercises: list[str],
+    muscle_name: str,
+    user_id: int | None,
+) -> list[str]:
+    """Return exercises sorted: top ones alphabetically first, then the rest."""
+    if user_id and all_exercises:
+        top_names = await _get_top_exercise_names(muscle_name, user_id)
+        top_set = set(top_names)
+        top_sorted = sorted(top_names)
+        remaining = [ex for ex in all_exercises if ex not in top_set]
+        return top_sorted + remaining
+    return all_exercises
+
+
+async def generate_delete_exercise_markup(
+    selected_muscle: str, user_id: int | None = None
+) -> InlineKeyboardMarkup:
+    """Build the exercise-deletion keyboard."""
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
+    btn_row: list[InlineKeyboardButton] = []
+
+    muscle_id: int | None = None
+    if user_id:
+        muscle_id = await _find_muscle_id(selected_muscle, user_id)
+
+    all_exercises: list[str] = []
+    if muscle_id is not None:
+        try:
+            raw = await api.list_exercises_by_muscle(muscle_id, act_as_user=user_id)
+            all_exercises = [e.name for e in raw]
+        except httpx.HTTPError as exc:
+            logger.error(
+                f"API error fetching exercises for delete markup '{selected_muscle}': {exc}"
+            )
 
     for ex in all_exercises:
-        # Use del_ex_ prefix for deletion callbacks
-        btn_row.append(InlineKeyboardButton(text=f"❌ {ex}", callback_data=f"del_ex_{ex}", style=ButtonStyle.DANGER))
+        btn_row.append(
+            InlineKeyboardButton(
+                text=f"X {ex}",
+                callback_data=f"del_ex_{ex}",
+                style=ButtonStyle.DANGER,
+            )
+        )
         if len(btn_row) == 1:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -240,74 +341,90 @@ def generate_delete_exercise_markup(selected_muscle, user_id=None):
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Cancel", callback_data="back_to_exercises")])
+    inline_keyboard.append(
+        [InlineKeyboardButton(text="<- Cancel", callback_data="back_to_exercises")]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_select_set_markup(user_id, muscle, exercise):
-    inline_keyboard = []
-    btn_row = []
+async def generate_select_set_markup(
+    user_id: int, muscle: str, exercise: str
+) -> InlineKeyboardMarkup:
+    """Build the set-selection keyboard, graying out already-completed sets."""
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
+    btn_row: list[InlineKeyboardButton] = []
 
-    todays_date = datetime.now().strftime('%Y-%m-%d')
-    completed_sets = db.get_completed_sets(user_id, muscle, exercise, todays_date)
+    todays_date = datetime.now().strftime("%Y-%m-%d")
+    completed_set_ids: list[int] = []
     try:
-        available_sets = [s for s in sets if int(s['id']) not in completed_sets]
-    except:
-        logger.error("Can't get available sets")
-        available_sets = sets
-    logger.info(completed_sets)
-    logger.info(available_sets)
+        result = await api.get_completed_sets(
+            muscle=muscle,
+            exercise=exercise,
+            date=todays_date,
+            act_as_user=user_id,
+        )
+        completed_set_ids = result.sets
+    except httpx.HTTPError as exc:
+        logger.error(f"API error fetching completed sets for user {user_id}: {exc}")
 
-    # If all sets are completed, show message
+    try:
+        available_sets = [s for s in sets if int(s["id"]) not in completed_set_ids]
+    except Exception:
+        logger.error("Can't determine available sets")
+        available_sets = sets
+
     if not available_sets:
-        inline_keyboard.append([InlineKeyboardButton(text="All sets completed!", callback_data="/start", style=ButtonStyle.SUCCESS)])
+        inline_keyboard.append([
+            InlineKeyboardButton(
+                text="All sets completed!",
+                callback_data="/start",
+                style=ButtonStyle.SUCCESS,
+            )
+        ])
     else:
         for _set in available_sets:
-            btn_row.append(InlineKeyboardButton(text=_set["name"], callback_data=_set['id']))
+            btn_row.append(
+                InlineKeyboardButton(text=_set["name"], callback_data=_set["id"])
+            )
             if len(btn_row) == 6:
                 inline_keyboard.append(btn_row)
                 btn_row = []
-
         if btn_row:
             inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_exercises")])
+    inline_keyboard.append(
+        [InlineKeyboardButton(text="<- Go back", callback_data="back_to_exercises")]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def _is_peak(button_value, target):
-    """Return True if a button label numerically equals the peak target.
+async def generate_enter_weight_markup(
+    user_id: int | None = None,
+    muscle: str | None = None,
+    exercise: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Build weight-selection keyboard, highlighting the PR weight in green."""
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
+    btn_row: list[InlineKeyboardButton] = []
 
-    Compares as floats so "5" matches 5.0 and Decimal('45.0') matches "45".
-    Returns False for None target or non-numeric values (graceful fallback).
-    """
-    if target is None:
-        return False
-    try:
-        return float(button_value) == float(target)
-    except (TypeError, ValueError):
-        return False
-
-
-def generate_enter_weight_markup(user_id=None, muscle=None, exercise=None):
-    inline_keyboard = []
-    btn_row = []
-
-    # Reason: highlight the all-time max weight (PR) for this exercise in green
-    pr_weight = None
+    pr_weight: float | None = None
     if user_id and muscle and exercise:
         try:
-            record = db.get_personal_record(user_id, muscle, exercise)
+            record = await api.get_personal_record(
+                muscle=muscle, exercise=exercise, act_as_user=user_id
+            )
             if record:
-                pr_weight = record[0]
-        except Exception as e:
-            logger.error(f"Error getting PR weight for user {user_id}: {e}")
+                pr_weight = record.weight
+        except httpx.HTTPError as exc:
+            logger.error(f"API error fetching PR weight for user {user_id}: {exc}")
 
     for w in weights:
         style = ButtonStyle.SUCCESS if _is_peak(w, pr_weight) else None
-        btn_row.append(InlineKeyboardButton(text=f"{w}", callback_data=f"{w}kg", style=style))
+        btn_row.append(
+            InlineKeyboardButton(text=f"{w}", callback_data=f"{w}kg", style=style)
+        )
         if len(btn_row) == 7:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -315,25 +432,40 @@ def generate_enter_weight_markup(user_id=None, muscle=None, exercise=None):
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_sets")])
+    inline_keyboard.append(
+        [InlineKeyboardButton(text="<- Go back", callback_data="back_to_sets")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def generate_enter_reps_markup(user_id=None, muscle=None, exercise=None, weight=None):
-    inline_keyboard = []
-    btn_row = []
+async def generate_enter_reps_markup(
+    user_id: int | None = None,
+    muscle: str | None = None,
+    exercise: str | None = None,
+    weight: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Build reps-selection keyboard, highlighting the max-reps-at-weight in green."""
+    inline_keyboard: list[list[InlineKeyboardButton]] = []
+    btn_row: list[InlineKeyboardButton] = []
 
-    # Reason: highlight the max reps ever done at the selected weight in green
-    max_reps = None
+    max_reps: float | None = None
     if user_id and muscle and exercise and weight is not None:
         try:
-            max_reps = db.get_max_reps_for_weight(user_id, muscle, exercise, weight)
-        except Exception as e:
-            logger.error(f"Error getting max reps for user {user_id}: {e}")
+            result = await api.get_max_reps_for_weight(
+                muscle=muscle,
+                exercise=exercise,
+                weight=float(weight),
+                act_as_user=user_id,
+            )
+            max_reps = result.max_reps
+        except httpx.HTTPError as exc:
+            logger.error(f"API error fetching max reps for user {user_id}: {exc}")
 
     for r in reps:
         style = ButtonStyle.SUCCESS if _is_peak(r, max_reps) else None
-        btn_row.append(InlineKeyboardButton(text=f"{r}", callback_data=f"{r}_r", style=style))
+        btn_row.append(
+            InlineKeyboardButton(text=f"{r}", callback_data=f"{r}_r", style=style)
+        )
         if len(btn_row) == 8:
             inline_keyboard.append(btn_row)
             btn_row = []
@@ -341,5 +473,7 @@ def generate_enter_reps_markup(user_id=None, muscle=None, exercise=None, weight=
     if btn_row:
         inline_keyboard.append(btn_row)
 
-    inline_keyboard.append([InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_sets")])
+    inline_keyboard.append(
+        [InlineKeyboardButton(text="<- Go back", callback_data="back_to_sets")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)

@@ -30,7 +30,7 @@ jobs:
 
       - name: Build and push bot Docker image
         run: |
-          docker build -f apps/bot/Dockerfile -t ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }} apps/bot/
+          docker build -f apps/bot/Dockerfile -t ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }} .
           docker push ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }}
 
   build-admin-backend:
