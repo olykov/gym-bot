@@ -138,10 +138,10 @@ async def generate_muscle_markup(user_id: int | None = None) -> InlineKeyboardMa
         inline_keyboard.append(btn_row)
 
     inline_keyboard.append(
-        [InlineKeyboardButton(text="+ Add Muscle", callback_data="add_muscle_btn")]
+        [InlineKeyboardButton(text="➕ Add Muscle", callback_data="add_muscle_btn")]
     )
     inline_keyboard.append(
-        [InlineKeyboardButton(text="<- Go back", callback_data="/start")]
+        [InlineKeyboardButton(text="⬅️ Go back", callback_data="/start")]
     )
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -236,7 +236,7 @@ async def generate_exercise_markup(
             all_exercises, selected_muscle, user_id
         )
         bottom_buttons = [
-            InlineKeyboardButton(text="<- Go back", callback_data="back_to_muscles")
+            InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")
         ]
     else:
         top_items = await _get_top_exercise_names(selected_muscle, user_id)
@@ -248,21 +248,21 @@ async def generate_exercise_markup(
                     callback_data=f"show_all_exercises_{selected_muscle}",
                 ),
                 InlineKeyboardButton(
-                    text="<- Go back", callback_data="back_to_muscles"
+                    text="⬅️ Go back", callback_data="back_to_muscles"
                 ),
             ]
         else:
             exercises_to_show = all_exercises
             bottom_buttons = [
-                InlineKeyboardButton(text="<- Go back", callback_data="back_to_muscles")
+                InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_muscles")
             ]
 
     inline_keyboard = await _build_exercise_buttons(exercises_to_show)
 
     inline_keyboard.append([
-        InlineKeyboardButton(text="+ Add Exercise", callback_data="add_exercise_btn"),
+        InlineKeyboardButton(text="➕ Add Exercise", callback_data="add_exercise_btn"),
         InlineKeyboardButton(
-            text="X Delete Exercise",
+            text="❌ Delete Exercise",
             callback_data="delete_exercise_btn",
             style=ButtonStyle.DANGER,
         ),
@@ -329,7 +329,7 @@ async def generate_delete_exercise_markup(
     for ex in all_exercises:
         btn_row.append(
             InlineKeyboardButton(
-                text=f"X {ex}",
+                text=f"❌ {ex}",
                 callback_data=f"del_ex_{ex}",
                 style=ButtonStyle.DANGER,
             )
@@ -342,7 +342,7 @@ async def generate_delete_exercise_markup(
         inline_keyboard.append(btn_row)
 
     inline_keyboard.append(
-        [InlineKeyboardButton(text="<- Cancel", callback_data="back_to_exercises")]
+        [InlineKeyboardButton(text="⬅️ Cancel", callback_data="back_to_exercises")]
     )
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -394,7 +394,7 @@ async def generate_select_set_markup(
             inline_keyboard.append(btn_row)
 
     inline_keyboard.append(
-        [InlineKeyboardButton(text="<- Go back", callback_data="back_to_exercises")]
+        [InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_exercises")]
     )
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -433,7 +433,7 @@ async def generate_enter_weight_markup(
         inline_keyboard.append(btn_row)
 
     inline_keyboard.append(
-        [InlineKeyboardButton(text="<- Go back", callback_data="back_to_sets")]
+        [InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_sets")]
     )
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
@@ -474,6 +474,6 @@ async def generate_enter_reps_markup(
         inline_keyboard.append(btn_row)
 
     inline_keyboard.append(
-        [InlineKeyboardButton(text="<- Go back", callback_data="back_to_sets")]
+        [InlineKeyboardButton(text="⬅️ Go back", callback_data="back_to_sets")]
     )
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
