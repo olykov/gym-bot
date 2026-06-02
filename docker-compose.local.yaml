@@ -98,6 +98,10 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_NAME}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      # Runtime role: app_rw (NOSUPERUSER NOBYPASSRLS) — RLS applies to this connection.
+      # APP_DB_USER defaults to app_rw in config.py; set only to override.
+      APP_DB_USER: ${APP_DB_USER:-app_rw}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}

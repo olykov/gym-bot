@@ -117,4 +117,8 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           # Bot service auth
           BOT_SERVICE_TOKEN: ${{ secrets.BOT_SERVICE_TOKEN }}
+          # Runtime DB role (app_rw) — required for RLS to apply (GYM-34).
+          # Operator must set APP_DB_PASSWORD in GitHub Actions secrets.
+          # APP_DB_USER defaults to "app_rw" in config.py; set the secret only to override.
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
         run: ansible-playbook -i infra/ansible/inventory.yaml infra/ansible/deploy.yaml

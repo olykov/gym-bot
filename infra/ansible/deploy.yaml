@@ -46,6 +46,8 @@
           ADMIN_PASSWORD={{ lookup('env', 'ADMIN_PASSWORD') }}
           BOT_SERVICE_TOKEN={{ lookup('env', 'BOT_SERVICE_TOKEN') }}
           API_BASE_URL=http://admin_backend:8000/api/v1
+          APP_DB_USER={{ lookup('env', 'APP_DB_USER') | default('app_rw', true) }}
+          APP_DB_PASSWORD={{ lookup('env', 'APP_DB_PASSWORD') }}
     
     - name: Prepare sa.json
       tags: ["app"]
@@ -59,6 +61,12 @@
       ansible.builtin.copy:
         src: "{{inventory_dir}}/../../packages/db/init.sql"
         dest: "{{ work_dir }}/init.sql"
+
+    - name: Ensure create_app_role.sql exists
+      tags: ["app"]
+      ansible.builtin.copy:
+        src: "{{inventory_dir}}/../../packages/db/bootstrap/create_app_role.sql"
+        dest: "{{ work_dir }}/create_app_role.sql"
 
     - name: Ensure docker-compose.yml is updated
       tags: ["app"]
@@ -78,4 +86,29 @@
         pull: always
         state: present
       register: _docker_compose
+
+    - name: Wait for gymbot_db to accept connections
+      tags: ["app"]
+      ansible.builtin.command: >
+        docker exec gymbot_db pg_isready -U "{{ lookup('env', 'DB_USER') }}" -d "{{ lookup('env', 'DB_NAME') }}"
+      register: _pg_ready
+      retries: 15
+      delay: 2
+      until: _pg_ready.rc == 0
+      changed_when: false
+
+    - name: Bootstrap app_rw role (idempotent)
+      # Runs as the superuser (myuser/DB_USER); creates the role NOSUPERUSER
+      # NOBYPASSRLS if absent, then rotates its password to APP_DB_PASSWORD.
+      # Safe to re-run on every deploy — see packages/db/bootstrap/create_app_role.sql.
+      # APP_DB_PASSWORD is never written to disk; passed only via env.
+      tags: ["app"]
+      ansible.builtin.shell: >
+        docker exec -i gymbot_db psql
+        -U "{{ lookup('env', 'DB_USER') }}"
+        -d "{{ lookup('env', 'DB_NAME') }}"
+        -v app_pw="{{ lookup('env', 'APP_DB_PASSWORD') }}"
+        < "{{ work_dir }}/create_app_role.sql"
+      changed_when: true
+      no_log: true
 
