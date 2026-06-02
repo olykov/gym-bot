@@ -19,7 +19,9 @@ depends_on: [GYM-10]
 blocks: []
 related: [GYM-32, GYM-33, GYM-34, GYM-35, GYM-36, GYM-13]
 commits: []
-tests: []
+tests:
+  - apps/api/tests/conftest.py
+  - apps/api/tests/test_rls_isolation.py
 design_reports: []
 review_reports: []
 review: {}
