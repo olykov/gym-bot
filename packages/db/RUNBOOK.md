@@ -73,6 +73,21 @@ migrations that come after it (i.e. `0002_rls`).
 `app_rw` — it lacks DDL privileges. The env var to pass is `DATABASE_URL`, which
 must point to the `myuser`/`DB_PASSWORD` credentials.
 
+### (c2) Pre-cutover data integrity check (M4)
+
+Before applying the RLS migration, assert that no global catalog row has a
+non-null ``created_by`` (a violation would break the catalog write policy):
+
+```sql
+-- Run as myuser against the prod DB before step (d).
+SELECT COUNT(*) FROM muscles  WHERE is_global AND created_by IS NOT NULL;
+SELECT COUNT(*) FROM exercises WHERE is_global AND created_by IS NOT NULL;
+-- Both counts must be 0.  If not, fix the data before proceeding.
+```
+
+This check is also automated in ``apps/api/tests/test_rls_endpoints.py``
+(``TestCatalogM4DataGuard``).
+
 ### (d) Apply the RLS migration
 
 ```bash

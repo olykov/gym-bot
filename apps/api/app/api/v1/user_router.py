@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from app.core.database import get_db
+from app.core.database import get_db_for_user
 from app.models import models
 from app.schemas import schemas
 from app.middleware.permissions import require_user
@@ -14,7 +14,7 @@ def get_user_training(
     skip: int = 0,
     limit: int = 100,
     user_data: dict = Depends(require_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_user),
 ):
     """Get training data for the authenticated user only.
 

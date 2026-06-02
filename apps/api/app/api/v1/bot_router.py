@@ -21,7 +21,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
@@ -40,7 +40,7 @@ router = APIRouter()
 @router.get("/users/me", response_model=schemas.User, tags=["users"])
 def get_me(
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.User:
     """Return the authenticated user's profile.
 
@@ -65,7 +65,7 @@ def get_me(
 def upsert_me(
     body: schemas.UserRegistration,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.User:
     """Register or update the authenticated user's profile.
 
@@ -110,7 +110,7 @@ def upsert_me(
 @router.get("/muscles", response_model=List[schemas.Muscle], tags=["muscles"])
 def list_muscles(
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.Muscle]:
     """List muscle groups visible to the authenticated user.
 
@@ -132,7 +132,7 @@ def list_muscles(
 def create_muscle(
     body: schemas.MuscleCreate,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.Muscle:
     """Add a private muscle for the authenticated user.
 
@@ -173,7 +173,7 @@ def create_muscle(
 def hide_muscle(
     muscle_id: int,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> None:
     """Hide a global muscle for the authenticated user.
 
@@ -204,7 +204,7 @@ def hide_muscle(
 def unhide_muscle(
     muscle_id: int,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> None:
     """Unhide a previously hidden global muscle.
 
@@ -232,7 +232,7 @@ def unhide_muscle(
 def delete_private_muscle(
     muscle_id: int,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> None:
     """Delete a private muscle owned by the authenticated user.
 
@@ -267,7 +267,7 @@ def list_training(
     skip: int = 0,
     limit: int = 100,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.Training]:
     """List the authenticated user's training records, newest first.
 
@@ -300,7 +300,7 @@ def list_training(
 def create_training(
     body: schemas.TrainingCreate,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.Training:
     """Record a training set for the authenticated user.
 
@@ -364,7 +364,7 @@ def update_training(
     training_id: str,
     body: schemas.TrainingUpdate,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.Training:
     """Update weight and reps of an existing training record.
 

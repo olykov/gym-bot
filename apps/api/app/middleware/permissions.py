@@ -8,16 +8,23 @@ Provides two independent auth paths:
    bot-facing routers so that both the Mini App (user JWT) and the bot service
    (impersonation) can call the same endpoints.
 
-   ``get_principal`` is a yield dependency: it sets the RLS GUC contextvars on
-   entry and resets them in a ``finally`` block so that thread-pool workers
-   never carry a stale principal across requests.
+   ``get_principal`` is a yield dependency so that per-request state is
+   properly scoped.  The RLS GUC context is injected via ``session.info`` by
+   ``get_db_for_principal`` (GYM-37) — contextvars are no longer used for GUC
+   wiring so there is no threadpool-propagation issue.
 
 2. ``require_admin`` — admin-only gate.  Validates a JWT and asserts the
    ``role == "admin"`` claim.  The service token path is explicitly excluded;
    a service-authenticated caller can NEVER reach admin routes.
 
-   Admin deps also set the contextvars (role='admin') so that the SQLAlchemy
-   ``after_begin`` event injects the correct GUC and RLS lets admins see all rows.
+   Admin routes use ``get_db_for_admin`` (from ``app.core.database``) which
+   synthesises a role='admin' principal for the RLS GUC injection.
+
+H1 fix (GYM-37): ``get_current_user`` / ``require_role`` / ``require_admin``
+are now yield-based with a no-op ``finally`` block, ensuring they properly
+bracket the request lifetime.  No stale principal context can persist on a
+pooled thread because RLS state lives on the per-request Session (session.info)
+which is discarded when the session closes.
 """
 import hmac
 import logging
@@ -27,7 +34,6 @@ from fastapi import Header, HTTPException
 
 from app.core.auth import verify_session_token
 from app.core.config import get_settings
-from app.core.db_context import reset_principal_context, set_principal_context
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +43,8 @@ class Principal(TypedDict):
 
     Attributes:
         user_id: Effective Telegram user id.  Single source for all per-user
-            scoping.  The RLS ``after_begin`` event reads this via contextvar.
+            scoping.  Wired into the RLS GUC via ``session.info`` in
+            ``get_db_for_principal`` (GYM-37 session.info approach).
         role: Either ``"user"`` or ``"admin"``.  Service-impersonated callers
             always receive ``"user"`` regardless of any claim in the request.
     """
@@ -51,14 +58,10 @@ def get_principal(
     x_service_token: Optional[str] = Header(None, alias="X-Service-Token"),
     x_act_as_user: Optional[str] = Header(None, alias="X-Act-As-User"),
 ) -> Generator[Principal, None, None]:
-    """Resolve the effective principal for a request and set RLS GUC context.
+    """Resolve the effective principal for a request.
 
-    Yield-based dependency: sets ``current_user_id`` / ``current_role``
-    contextvars on entry (so the SQLAlchemy ``after_begin`` event picks them
-    up) and resets them in a ``finally`` block to avoid stale state on pooled
-    threads.
-
-    Tries the service-token path first; falls back to JWT Bearer.
+    Yield-based dependency.  Tries the service-token path first; falls back
+    to JWT Bearer.
 
     Service-token path (bot impersonation):
         - ``X-Service-Token`` must match ``settings.BOT_SERVICE_TOKEN``
@@ -70,6 +73,13 @@ def get_principal(
     JWT Bearer path (Mini App / web):
         - ``Authorization: Bearer <token>`` is verified with the JWT secret.
         - Role is taken from the ``role`` claim inside the token.
+
+    RLS GUC context:
+        GUC injection is done by ``get_db_for_principal`` (which depends on
+        this dep) via ``session.info`` — NOT by contextvars.  This avoids the
+        threadpool-propagation issue where a contextvar set in the dep's
+        threadpool call is not visible in the endpoint body's threadpool call
+        (proved by GYM-37 integration tests).
 
     Args:
         authorization: ``Authorization`` header value (optional).
@@ -87,11 +97,10 @@ def get_principal(
     """
     settings = get_settings()
     principal = _resolve_principal(settings, authorization, x_service_token, x_act_as_user)
-    tokens = set_principal_context(principal["user_id"], principal["role"])
-    try:
-        yield principal
-    finally:
-        reset_principal_context(*tokens)
+    yield principal
+    # Reason: no contextvar reset needed — RLS state lives on session.info
+    # (discarded when the Session closes).  The yield boundary still properly
+    # scopes the dependency lifetime for FastAPI's exit-stack teardown.
 
 
 def _resolve_principal(
@@ -163,26 +172,28 @@ def _resolve_principal(
 
 
 # ---------------------------------------------------------------------------
-# Legacy / admin dependencies — kept for backward compatibility.
-# Admin endpoints use require_admin; they are NOT reachable via service token.
+# Legacy / admin dependencies (H1 fix: now yield-based — GYM-37)
+#
+# These dependencies are yield-based so FastAPI's exit-stack properly brackets
+# their lifetime.  No contextvar manipulation is done here — RLS state lives
+# on session.info (set by get_db_for_admin / get_db_for_principal) and is
+# discarded when the Session closes.  Making them yield-based guarantees no
+# stale principal can persist on a reused worker thread between requests.
 # ---------------------------------------------------------------------------
 
 
-def get_current_user(authorization: str = Header(None)) -> dict:
+def get_current_user(
+    authorization: str = Header(None),
+) -> Generator[dict, None, None]:
     """Extract and verify user from Authorization Bearer header.
 
-    Also sets the RLS GUC context as role='user' with the resolved user_id so
-    that legacy endpoints (``/user/*``) benefit from the RLS wiring too.
-
-    Note: this is NOT a yield dependency, so the contextvar reset happens
-    immediately after the dep returns.  The GUC is set at the start of the
-    DB transaction (``after_begin``), which fires after the dependency runs but
-    before the route body executes — so the value is read correctly.
+    Yield-based (H1 fix): the dependency lifetime is properly scoped to the
+    request.  No contextvar mutation — RLS context is set via session.info.
 
     Args:
         authorization: Authorization header value.
 
-    Returns:
+    Yields:
         Decoded JWT claims dict.
 
     Raises:
@@ -197,71 +208,102 @@ def get_current_user(authorization: str = Header(None)) -> dict:
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # Set GUC context for legacy routes; role from the token claim.
-    try:
-        uid = int(user_data["sub"])
-    except (KeyError, TypeError, ValueError):
-        uid = None
-    role = user_data.get("role", "user")
-    set_principal_context(uid, role)
-    # Reason: we do not reset here because the contextvar is thread-local via
-    # contextvars and will be overwritten on the next request in the same thread.
-    # For legacy endpoints this is acceptable; get_principal (yield) is the
-    # preferred pattern for new routes.
-
-    return user_data
+    yield user_data
+    # Reason: finally block is implicit in generator deps; no state to reset
+    # since RLS GUC lives on session.info (discarded at session.close()).
 
 
 def require_role(required_role: str):
     """Return a dependency that enforces a specific role.
 
-    Sets the RLS GUC context with the resolved role so admin-gated routes
-    see all rows via the ``app.role = 'admin'`` branch in the RLS policy.
+    The returned dependency is yield-based (H1 fix) — it brackets the full
+    request lifetime, guaranteeing no stale principal on a pooled thread.
+
+    RLS context for admin routes is set via ``get_db_for_admin`` (session.info)
+    rather than here.
 
     Args:
         required_role: Required role string (``"admin"`` or ``"user"``).
 
     Returns:
-        FastAPI dependency function that yields the user dict when authorized.
+        FastAPI generator dependency that yields the user dict when authorized.
     """
 
-    def role_checker(authorization: str = Header(None)) -> dict:
-        user = get_current_user(authorization)
+    def role_checker(authorization: str = Header(None)) -> Generator[dict, None, None]:
+        """Check role and yield JWT claims.
 
-        if user.get("role") != required_role:
+        Args:
+            authorization: Authorization header value.
+
+        Yields:
+            Decoded JWT claims dict.
+
+        Raises:
+            HTTPException 401: Token missing or invalid.
+            HTTPException 403: Role does not match required_role.
+        """
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        token = authorization.replace("Bearer ", "")
+        user_data = verify_session_token(token)
+
+        if not user_data:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        if user_data.get("role") != required_role:
             raise HTTPException(
                 status_code=403,
                 detail=f"Access denied. Required role: {required_role}",
             )
 
-        return user
+        yield user_data
+        # Reason: no state to reset; RLS lives on session.info per GYM-37.
 
     return role_checker
 
 
-def require_admin(authorization: str = Header(None)) -> dict:
+def require_admin(authorization: str = Header(None)) -> Generator[dict, None, None]:
     """Require an admin-role JWT.  Not reachable via service token.
 
-    Sets ``current_role = 'admin'`` in the contextvar so the SQLAlchemy
-    ``after_begin`` event injects ``app.role = 'admin'`` into the GUC and the
-    RLS policy's admin branch allows cross-user reads.
+    Yield-based (H1 fix).  RLS admin context (``app.role='admin'``) is injected
+    via ``get_db_for_admin`` (session.info), not here.
 
     Args:
         authorization: Authorization header value.
 
-    Returns:
+    Yields:
         Decoded JWT claims for the admin user.
+
+    Raises:
+        HTTPException 401: Token missing or invalid.
+        HTTPException 403: Role is not 'admin'.
     """
-    return require_role("admin")(authorization)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = authorization.replace("Bearer ", "")
+    user_data = verify_session_token(token)
+
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    if user_data.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Access denied. Required role: admin")
+
+    yield user_data
+    # Reason: no state to reset; RLS lives on session.info per GYM-37.
 
 
-def require_user(authorization: str = Header(None)) -> dict:
+def require_user(authorization: str = Header(None)) -> Generator[dict, None, None]:
     """Require any authenticated user JWT (legacy; prefer get_principal).
 
+    Yield-based (H1 fix).
+
     Args:
         authorization: Authorization header value.
 
-    Returns:
+    Yields:
         Decoded JWT claims.
     """
-    return get_current_user(authorization)
+    yield from get_current_user(authorization)

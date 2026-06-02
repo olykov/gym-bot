@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
-from app.core.database import get_db
+from app.core.database import get_db_for_admin, get_db_for_user
 from app.models import models
 from app.schemas import schemas
 from app.middleware.permissions import get_current_user, require_admin
@@ -194,7 +194,7 @@ class TrainingUpdate(BaseModel):
 
 @router.get("/user/muscles")
 def get_user_muscles(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_user),
     current_user: dict = Depends(get_current_user),
 ):
     """Get muscles visible to the current user (legacy path).
@@ -215,7 +215,7 @@ def get_user_muscles(
 @router.get("/user/exercises")
 def get_user_exercises(
     muscle_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_user),
     current_user: dict = Depends(get_current_user),
 ):
     """Get exercises for a muscle visible to the current user (legacy path).
@@ -237,7 +237,7 @@ def get_user_exercises(
 @router.post("/user/training")
 def create_user_training(
     training: TrainingCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_user),
     current_user: dict = Depends(get_current_user),
 ):
     """Create a new training record for the current user.
@@ -289,7 +289,7 @@ def create_user_training(
 def update_user_training(
     training_id: str,
     training: TrainingUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_user),
     current_user: dict = Depends(get_current_user),
 ):
     """Update weight and reps of an existing training record.
@@ -335,7 +335,7 @@ admin_router = APIRouter(tags=["admin"])
 def admin_read_muscles(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_admin),
     current_user: dict = Depends(require_admin),
 ):
     """List all muscle groups (admin only).
@@ -355,7 +355,7 @@ def admin_read_muscles(
 @admin_router.post("/muscles", response_model=schemas.Muscle)
 def admin_create_muscle(
     muscle: schemas.MuscleCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_admin),
     current_user: dict = Depends(require_admin),
 ):
     """Create a new muscle group (admin only).
@@ -383,7 +383,7 @@ def admin_create_muscle(
 def admin_update_muscle(
     muscle_id: int,
     muscle: schemas.MuscleCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_admin),
     current_user: dict = Depends(require_admin),
 ):
     """Update an existing muscle group (admin only).
@@ -417,7 +417,7 @@ def admin_update_muscle(
 def admin_read_exercises(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_admin),
     current_user: dict = Depends(require_admin),
 ):
     """List all exercises (admin only).
@@ -437,7 +437,7 @@ def admin_read_exercises(
 @admin_router.post("/exercises", response_model=schemas.Exercise)
 def admin_create_exercise(
     exercise: schemas.ExerciseCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_admin),
     current_user: dict = Depends(require_admin),
 ):
     """Create a new exercise (admin only).
@@ -468,7 +468,7 @@ def admin_create_exercise(
 def admin_update_exercise(
     exercise_id: int,
     exercise: schemas.ExerciseCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_admin),
     current_user: dict = Depends(require_admin),
 ):
     """Update an existing exercise (admin only).
@@ -506,7 +506,7 @@ def admin_update_exercise(
 def admin_read_training(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_admin),
     current_user: dict = Depends(require_admin),
 ):
     """List all training records across all users (admin only).

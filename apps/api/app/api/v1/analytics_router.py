@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
@@ -38,7 +38,7 @@ def get_completed_sets(
     exercise: str,
     date: date,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.CompletedSets:
     """Return set numbers already recorded for an exercise on a given date.
 
@@ -83,7 +83,7 @@ def get_training_history(
     muscle: str,
     exercise: str,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.TrainingHistoryEntry]:
     """Return training history for an exercise, excluding today.
 
@@ -137,7 +137,7 @@ def get_personal_record(
     muscle: str,
     exercise: str,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> Optional[schemas.PersonalRecord]:
     """Return the personal record (max weight) for an exercise.
 
@@ -191,7 +191,7 @@ def get_max_reps_for_weight(
     exercise: str,
     weight: float,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.MaxReps:
     """Return the maximum reps ever performed at a given weight.
 
@@ -234,7 +234,7 @@ def get_top_exercises(
     muscle: str,
     limit: int = 5,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.TopExercise]:
     """Return the most frequently used exercises for a muscle.
 

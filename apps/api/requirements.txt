@@ -6,3 +6,8 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
 python-dotenv>=1.0.0
+# GYM-37: pin transitive deps that FastAPI 0.104.1 resolves; RLS session.info
+# wiring was validated on this exact stack.  Changing these versions requires
+# re-running apps/api/tests/test_rls_endpoints.py to verify propagation.
+anyio==3.7.1
+starlette==0.27.0

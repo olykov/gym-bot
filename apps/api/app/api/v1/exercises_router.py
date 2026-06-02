@@ -13,7 +13,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
@@ -32,7 +32,7 @@ router = APIRouter()
 def list_exercises_by_muscle(
     muscle_id: int,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.Exercise]:
     """List exercises for a muscle visible to the authenticated user.
 
@@ -57,7 +57,7 @@ def list_exercises_by_muscle(
 def create_exercise(
     body: schemas.ExerciseCreateByName,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> schemas.Exercise:
     """Add a private exercise for the authenticated user.
 
@@ -123,7 +123,7 @@ def create_exercise(
 def hide_exercise(
     exercise_id: int,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> None:
     """Hide a global exercise for the authenticated user.
 
@@ -167,7 +167,7 @@ def hide_exercise(
 def unhide_exercise(
     exercise_id: int,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> None:
     """Unhide a previously hidden global exercise.
 
@@ -195,7 +195,7 @@ def unhide_exercise(
 def delete_private_exercise(
     exercise_id: int,
     principal: Principal = Depends(get_principal),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_for_principal),
 ) -> None:
     """Delete a private exercise owned by the authenticated user.
 

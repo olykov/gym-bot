@@ -1,16 +1,20 @@
-"""Per-request DB principal context for RLS GUC injection.
+"""Per-request DB principal context — used by GYM-36 test fixtures only.
 
-Holds the active principal for the current request in ``contextvars`` so that
-the SQLAlchemy ``after_begin`` event can read them without threading the
-principal through every call-site.
+NOTE (GYM-37): The production API no longer uses these contextvars to inject
+RLS GUCs.  The ``after_begin`` event in ``app.core.database`` now reads from
+``session.info`` (populated by ``get_db``), which is shared by reference
+across threadpool calls and avoids the contextvar-propagation issue.
 
-Design decisions:
+These symbols are kept because ``tests/conftest.py`` uses them for the direct
+DB session tests (GYM-36 ``rls_session``), where there is no FastAPI threadpool
+hop and contextvar-based wiring works correctly.
+
+Design:
 - Both vars default to the empty string ``''``.  The RLS policy uses
   ``nullif(current_setting('app.user_id', true), '')::bigint``, so an unset /
   empty GUC produces NULL which matches no row → fail-closed.
 - ``set_principal_context`` returns the reset tokens so callers can restore
-  the previous state in a ``finally`` block (important for FastAPI deps that
-  run in a thread pool where the same thread may serve consecutive requests).
+  the previous state in a ``finally`` block.
 """
 import contextvars
 import logging
