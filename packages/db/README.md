@@ -11,11 +11,14 @@ packages/db/
   init.sql                         # Docker container bootstrap (fresh volume only)
   migrations/                      # legacy raw-SQL migrations (pre-Alembic; e.g. GYM-4 indexes)
   alembic.ini                      # Alembic config; URL comes from the env, not this file
+  bootstrap/
+    create_app_role.sql            # idempotent app_rw role creation (infra/GYM-34; not a migration)
   alembic/
     env.py                         # resolves DATABASE_URL / DB_* from the environment
     script.py.mako                 # migration template
     versions/
       0001_baseline.py             # baseline = exactly today's production schema
+      0002_rls.py                  # RLS helpers, policies on the 6 base tables, GRANTs to app_rw
   requirements.txt                 # alembic + psycopg2-binary
 ```
 
@@ -89,3 +92,66 @@ Edit the generated file's `upgrade()` / `downgrade()` with explicit,
 parameterized DDL. State backward compatibility and the data-migration / rollback
 plan in the docstring. Destructive changes (drop / rename / type-narrowing)
 require an approved plan and a rollback note before authoring.
+
+## Row-Level Security (RLS) — GYM-32
+
+RLS is DB-enforced, fail-closed per-user isolation (`0002_rls.py`). The API
+connects as the non-superuser role **`app_rw`** (`NOSUPERUSER NOBYPASSRLS`) and
+sets two GUCs per transaction with `SET LOCAL`:
+
+- `app.user_id` — bigint (as text); the owner key.
+- `app.role`    — `'user'` or `'admin'`; admin bypasses the owner check.
+
+Policies read context fail-closed (unset/empty → NULL → no row matches):
+
+```sql
+nullif(current_setting('app.user_id', true), '')::bigint
+-- admin branch appended to every policy:
+OR current_setting('app.role', true) = 'admin'
+```
+
+> RLS is ignored by superusers and `BYPASSRLS` roles. The legacy `myuser`
+> superuser still bypasses RLS — keep it for migrations/ops only; the app
+> **must** run as `app_rw`.
+
+### Convention for a NEW user-owned table
+
+Every new user-owned table gets:
+
+1. `user_id BIGINT NOT NULL REFERENCES users(id)`,
+2. a composite index leading with `user_id`, e.g. `(user_id, created_at)`, and
+3. one RLS line in the migration:
+
+```python
+op.execute("SELECT enable_user_rls('your_table', 'user_id')")
+```
+
+Catalog tables (an `is_global` + `created_by` shared dictionary) use instead:
+
+```python
+op.execute("SELECT enable_catalog_rls('your_table')")
+```
+
+`enable_user_rls(table, owner_col)` and `enable_catalog_rls(table)` are
+re-runnable PL/pgSQL helpers installed by `0002_rls`. They ENABLE + FORCE RLS
+and create the four PERMISSIVE CRUD policies (drop-if-exists first, so safe to
+re-run). `app_rw` already holds CRUD + sequence grants, and
+`ALTER DEFAULT PRIVILEGES` (set in `0002_rls`) extends them to future tables —
+so no extra GRANT is needed for a new table.
+
+### Role bootstrap (infra / GYM-34)
+
+`app_rw` is created OUTSIDE Alembic (roles are cluster-global, password is a
+secret) by `bootstrap/create_app_role.sql`, idempotently, password via the psql
+variable `app_pw`:
+
+```bash
+psql "$ADMIN_DATABASE_URL" -v app_pw="$APP_DB_PASSWORD" \
+     -f packages/db/bootstrap/create_app_role.sql
+```
+
+Run order on a DB: bootstrap (create `app_rw`) → `alembic stamp 0001_baseline`
+(existing prod) or `alembic upgrade head` (fresh) → app connects as `app_rw`.
+The `0002_rls` GRANTs are guarded: if `app_rw` does not exist yet the migration
+still succeeds (it raises a NOTICE and skips the grants) so dev DBs work without
+the role.
