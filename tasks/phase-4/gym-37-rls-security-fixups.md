@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-37
 title: "RLS security fixups: reset legacy auth context, pin deps, prove propagation"
 slug: gym-37-rls-security-fixups
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [phase-4, security, api]

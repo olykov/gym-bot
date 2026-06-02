@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-33
 title: "API: connect as app_rw, set GUC context per transaction"
 slug: gym-33-api-app-role-context
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-4, api]

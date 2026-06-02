@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-11
 title: "Phase 4: Postgres Row-Level Security"
 slug: gym-11-postgres-rls
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [phase-4, security, db]
@@ -13,11 +13,11 @@ reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-06-02T00:00:00Z
 finish_date: null
-updated: 2026-06-02T00:00:00Z
+updated: 2026-06-02T04:00:00Z
 epic: roadmap
 depends_on: [GYM-10]
 blocks: []
-related: [GYM-32, GYM-33, GYM-34, GYM-35, GYM-36, GYM-13]
+related: [GYM-32, GYM-33, GYM-34, GYM-35, GYM-36, GYM-37, GYM-13]
 commits: []
 tests:
   - apps/api/tests/conftest.py
@@ -78,15 +78,16 @@ migration. Convention documented in docs/ARCHITECTURE.md + packages/db/README:
 `user_id BIGINT NOT NULL REFERENCES users(id)` + index `(user_id, <hot_col>)` + the helper.
 
 ### Acceptance criteria
-- [ ] API connects as `app_rw` (`rolsuper=f, rolbypassrls=f`); `myuser` not used at runtime.
-- [ ] All 6 tables: ENABLE + FORCE RLS + policies on SELECT/INSERT/UPDATE/DELETE.
-- [ ] Integration test: user A sees/changes 0 rows of user B (training, custom muscles/exercises,
+- [x] API connects as `app_rw` (`rolsuper=f, rolbypassrls=f`); `myuser` not used at runtime.
+- [x] All 6 tables: ENABLE + FORCE RLS + policies on SELECT/INSERT/UPDATE/DELETE.
+- [x] Integration test: user A sees/changes 0 rows of user B (training, custom muscles/exercises,
       hidden, profile).
-- [ ] No-context request returns 0 rows (fail-closed proven by test).
-- [ ] Admin JWT sees all; service token never admin.
-- [ ] Catalog: user sees `is_global`, can only modify own (`created_by = me`).
-- [ ] `enable_user_rls()` / `enable_catalog_rls()` exist; a demo table is covered by one line.
-- [ ] Validated on a backup-seeded copy of prod before deploy; rollback exists.
+- [x] No-context request returns 0 rows (fail-closed proven by test).
+- [x] Admin JWT sees all; service token never admin.
+- [x] Catalog: user sees `is_global`, can only modify own (`created_by = me`).
+- [x] `enable_user_rls()` / `enable_catalog_rls()` exist; a demo table is covered by one line.
+- [~] Validated on a backup-seeded copy of prod before deploy; rollback exists. (validated on
+      ephemeral seeded DB + rollback documented; live prod-backup validation = operator cutover step)
 
 ### Prod facts (grounding, 2026-06-02)
 App role `myuser` = `rolsuper=t, rolbypassrls=t`. Tables: `user_id` on training + hidden_*;
@@ -115,3 +116,22 @@ role swap to `app_rw` is the crux, not the policies. Decomposed into GYM-32..36;
 project subagents in background on branch phase-4/rls. NOT pushed/deployed until operator signs
 off (backups exist: S3 + /opt/gymbot-pg-backup-01062026.zip). Built and validated on a
 backup-seeded local DB first.
+
+### 2026-06-02T04:00:00Z — code complete + validated, status review (awaiting operator cutover)
+All sub-tasks done on branch phase-4/rls: GYM-32 (0002_rls migration + helpers + app_rw bootstrap,
+aaf8f67), GYM-33 (API as app_rw + GUC context, fc31469), GYM-34 (infra env/role/runbook, 26d0faf),
+GYM-35 (security review SAFE WITH FIXUPS, 666bf8e), GYM-36 (32 isolation tests, 380ecdd), GYM-37
+(security fixups, 594978a). Critical catch: the contextvar+after_begin approach was BROKEN for the
+app's SYNC endpoints — FastAPI runs deps and the endpoint body in separate threadpool contextvar
+copies, so the GUC never reached the endpoint's session → would have shipped a fail-closed app
+(0 rows for every user). Fixed by sourcing the GUC from `session.info` (shared on the Session
+object), proven by 15 HTTP-level TestClient tests. Full suite: 47 passed (32 session-level + 15
+HTTP-level), re-run independently. Acceptance criteria all met EXCEPT the final one — validation on
+an actual prod-backup copy and the live cutover — which is the operator step.
+
+Kept in REVIEW (not done): NOT merged/deployed. Operator cutover (see packages/db/RUNBOOK.md):
+(1) set APP_DB_PASSWORD secret; (2) merge phase-4/rls -> main (deploy creates app_rw, idempotent);
+(3) ONE-TIME on prod: `cd packages/db && alembic stamp 0001_baseline`; (4) pre-deploy data guard:
+assert 0 rows `is_global AND created_by IS NOT NULL` in muscles/exercises; (5) `alembic upgrade head`
+(as myuser); (6) Telegram smoke. Rollback: `alembic downgrade -1` + revert API to myuser. Flip to
+done after prod smoke confirms per-user isolation live.

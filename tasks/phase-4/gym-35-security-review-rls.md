@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-35
 title: "Security review: RLS isolation end-to-end"
 slug: gym-35-security-review-rls
-status: review
+status: done
 priority: high
 type: research
 labels: [phase-4, security]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-02T00:00:00Z
 start_date: 2026-06-02T03:10:00Z
-finish_date: null
-updated: 2026-06-02T03:20:00Z
+finish_date: 2026-06-02T04:00:00Z
+updated: 2026-06-02T04:00:00Z
 epic: phase-4
 depends_on: [GYM-32, GYM-33]
 blocks: []
 related: [GYM-11, GYM-37]
-commits: []
+commits: [666bf8e]
 tests: []
 design_reports: []
 review_reports: [docs/reviews/2026-06-02-rls-security-review.md]
@@ -41,7 +41,7 @@ RLS is security-critical; a gap = silent cross-tenant leak. Independent read-onl
 - Verify catalog write policy keeps global rows admin-only.
 
 ## Acceptance criteria
-- [ ] Written review report; no critical/high findings open.
+- [x] Written review report; no critical/high findings open (HIGH H1/H2 closed by GYM-37).
 
 ## Comments
 

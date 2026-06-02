@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-36
 title: "Tests: cross-tenant RLS isolation integration suite"
 slug: gym-36-rls-isolation-tests
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-4, tests]

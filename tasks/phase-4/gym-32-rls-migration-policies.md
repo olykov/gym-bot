@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-32
 title: "DB: 0002_rls migration — helpers, policies, GRANTs, role bootstrap"
 slug: gym-32-rls-migration-policies
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-4, db]

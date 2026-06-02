@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-34
 title: "Infra: app_rw env/secrets, role creation in deploy, alembic stamp runbook"
 slug: gym-34-infra-app-role-env
-status: review
+status: done
 priority: high
 type: chore
 labels: [phase-4, infra]
