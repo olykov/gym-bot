@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-34
 title: "Infra: app_rw env/secrets, role creation in deploy, alembic stamp runbook"
 slug: gym-34-infra-app-role-env
-status: todo
+status: review
 priority: high
 type: chore
 labels: [phase-4, infra]
@@ -11,14 +11,14 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-02T00:00:00Z
-start_date: null
-finish_date: null
+start_date: 2026-06-02T03:05:00Z
+finish_date: 2026-06-02T00:00:00Z
 updated: 2026-06-02T00:00:00Z
 epic: phase-4
 depends_on: [GYM-32]
 blocks: []
 related: [GYM-11]
-commits: []
+commits: [26d0faf]
 tests: []
 design_reports: []
 review_reports: []
@@ -51,3 +51,32 @@ on the host idempotently from a secret, and the one-time prod `alembic stamp` do
 
 ### 2026-06-02T00:00:00Z — task created
 Password is a secret — never committed; comes from env only.
+
+### 2026-06-02T00:00:00Z — implementation complete (26d0faf)
+
+Wired:
+- APP_DB_USER (default app_rw) + APP_DB_PASSWORD added to admin_backend in
+  docker-compose.yaml and docker-compose.local.yaml. Bot service and postgres
+  service are unchanged.
+- APP_DB_USER/APP_DB_PASSWORD added to ansible .env render in deploy.yaml
+  (APP_DB_USER uses Jinja default('app_rw', true)).
+- create_app_role.sql copied to host on every deploy; two new ansible tasks
+  after docker_compose_v2: (1) wait for pg_isready, (2) idempotent role bootstrap
+  via docker exec psql with no_log: true (password never in logs).
+- APP_DB_PASSWORD threaded through ci.yaml Run Ansible Playbook env block with
+  doc comment; operator must set it in GitHub Actions secrets.
+- packages/db/RUNBOOK.md created with full prod cutover order (a-e) and rollback.
+
+Validation:
+- docker compose -f docker-compose.yaml config: OK
+- docker compose -f docker-compose.local.yaml config: OK
+- ansible-playbook --syntax-check: exit 0
+
+Prod cutover order:
+(a) Operator sets APP_DB_PASSWORD in GitHub Actions secrets.
+(b) Deploy runs; Ansible bootstrap creates app_rw role (idempotent).
+(c) ONE-TIME on prod: cd packages/db && DATABASE_URL=<myuser url> alembic stamp 0001_baseline
+(d) Apply RLS: DATABASE_URL=<myuser url> alembic upgrade head
+(e) API (already deployed) connects as app_rw; RLS is enforced.
+Rollback: alembic downgrade -1 (drops policies), revert API to myuser by
+removing APP_DB_PASSWORD secret and redeploying pre-GYM-33 API.
