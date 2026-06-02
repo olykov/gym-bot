@@ -9,11 +9,20 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Gym Bot Admin"
     API_V1_STR: str = "/api/v1"
 
+    # Migration / ops DB credentials (superuser myuser, BYPASSRLS).
+    # Used ONLY by Alembic and ops tooling; never by the running API.
     DB_USER: str
     DB_PASSWORD: str
     DB_HOST: str
     DB_PORT: str
     DB_NAME: str
+
+    # Runtime DB credentials — the API connects as this role at request time.
+    # app_rw is NOSUPERUSER NOBYPASSRLS so RLS policies apply.
+    # APP_DB_USER defaults to "app_rw" (the fixed name from GYM-32).
+    APP_DB_USER: str = "app_rw"
+    # APP_DB_PASSWORD is required; fail fast if unset (same pattern as JWT_SECRET).
+    APP_DB_PASSWORD: str
 
     # Auth secrets — required; no defaults to prevent insecure deployments.
     JWT_SECRET: str
@@ -39,7 +48,14 @@ class Settings(BaseSettings):
         """Parse CORS_ALLOW_ORIGINS into a list of origin strings."""
         return [o.strip() for o in self.CORS_ALLOW_ORIGINS.split(",") if o.strip()]
 
-    @field_validator("JWT_SECRET", "ADMIN_USER", "ADMIN_PASSWORD", "BOT_SERVICE_TOKEN", mode="before")
+    @field_validator(
+        "JWT_SECRET",
+        "ADMIN_USER",
+        "ADMIN_PASSWORD",
+        "BOT_SERVICE_TOKEN",
+        "APP_DB_PASSWORD",
+        mode="before",
+    )
     @classmethod
     def must_not_be_empty(cls, v: str, info: object) -> str:
         """Fail fast if a required secret env var is empty or unset."""
@@ -50,8 +66,25 @@ class Settings(BaseSettings):
 
     @property
     def DATABASE_URL(self) -> str:
+        """Migration / ops URL connecting as the superuser (myuser, BYPASSRLS).
+
+        Do NOT use this URL in request handlers — it bypasses RLS.
+        Use ``APP_DATABASE_URL`` for runtime queries.
+        """
         return (
             f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}"
+            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        )
+
+    @property
+    def APP_DATABASE_URL(self) -> str:
+        """Runtime URL connecting as app_rw (NOSUPERUSER, NOBYPASSRLS).
+
+        This is the URL used by the API engine for all request-time queries.
+        RLS policies apply to this connection.
+        """
+        return (
+            f"postgresql://{self.APP_DB_USER}:{self.APP_DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 

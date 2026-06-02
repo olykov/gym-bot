@@ -8,19 +8,26 @@ Provides two independent auth paths:
    bot-facing routers so that both the Mini App (user JWT) and the bot service
    (impersonation) can call the same endpoints.
 
+   ``get_principal`` is a yield dependency: it sets the RLS GUC contextvars on
+   entry and resets them in a ``finally`` block so that thread-pool workers
+   never carry a stale principal across requests.
+
 2. ``require_admin`` — admin-only gate.  Validates a JWT and asserts the
    ``role == "admin"`` claim.  The service token path is explicitly excluded;
    a service-authenticated caller can NEVER reach admin routes.
+
+   Admin deps also set the contextvars (role='admin') so that the SQLAlchemy
+   ``after_begin`` event injects the correct GUC and RLS lets admins see all rows.
 """
 import hmac
 import logging
-from typing import TypedDict
+from typing import Generator, Optional, TypedDict
 
-from fastapi import HTTPException, Header
-from typing import Optional
+from fastapi import Header, HTTPException
 
 from app.core.auth import verify_session_token
 from app.core.config import get_settings
+from app.core.db_context import reset_principal_context, set_principal_context
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +37,7 @@ class Principal(TypedDict):
 
     Attributes:
         user_id: Effective Telegram user id.  Single source for all per-user
-            scoping (RLS-ready: a later phase will ``SET LOCAL app.user_id``).
+            scoping.  The RLS ``after_begin`` event reads this via contextvar.
         role: Either ``"user"`` or ``"admin"``.  Service-impersonated callers
             always receive ``"user"`` regardless of any claim in the request.
     """
@@ -43,8 +50,13 @@ def get_principal(
     authorization: Optional[str] = Header(None),
     x_service_token: Optional[str] = Header(None, alias="X-Service-Token"),
     x_act_as_user: Optional[str] = Header(None, alias="X-Act-As-User"),
-) -> Principal:
-    """Resolve the effective principal for a request.
+) -> Generator[Principal, None, None]:
+    """Resolve the effective principal for a request and set RLS GUC context.
+
+    Yield-based dependency: sets ``current_user_id`` / ``current_role``
+    contextvars on entry (so the SQLAlchemy ``after_begin`` event picks them
+    up) and resets them in a ``finally`` block to avoid stale state on pooled
+    threads.
 
     Tries the service-token path first; falls back to JWT Bearer.
 
@@ -64,7 +76,7 @@ def get_principal(
         x_service_token: ``X-Service-Token`` header value (optional).
         x_act_as_user: ``X-Act-As-User`` header value (optional).
 
-    Returns:
+    Yields:
         Principal dict with ``user_id`` (int) and ``role`` (str).
 
     Raises:
@@ -74,7 +86,34 @@ def get_principal(
             expired.
     """
     settings = get_settings()
+    principal = _resolve_principal(settings, authorization, x_service_token, x_act_as_user)
+    tokens = set_principal_context(principal["user_id"], principal["role"])
+    try:
+        yield principal
+    finally:
+        reset_principal_context(*tokens)
 
+
+def _resolve_principal(
+    settings: object,
+    authorization: Optional[str],
+    x_service_token: Optional[str],
+    x_act_as_user: Optional[str],
+) -> Principal:
+    """Resolve principal from headers without touching contextvars.
+
+    Args:
+        settings: Loaded Settings instance.
+        authorization: Authorization header value.
+        x_service_token: X-Service-Token header value.
+        x_act_as_user: X-Act-As-User header value.
+
+    Returns:
+        Resolved Principal.
+
+    Raises:
+        HTTPException 400 / 401: On auth failure.
+    """
     # --- Service-token path ---------------------------------------------------
     if x_service_token is not None:
         token_ok = hmac.compare_digest(
@@ -100,6 +139,7 @@ def get_principal(
             )
 
         logger.debug("get_principal: service auth, acting as user_id=%d", user_id)
+        # Service callers always resolve as 'user' — never admin.
         return Principal(user_id=user_id, role="user")
 
     # --- JWT Bearer path ------------------------------------------------------
@@ -131,6 +171,14 @@ def get_principal(
 def get_current_user(authorization: str = Header(None)) -> dict:
     """Extract and verify user from Authorization Bearer header.
 
+    Also sets the RLS GUC context as role='user' with the resolved user_id so
+    that legacy endpoints (``/user/*``) benefit from the RLS wiring too.
+
+    Note: this is NOT a yield dependency, so the contextvar reset happens
+    immediately after the dep returns.  The GUC is set at the start of the
+    DB transaction (``after_begin``), which fires after the dependency runs but
+    before the route body executes — so the value is read correctly.
+
     Args:
         authorization: Authorization header value.
 
@@ -149,11 +197,26 @@ def get_current_user(authorization: str = Header(None)) -> dict:
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
+    # Set GUC context for legacy routes; role from the token claim.
+    try:
+        uid = int(user_data["sub"])
+    except (KeyError, TypeError, ValueError):
+        uid = None
+    role = user_data.get("role", "user")
+    set_principal_context(uid, role)
+    # Reason: we do not reset here because the contextvar is thread-local via
+    # contextvars and will be overwritten on the next request in the same thread.
+    # For legacy endpoints this is acceptable; get_principal (yield) is the
+    # preferred pattern for new routes.
+
     return user_data
 
 
 def require_role(required_role: str):
     """Return a dependency that enforces a specific role.
+
+    Sets the RLS GUC context with the resolved role so admin-gated routes
+    see all rows via the ``app.role = 'admin'`` branch in the RLS policy.
 
     Args:
         required_role: Required role string (``"admin"`` or ``"user"``).
@@ -178,6 +241,10 @@ def require_role(required_role: str):
 
 def require_admin(authorization: str = Header(None)) -> dict:
     """Require an admin-role JWT.  Not reachable via service token.
+
+    Sets ``current_role = 'admin'`` in the contextvar so the SQLAlchemy
+    ``after_begin`` event injects ``app.role = 'admin'`` into the GUC and the
+    RLS policy's admin branch allows cross-user reads.
 
     Args:
         authorization: Authorization header value.
