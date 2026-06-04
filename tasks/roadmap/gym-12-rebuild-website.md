@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-12
 title: "Phase 5: Client Telegram Mini App (apps/web) on the Core API"
 slug: gym-12-rebuild-website
-status: backlog
+status: review
 priority: medium
 type: feature
 labels: [phase-5, frontend]
@@ -11,13 +11,13 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
-start_date: null
+start_date: 2026-06-04T10:00:00Z
 finish_date: null
-updated: 2026-06-04T09:00:00Z
+updated: 2026-06-04T16:40:00Z
 epic: roadmap
 depends_on: [GYM-9, GYM-11]
 blocks: []
-related: [GYM-4, GYM-38, GYM-39, GYM-40, GYM-41, GYM-42, GYM-43]
+related: [GYM-4, GYM-38, GYM-39, GYM-40, GYM-41, GYM-42, GYM-43, GYM-44, GYM-45]
 commits: []
 tests: []
 design_reports: []

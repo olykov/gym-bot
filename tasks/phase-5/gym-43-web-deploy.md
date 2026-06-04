@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-43
 title: "Infra: apps/web Dockerfile + CI build + nginx route on gymbot.olykov.com"
 slug: gym-43-web-deploy
-status: review
+status: done
 priority: medium
 type: chore
 labels: [phase-5, infra]
