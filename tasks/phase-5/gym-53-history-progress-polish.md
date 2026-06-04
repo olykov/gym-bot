@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-53
 title: "apps/web polish: delete UX (MainButton overlap), chart axis, header border, scroll flash"
 slug: gym-53-history-progress-polish
-status: in_progress
+status: review
 priority: high
 type: bug-fix
 labels: [phase-5, frontend, design]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-04T22:00:00Z
 start_date: 2026-06-04T22:00:00Z
-finish_date: null
-updated: 2026-06-04T22:00:00Z
+finish_date: 2026-06-04T23:30:00Z
+updated: 2026-06-04T23:30:00Z
 epic: phase-5
 depends_on: [GYM-49]
 blocks: []
 related: [GYM-12, GYM-42]
-commits: []
+commits: [d11072ff3d71f20a6c970c5865f28b7d51cd2968]
 tests: []
 design_reports: []
 review_reports: []
@@ -59,3 +59,30 @@ Four visual/UX bugs found on the live Mini App (operator smoke):
 ### 2026-06-04T22:00:00Z — operator-reported, in progress
 Roots diagnosed by the orchestrator: MainButton overlap (#1), ECharts axis (#2), header border+scrim
 (#3), query-key change without keepPreviousData (#4).
+
+### 2026-06-04T23:30:00Z — frontend-design-engineer, fixed (commit d11072f), → review
+Invoked the `frontend-design` skill (Chalk & Iron) before the UI work, per the agent mandate.
+
+- **#1 Delete (MainButton overlap):** moved the delete affordance OUT of the sheet bottom strip into
+  the `SetEditor` HEADER row — a trash-icon + "Delete" accent text-button next to the exercise name /
+  Set N (accent used sparingly per §9.3). The two-step in-sheet confirm (Cancel / Delete) + warning
+  haptic now renders directly under the header, never in the MainButton zone; optimistic delete +
+  invalidation (`useDeleteSet`) unchanged. `BottomSheet` bottom inset raised to
+  `safe-area-inset-bottom + 56px` so the lowest field (Reps stepper) clears the MainButton strip
+  structurally. Swipe-to-delete on `<SetRow>` retained as a bonus.
+- **#2 Chart axis overlap:** replaced ECharts' default two-tier time-axis labels with a single
+  compact `DD MMM` `axisLabel.formatter` + `hideOverlap: true`, `margin: 10`, and `maxInterval` of
+  7d to thin the ticks — legible at 360px. §10.5 token theming (Sora, `--hint`/`--text`,
+  tabular-nums) preserved.
+- **#3 Header border:** removed `border-b border-hairline` from `AppHeader`; the `.header-scrim`
+  blur/gradient is now the only separator (no duplicate hard border in the CSS class). Verified the
+  scrim is theme-driven (light + dark) via `--bg`.
+- **#4 Scroll flash:** added `placeholderData: keepPreviousData` (TanStack v5) to the day-list
+  `useQuery`, so the previous window stays rendered while the wider window loads — no blank flash,
+  no layout jump; only the initial load (no prior data) shows skeletons. Guarded the
+  window-exhaustion effect in `History` with `isPlaceholderData` so keepPreviousData doesn't
+  prematurely mark the list exhausted on load-more.
+
+Build: `npm run build` (tsc + vite) PASSED — only the pre-existing >500KB chunk-size advisory.
+Needs a real Telegram device visual pass: the MainButton overlap is device-specific; the fix avoids
+it structurally (delete is in the header, not the bottom strip; +56px bottom inset on the sheet).
