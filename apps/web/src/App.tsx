@@ -18,6 +18,8 @@ import { AuthGate } from "@/auth/AuthGate";
 import { AppShell } from "@/components/shell/AppShell";
 import { Dashboard } from "@/pages/Dashboard";
 import { Progress } from "@/pages/Progress";
+import { History } from "@/pages/History";
+import { HistoryDay } from "@/pages/HistoryDay";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -38,6 +40,8 @@ const router = createBrowserRouter([
             { index: true, element: <Navigate to="/dashboard" replace /> },
             { path: "dashboard", element: <Dashboard /> },
             { path: "progress", element: <Progress /> },
+            { path: "history", element: <History /> },
+            { path: "history/:date", element: <HistoryDay /> },
             { path: "*", element: <Navigate to="/dashboard" replace /> },
         ],
     },

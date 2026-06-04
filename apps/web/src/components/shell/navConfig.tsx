@@ -42,5 +42,19 @@ export const NAV_TABS: NavTab[] = [
             </svg>
         ),
     },
+    {
+        to: "/history",
+        label: "History",
+        // A "log" mark: three short stacked horizontal bars over a baseline
+        // (spec §11.1) — distinct from Dashboard's grid and Progress's line.
+        icon: (active) => (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M5 6h11" stroke={stroke(active)} strokeWidth="2" strokeLinecap="round" />
+                <path d="M5 11h14" stroke={stroke(active)} strokeWidth="2" strokeLinecap="round" />
+                <path d="M5 16h9" stroke={stroke(active)} strokeWidth="2" strokeLinecap="round" />
+                <path d="M4 20h16" stroke={stroke(active)} strokeWidth="2" strokeLinecap="round" />
+            </svg>
+        ),
+    },
     // Reserved for the later iteration (spec §2): Distribution · Profile.
 ];

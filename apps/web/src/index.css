@@ -115,6 +115,38 @@
     animation-delay: var(--cell-delay, 0ms);
 }
 
+/* ---------------------------------------------------------------------------
+ * Bottom sheet (spec §11.4) — scrim fade + panel slide-up. Both gated by
+ * prefers-reduced-motion below (reduced = instant, no slide).
+ * ------------------------------------------------------------------------- */
+@keyframes sheet-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes sheet-rise {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+.sheet-scrim {
+    background: rgba(0, 0, 0, 0.45);
+    animation: sheet-fade 200ms var(--ease-out-soft) forwards;
+}
+
+.sheet-panel {
+    box-shadow: var(--shadow-card);
+    animation: sheet-rise 240ms var(--ease-out-soft) forwards;
+}
+
 /* Skeleton shimmer (spec §10.4). */
 @keyframes shimmer {
     0% {
@@ -164,6 +196,13 @@
     }
     .grain {
         display: none;
+    }
+    .sheet-scrim {
+        animation: none;
+        opacity: 1;
+    }
+    .sheet-panel {
+        animation: none;
     }
     * {
         scroll-behavior: auto !important;

@@ -14,9 +14,17 @@ import { AppHeader } from "./AppHeader";
 import { BottomNav } from "./BottomNav";
 import { Container } from "./Container";
 import { NAV_TABS } from "./navConfig";
+import { formatDayHeading } from "@/components/history/historyWindow";
 
-/** Resolve the header title for the current route from the nav config. */
+/**
+ * Resolve the header title for the current route. Tab routes use the nav label;
+ * the History day-detail (`/history/:date`) shows the day in Bebas (§11.3) while
+ * the bottom-nav stays on the History tab (a sub-route, not a separate page).
+ */
 function titleForPath(pathname: string): string {
+    const dayMatch = pathname.match(/^\/history\/(\d{4}-\d{2}-\d{2})$/);
+    if (dayMatch) return formatDayHeading(dayMatch[1]);
+
     const tab = NAV_TABS.find((t) => pathname.startsWith(t.to));
     return tab?.label ?? "Gym";
 }
