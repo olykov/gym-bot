@@ -1,4 +1,4 @@
-"""Analytics endpoints — GYM-22 / GYM-26 / GYM-39.
+"""Analytics endpoints — GYM-22 / GYM-26 / GYM-39 / GYM-56.
 
 All analytics reads are scoped by the authenticated user (derived from
 ``get_principal``), which accepts EITHER a user JWT OR service-token
@@ -14,6 +14,9 @@ GYM-39 additions (Mini App dashboard):
 - get_activity     — daily set counts for a date range, sargable on idx_training_user_date
 - get_summary      — 4 headline metrics (exercises, sets, prs, current_streak)
 - get_exercise_progress — per-set weight/reps series for ECharts
+
+GYM-56:
+- current_streak changed from consecutive days to consecutive Monday-start weeks (UTC).
 """
 import logging
 from collections import defaultdict
@@ -391,12 +394,15 @@ def get_analytics_summary(
             prior set for that exercise.  This produces a meaningfully different
             metric (prs <= sets, and typically prs < exercises for exercisers who
             have been training consistently with progressive overload).
-        current_streak: consecutive calendar days up to today (UTC) with >=1 set.
+        current_streak: consecutive Monday-start weeks (UTC) ending at the current
+            week, each containing >=1 training session (GYM-56).
             Reason: training timestamps are stored in UTC (Postgres TIMESTAMP WITHOUT
-            TIME ZONE, inserted as NOW() which the server interprets as UTC).  Using
-            UTC for streak calculation is consistent with the stored data.  A Georgia
-            (+4) timezone offset could be added later but would require either storing
-            TZ-aware timestamps or accepting an offset parameter — out of scope here.
+            TIME ZONE).  ``date_trunc('week', date)`` in Postgres is Monday-start,
+            consistent with the activity-grid convention.  The current week is
+            "forgiving": if it has no session yet (week in progress), the chain is
+            not broken — consecutive prior weeks are counted instead.  The chain
+            breaks only at a fully-elapsed week with zero sessions.  Per-user
+            timezone support (GYM-58) is out of scope here.
 
     Args:
         principal: Resolved identity from ``get_principal``.
@@ -454,21 +460,27 @@ def get_analytics_summary(
 
     prs = int(pr_row[0]) if pr_row else 0
 
-    # Streak: fetch all distinct active dates ordered DESC, count consecutive run
-    # ending at today (UTC).
+    # Streak (GYM-56): bucket training rows into Monday-start ISO weeks (UTC) and
+    # count consecutive weeks ending at the current week, each with >=1 session.
+    # Reason: date_trunc('week', date) in Postgres yields Monday 00:00 UTC for
+    # any timestamp in that week.  The WHERE clause stays a plain user_id filter
+    # so Postgres can use idx_training_user_date (user_id, date) for the scan;
+    # date_trunc appears only in GROUP BY / SELECT, never in WHERE — keeping the
+    # predicate sargable.
     today_utc = datetime.now(timezone.utc).date()
 
-    active_dates_rows = db.execute(
+    active_weeks_rows = db.execute(
         text("""
-            SELECT DISTINCT DATE(date) AS d
+            SELECT DATE_TRUNC('week', date)::date AS week_start
             FROM training
             WHERE user_id = :uid
-            ORDER BY d DESC
+            GROUP BY DATE_TRUNC('week', date)
+            ORDER BY week_start DESC
         """),
         {"uid": uid},
     ).fetchall()
 
-    streak = _compute_streak([r[0] for r in active_dates_rows], today_utc)
+    streak = _compute_streak_weeks([r[0] for r in active_weeks_rows], today_utc)
 
     result = schemas.AnalyticsSummary(
         exercises=exercises,
@@ -480,37 +492,73 @@ def get_analytics_summary(
     return result
 
 
-def _compute_streak(sorted_dates_desc: List[date], today: date) -> int:
-    """Compute the current consecutive-day training streak ending at today.
+def _monday_of_week(d: date) -> date:
+    """Return the Monday of the ISO week containing ``d``.
 
-    A streak is the number of consecutive calendar days ending on today (or
-    yesterday if today has no activity yet) with at least one training set.
+    Reason: Python's ``date.weekday()`` returns 0 for Monday, so subtracting
+    ``weekday()`` days always lands on the Monday of the same week.
 
     Args:
-        sorted_dates_desc: Distinct active dates, newest first.
-        today: The reference date (caller supplies so it can be injected in tests).
+        d: Any calendar date.
+
+    Returns:
+        The Monday (start) of the week containing ``d``.
+    """
+    return d - timedelta(days=d.weekday())
+
+
+def _compute_streak_weeks(sorted_week_starts_desc: List[date], today: date) -> int:
+    """Compute the current consecutive-week training streak (GYM-56).
+
+    Definition (Monday-start ISO weeks, UTC):
+    - Each week in the list has >=1 training session.
+    - Find the most recent week with a session.  If it is the current week
+      OR the immediately preceding week, begin counting consecutive weeks
+      backwards from there.  Otherwise return 0.
+    - Reason: the current week is "forgiving" — if no session has happened
+      yet this week (week still in progress), the chain is not broken.
+      The chain breaks only at a fully-elapsed week with zero sessions.
+
+    Sargability note: the SQL query that produces ``sorted_week_starts_desc``
+    applies date_trunc only in GROUP BY / SELECT; the WHERE is a plain
+    ``user_id = :uid`` filter so Postgres uses idx_training_user_date.
+
+    Args:
+        sorted_week_starts_desc: Distinct week-start (Monday) dates that contain
+            >=1 session, newest first.  Produced by the DATE_TRUNC('week', ...) query.
+        today: Reference date (caller-supplied so tests can inject a known date).
 
     Returns:
         Streak length as a non-negative integer.  Returns 0 when no activity.
     """
-    if not sorted_dates_desc:
+    if not sorted_week_starts_desc:
         return 0
 
-    # Convert to Python date objects if needed (psycopg2 may return datetime.date).
-    dates = [d if isinstance(d, date) else d.date() for d in sorted_dates_desc]
+    # Normalise: psycopg2 may return datetime.date already; coerce just in case.
+    weeks = [
+        w if isinstance(w, date) else (w.date() if hasattr(w, "date") else w)
+        for w in sorted_week_starts_desc
+    ]
 
-    # Streak starts only if today or yesterday has activity.
-    if dates[0] < today - timedelta(days=1):
+    current_week_start = _monday_of_week(today)
+    prev_week_start = current_week_start - timedelta(weeks=1)
+
+    most_recent = weeks[0]
+
+    # The chain is live only if the most-recent active week is the current week
+    # or the immediately preceding week (current week still in progress).
+    if most_recent < prev_week_start:
         return 0
 
+    # Walk backwards, counting consecutive weeks from most_recent.
     streak = 0
-    expected = dates[0]  # start from the most-recent active date
-    for d in dates:
-        if d == expected:
+    expected = most_recent
+    for w in weeks:
+        if w == expected:
             streak += 1
-            expected = expected - timedelta(days=1)
-        elif d < expected:
-            break  # gap found
+            expected = expected - timedelta(weeks=1)
+        elif w < expected:
+            break  # gap — non-consecutive week
     return streak
 
 

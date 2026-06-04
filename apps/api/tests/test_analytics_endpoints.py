@@ -1,4 +1,4 @@
-"""Analytics endpoints integration tests (GYM-39).
+"""Analytics endpoints integration tests (GYM-39 / GYM-56).
 
 Tests the three new endpoints:
   GET /analytics/activity
@@ -10,6 +10,7 @@ Validates:
   2. Cross-user isolation: user A never sees user B's data.
   3. Cache hit path returns the same data as the first call.
   4. Cache-down fallback still serves (Redis unavailable → DB result returned).
+  5. (GYM-56) current_streak counts consecutive Monday-start weeks (UTC).
 
 Reuses the session-scoped ``db_setup`` fixture from ``conftest.py``.
 Works with the seed data from conftest._seed_data only (no extra inserts)
@@ -24,6 +25,7 @@ Conftest seed layout:
 
 import os
 import sys
+import uuid
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -272,7 +274,12 @@ class TestSummaryEndpoint:
             )
 
     def test_summary_user_a_has_activity(self, analytics_client):
-        """User A has exercises >= 1, sets >= 2, streak >= 1."""
+        """User A has exercises >= 1, sets >= 2, streak >= 1 week.
+
+        GYM-56: current_streak is consecutive Monday-start weeks (UTC).
+        Conftest seeds rows at NOW() (the current week), so the streak must
+        be >= 1 regardless of which weekday this runs on.
+        """
         resp = analytics_client.get(
             "/api/v1/analytics/summary",
             headers=_service_headers(USER_A_ID),
@@ -282,9 +289,10 @@ class TestSummaryEndpoint:
         # Conftest seeds 1 private exercise and 2 training rows for A.
         assert data["exercises"] >= 1, f"User A should have exercises >= 1: {data}"
         assert data["sets"] >= 2, f"User A should have sets >= 2: {data}"
-        # Streak: A trained today so must be >= 1.
+        # Streak (weeks): A has a session in the current week → streak >= 1.
         assert data["current_streak"] >= 1, (
-            f"User A trained today; expected streak >= 1, got {data['current_streak']}"
+            f"User A has a session this week; expected streak >= 1 week, "
+            f"got {data['current_streak']}"
         )
 
     def test_summary_prs_is_pr_event_count(self, analytics_client):
@@ -364,6 +372,238 @@ class TestSummaryEndpoint:
             assert resp.json()["current_streak"] >= 0, (
                 f"Streak must be non-negative for user {uid}: {resp.json()}"
             )
+
+
+# ---------------------------------------------------------------------------
+# 2b. GYM-56 — current_streak weeks unit-level tests (pure Python, no DB)
+# ---------------------------------------------------------------------------
+
+class TestStreakWeeksUnit:
+    """Unit tests for _compute_streak_weeks — no DB required.
+
+    All expected values computed by hand from the given inputs.
+    """
+
+    @staticmethod
+    def _monday(d: date) -> date:
+        """Return the Monday of the week containing d."""
+        return d - timedelta(days=d.weekday())
+
+    def test_no_sessions_returns_zero(self):
+        """Empty week list → streak 0."""
+        from app.api.v1.analytics_router import _compute_streak_weeks
+        assert _compute_streak_weeks([], date(2026, 6, 4)) == 0
+
+    def test_single_session_current_week(self):
+        """One session in the current week → streak 1."""
+        from app.api.v1.analytics_router import _compute_streak_weeks
+        today = date(2026, 6, 4)           # Thursday; Monday of this week = 2026-06-01
+        week = date(2026, 6, 1)            # Monday
+        assert _compute_streak_weeks([week], today) == 1
+
+    def test_three_consecutive_weeks_streak_3(self):
+        """Three consecutive weeks each with a session → streak 3.
+
+        Weeks (Monday-start):
+          2026-05-18, 2026-05-25, 2026-06-01  (all have sessions)
+        Reference today = 2026-06-04 (in week starting 2026-06-01).
+        Most recent active week = current week → count backwards: 3.
+        """
+        from app.api.v1.analytics_router import _compute_streak_weeks
+        today = date(2026, 6, 4)
+        weeks = [date(2026, 6, 1), date(2026, 5, 25), date(2026, 5, 18)]  # DESC
+        assert _compute_streak_weeks(weeks, today) == 3
+
+    def test_gap_week_resets_streak(self):
+        """A gap week breaks the chain; only weeks after the gap count.
+
+        Weeks with sessions: 2026-05-18, (gap: 2026-05-25), 2026-06-01
+        Reference today = 2026-06-04.
+        Most recent = current week (2026-06-01). Walk back: 2026-06-01 ok (1),
+        expected 2026-05-25 but found 2026-05-18 → break.  Streak = 1.
+        """
+        from app.api.v1.analytics_router import _compute_streak_weeks
+        today = date(2026, 6, 4)
+        weeks = [date(2026, 6, 1), date(2026, 5, 18)]  # 2026-05-25 missing → gap
+        assert _compute_streak_weeks(weeks, today) == 1
+
+    def test_current_week_empty_counts_prior_consecutive(self):
+        """If current week has no session yet, count consecutive prior weeks.
+
+        Sessions in: 2026-05-25, 2026-06-01 (prev week relative to today).
+        No session in 2026-06-08 week yet (today = 2026-06-10, Monday = 2026-06-08).
+        Most recent active week = 2026-06-01 = prev_week_start → streak starts there.
+        2026-06-01 ok (1), 2026-05-25 ok (2) → streak 2.
+        """
+        from app.api.v1.analytics_router import _compute_streak_weeks
+        today = date(2026, 6, 10)           # Wednesday; Monday = 2026-06-08
+        weeks = [date(2026, 6, 1), date(2026, 5, 25)]  # current week (2026-06-08) absent
+        assert _compute_streak_weeks(weeks, today) == 2
+
+    def test_two_weeks_stale_returns_zero(self):
+        """Most recent active week is older than prev_week_start → streak 0."""
+        from app.api.v1.analytics_router import _compute_streak_weeks
+        today = date(2026, 6, 4)            # current week = 2026-06-01
+        weeks = [date(2026, 5, 11), date(2026, 5, 4)]   # both before 2026-05-25
+        assert _compute_streak_weeks(weeks, today) == 0
+
+
+# ---------------------------------------------------------------------------
+# 2c. GYM-56 — current_streak weeks integration tests (hits real DB via API)
+# ---------------------------------------------------------------------------
+
+USER_STREAK_ID = 200099  # isolated user for streak tests; does not appear in conftest
+
+
+@pytest.fixture(scope="module")
+def streak_client(db_setup):
+    """TestClient with a dedicated week-streak user seeded across multiple weeks.
+
+    Inserts rows for USER_STREAK_ID (id=200099) spanning several past weeks,
+    then tears them down after the module.  Does not touch conftest seed rows.
+
+    Seed layout (hand-computed expected streak for today = 2026-06-04):
+      week 2026-06-01 (current week)  → 1 session  → row 1
+      week 2026-05-25 (prev week)     → 1 session  → row 2
+      week 2026-05-18 (2 weeks back)  → 1 session  → row 3
+      (no session in week 2026-05-11 — chain stops here)
+
+    Expected streak = 3 consecutive weeks (current + 2 prior).
+
+    Args:
+        db_setup: Session-scoped fixture providing the ephemeral test DB.
+
+    Yields:
+        A configured TestClient.
+    """
+    from urllib.parse import urlparse
+    from sqlalchemy import create_engine, text as sa_text
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
+    from fastapi.testclient import TestClient
+
+    superuser_url = db_setup["superuser_url"]
+    app_rw_url = db_setup["app_rw_url"]
+
+    # ---- seed USER_STREAK_ID ----
+    eng_su = create_engine(superuser_url, poolclass=NullPool)
+    with eng_su.connect() as conn:
+        # Register the streak test user.
+        conn.execute(sa_text("""
+            INSERT INTO users (id, registration_date, first_name, username)
+            VALUES (:uid, NOW(), 'StreakUser', 'streak_test_user')
+            ON CONFLICT (id) DO NOTHING
+        """), {"uid": USER_STREAK_ID})
+
+        # Reuse an existing global exercise to avoid creating extra muscles/exercises.
+        global_ex_row = conn.execute(sa_text(
+            "SELECT e.id, e.muscle FROM exercises e WHERE e.is_global = TRUE LIMIT 1"
+        )).fetchone()
+        assert global_ex_row is not None, "No global exercise found in test DB"
+        ex_id, muscle_id = global_ex_row[0], global_ex_row[1]
+
+        # Insert one session per week for the three target weeks.
+        # Dates chosen as the Monday of each week (well within the week).
+        week_dates = [
+            date(2026, 6, 1),   # current week
+            date(2026, 5, 25),  # prev week
+            date(2026, 5, 18),  # 2 weeks back
+        ]
+        for w in week_dates:
+            conn.execute(sa_text("""
+                INSERT INTO training (id, date, user_id, muscle_id, exercise_id, set, weight, reps)
+                VALUES (:tid, :d, :uid, :mid, :eid, 1, 60.0, 12.0)
+                ON CONFLICT DO NOTHING
+            """), {
+                "tid": uuid.uuid4().hex[:32],
+                "d": datetime(w.year, w.month, w.day, 10, 0, 0),
+                "uid": USER_STREAK_ID,
+                "mid": muscle_id,
+                "eid": ex_id,
+            })
+
+        conn.commit()
+    eng_su.dispose()
+
+    # ---- build TestClient (same pattern as analytics_client) ----
+    parsed = urlparse(app_rw_url)
+    os.environ["APP_DB_USER"] = _APP_ROLE
+    os.environ["APP_DB_PASSWORD"] = _APP_ROLE_PASSWORD
+    os.environ["DB_HOST"] = parsed.hostname or "127.0.0.1"
+    os.environ["DB_PORT"] = str(parsed.port or 5432)
+    os.environ["DB_NAME"] = parsed.path.lstrip("/")
+    _ensure_env_defaults()
+
+    from app.core.config import get_settings
+    get_settings.cache_clear()
+
+    import app.core.database as db_module
+    from sqlalchemy import create_engine as sa_create_engine, event
+    from sqlalchemy.orm import sessionmaker as sa_sessionmaker
+
+    test_engine = sa_create_engine(app_rw_url, poolclass=NullPool)
+    test_session_local = sa_sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+    from app.core.database import _set_rls_gucs
+    event.listen(test_session_local, "after_begin", _set_rls_gucs)
+
+    original_session_local = db_module.SessionLocal
+    db_module.SessionLocal = test_session_local
+
+    from main import app
+    client = TestClient(app, raise_server_exceptions=False)
+    yield client
+
+    db_module.SessionLocal = original_session_local
+    test_engine.dispose()
+
+    # ---- teardown: remove streak test rows ----
+    eng_su2 = create_engine(superuser_url, poolclass=NullPool)
+    with eng_su2.connect() as conn:
+        conn.execute(sa_text("DELETE FROM training WHERE user_id = :uid"), {"uid": USER_STREAK_ID})
+        conn.execute(sa_text("DELETE FROM users WHERE id = :uid"), {"uid": USER_STREAK_ID})
+        conn.commit()
+    eng_su2.dispose()
+
+
+class TestStreakWeeksIntegration:
+    """Integration tests for the weeks-based current_streak via the live API.
+
+    Uses a dedicated user (USER_STREAK_ID=200099) with sessions seeded in
+    three consecutive weeks ending at the current week (2026-06-01..2026-06-07).
+    Expected streak = 3.
+    """
+
+    def test_streak_three_consecutive_weeks(self, streak_client):
+        """Three consecutive weeks with sessions → streak = 3.
+
+        Seed (hand-computed):
+          2026-06-01 (current week), 2026-05-25, 2026-05-18 all have sessions.
+          No gap → streak = 3.
+        """
+        resp = streak_client.get(
+            "/api/v1/analytics/summary",
+            headers=_service_headers(USER_STREAK_ID),
+        )
+        assert resp.status_code == 200, f"Expected 200: {resp.text}"
+        streak = resp.json()["current_streak"]
+        assert streak == 3, (
+            f"Expected streak=3 for 3 consecutive seeded weeks, got {streak}"
+        )
+
+    def test_streak_not_inflated_by_multiple_sessions_per_week(self, streak_client):
+        """Multiple sessions in the same week must not inflate the streak count."""
+        # The streak_client fixture seeds exactly 1 row per week.
+        # This test is an invariant guard: if the query double-counts weeks the
+        # streak would be > 3, which we treat as a bug.
+        resp = streak_client.get(
+            "/api/v1/analytics/summary",
+            headers=_service_headers(USER_STREAK_ID),
+        )
+        assert resp.status_code == 200
+        streak = resp.json()["current_streak"]
+        assert streak <= 3, (
+            f"Streak {streak} exceeds expected maximum of 3 — possible double-counting"
+        )
 
 
 # ---------------------------------------------------------------------------

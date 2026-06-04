@@ -275,8 +275,8 @@ class AnalyticsSummary(BaseModel):
         exercises: Distinct exercises ever logged by this user.
         sets: Total sets recorded by this user.
         prs: Number of exercises for which a max-weight personal record exists.
-        current_streak: Consecutive calendar days up to today with at least one
-            training set recorded.
+        current_streak: Consecutive Monday-start weeks (UTC) ending at the
+            current week, each containing >=1 training session (GYM-56).
     """
 
     exercises: int
