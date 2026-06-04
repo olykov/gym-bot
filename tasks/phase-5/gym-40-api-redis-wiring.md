@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-40
 title: "Infra: REDIS_URL for admin_backend"
 slug: gym-40-api-redis-wiring
-status: review
+status: done
 priority: medium
 type: chore
 labels: [phase-5, infra]

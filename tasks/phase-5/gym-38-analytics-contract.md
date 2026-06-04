@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-38
 title: "Contract: 3 analytics endpoints in OpenAPI + regen clients"
 slug: gym-38-analytics-contract
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, api-contract]
