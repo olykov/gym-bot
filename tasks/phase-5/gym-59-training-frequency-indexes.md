@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-59
 title: "DB: composite indexes training(user_id,muscle_id) + (user_id,exercise_id)"
 slug: gym-59-training-frequency-indexes
-status: review
+status: done
 priority: low
 type: chore
 labels: [phase-5, db]

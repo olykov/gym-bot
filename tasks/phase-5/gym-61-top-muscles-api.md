@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-61
 title: "API: implement top-muscles (frequency); top-exercises returns all for a muscle"
 slug: gym-61-top-muscles-api
-status: backlog
+status: in_progress
 priority: medium
 type: feature
 labels: [phase-5, api]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-05T01:00:00Z
-start_date: null
+start_date: 2026-06-05T01:30:00Z
 finish_date: null
 updated: 2026-06-05T01:00:00Z
 epic: phase-5

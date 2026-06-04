@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-60
 title: "Contract: GET /analytics/top-muscles (muscles by my frequency) + regen clients"
 slug: gym-60-top-muscles-contract
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, api-contract]
