@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-63
 title: "apps/web: show reps in the Progress chart tooltip (weight × reps)"
 slug: gym-63-chart-tooltip-reps
-status: review
+status: done
 priority: low
 type: feature
 labels: [phase-5, frontend, design]
