@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-69
 title: "apps/web: record-training flow (sheet — pick + log set, pre-fill, auto-advance)"
 slug: gym-69-record-flow-build
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, frontend, design]

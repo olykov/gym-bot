@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-64
 title: "Record a training IN the Mini App (5-item nav + center + button + log flow)"
 slug: gym-64-record-training-miniapp
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [phase-5, frontend, design]
@@ -13,7 +13,7 @@ reporter: oleksii
 created: 2026-06-05T04:00:00Z
 start_date: 2026-06-05T04:00:00Z
 finish_date: null
-updated: 2026-06-05T04:00:00Z
+updated: 2026-06-05T07:30:00Z
 epic: phase-5
 depends_on: [GYM-41, GYM-49]
 blocks: []
