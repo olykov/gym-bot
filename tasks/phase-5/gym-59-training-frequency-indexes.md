@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-59
 title: "DB: composite indexes training(user_id,muscle_id) + (user_id,exercise_id)"
 slug: gym-59-training-frequency-indexes
-status: backlog
+status: review
 priority: low
 type: chore
 labels: [phase-5, db]
@@ -11,14 +11,14 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-05T01:00:00Z
-start_date: null
-finish_date: null
-updated: 2026-06-05T01:00:00Z
+start_date: 2026-06-05T01:05:00Z
+finish_date: 2026-06-04T00:00:00Z
+updated: 2026-06-04T00:00:00Z
 epic: phase-5
 depends_on: []
 blocks: []
 related: [GYM-12, GYM-61]
-commits: []
+commits: [5b489c1453e91f6e4aceb50d2e35edd16a2fdfff]
 tests: []
 design_reports: []
 review_reports: []
@@ -47,3 +47,17 @@ postgres:16 (chain off init.sql → stamp 0001 → upgrade head). Note: operator
 
 ### 2026-06-05T01:00:00Z — task created
 Perf/scale only; the frequency ORDER BY itself works without these.
+
+### 2026-06-04T00:00:00Z — implemented; review
+Migration `packages/db/alembic/versions/0003_training_frequency_indexes.py`
+(down_revision `0002_rls`): `op.create_index(..., if_not_exists=True)` for
+`idx_training_user_muscle (user_id, muscle_id)` and
+`idx_training_user_exercise (user_id, exercise_id)`; `downgrade()` drops both
+(`if_exists=True`). Plain btree (non-CONCURRENTLY) — small table, and
+CONCURRENTLY cannot run in Alembic's transaction.
+
+Validated on a throwaway postgres:16: load init.sql → `alembic stamp
+0001_baseline` → `alembic upgrade head`. After upgrade `pg_indexes` for
+`training` listed `idx_training_user_exercise` and `idx_training_user_muscle`
+(both `USING btree (user_id, …)`); `alembic downgrade -1` ran clean and both
+indexes were gone (revision back at `0002_rls`). Container torn down.
