@@ -724,6 +724,31 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /analytics/top-muscles:
+    get:
+      tags: [analytics]
+      summary: Muscles ranked by the caller's training frequency
+      description: >
+        Muscles the caller has trained, ordered by descending session count.
+        Feeds the Progress muscle picker so the most-trained muscles surface first.
+      operationId: getTopMuscles
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '200':
+          description: Muscles ranked by training frequency.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TopMuscle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /analytics/activity:
     get:
       tags: [analytics]
@@ -1390,6 +1415,16 @@ components:
         frequency:
           type: integer
           description: Number of recorded sessions for the exercise.
+
+    TopMuscle:
+      type: object
+      required: [name, frequency]
+      properties:
+        name:
+          type: string
+        frequency:
+          type: integer
+          description: Number of recorded sessions for the muscle.
 
     ActivityDay:
       type: object
