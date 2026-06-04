@@ -32,16 +32,34 @@ backlog_ref: ""
 Build the two MVP screens on the shell, consuming the analytics endpoints.
 
 ## Plan (owner: frontend-design-engineer — MUST invoke the `frontend-design` plugin; obey docs/frontend-spec.md)
-- **Dashboard** (tab 1): GitHub-style **activity grid** (from `/analytics/activity`) + summary cards
-  (exercises / sets / PRs / streak, from `/analytics/summary`). Empty-state for new users.
-- **Progress** (tab 2): muscle→exercise pickers (existing list endpoints) + **ECharts** weight/reps
-  series (from `/analytics/exercise-progress`), responsive, multi-set.
-- All data via the generated TS client + TanStack Query (cache/loading/error). No fetch storms.
-- Every screen inside `<AppShell>`; tokens only; mobile-first; light+dark.
+- **Dashboard** (tab 1): GitHub-style **`<ActivityGrid>`** (from `/analytics/activity`) + **2×2
+  `<SummaryCards>`** (exercises / sets / PRs / streak, from `/analytics/summary`). Grid uses the
+  chalk→iron `--accent` ramp (spec §9.3, NOT GitHub green), Monday-first, "today" ring; must **fit
+  the 360px container** (scale cells; single in-card horizontal scroll only if a full year can't fit
+  legibly — the one allowed full-bleed exception). PRs stat is the `--accent` hero (count-up).
+- **Progress** (tab 2): `<MusclePicker>`→`<ExercisePicker>` (existing list endpoints) +
+  **`<ExerciseProgressChart>`** (ECharts) weight/reps series (from `/analytics/exercise-progress`),
+  one series per set, responsive, legible at 360px. **ECharts themed via the `echartsTheme(cssVars)`
+  contract (spec §10.5)** — series mapped to `--accent` ramp, axis/text to `--hint`/`--text` in Sora
+  tabular-nums, tooltip in `--bg`/`--text` (not default white), re-themes on `themeChanged`. Multi-
+  set distinguished by dash style beyond ~4 series (don't rely on color alone).
+- **States are first-class, not afterthoughts (spec §10.4):** every query renders a **`<Skeleton>`**
+  matching final layout on `isLoading` (no spinners / layout shift), **`<ErrorState>`** + retry on
+  `isError`, and **`<EmptyState>`** for new users (no trainings) and empty exercise series. The
+  empty path must NOT fire extra queries (ARCH §2 lesson).
+- All data via the generated TS client + TanStack Query (cache/loading/error, sane TTL). No fetch
+  storms; pickers don't refetch the world on every change.
+- Every screen inside `<AppShell>`; tokens only; mobile-first; light+dark; page-load stagger reveal.
 
 ## Acceptance criteria
-- [ ] Both screens populated for an existing user; graceful empty-state for a new one.
-- [ ] Charts responsive + legible at 360px; cross-user data never visible (RLS).
+- [ ] Both screens populated for an existing user; graceful **`<EmptyState>`** for a new one (and no
+      extra queries on the empty path).
+- [ ] Loading = skeletons matching layout (no spinner/jump); error = inline retry, no raw error dump.
+- [ ] Activity grid fits 360px (or single in-card scroll), Monday-first, accent ramp; **dark-mode
+      empty cells visible**.
+- [ ] Charts responsive + legible at 360px, themed to tokens, **dark-mode line + tooltip contrast
+      verified**, multi-set distinguishable without color-only; cross-user data never visible (RLS).
+- [ ] `prefers-reduced-motion` respected (no count-up / ink-in when set).
 - [ ] docs/frontend-spec.md §7 checklist passes; `frontend-design` skill was invoked.
 
 ## Comments
