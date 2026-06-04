@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-53
 title: "apps/web polish: delete UX (MainButton overlap), chart axis, header border, scroll flash"
 slug: gym-53-history-progress-polish
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [phase-5, frontend, design]
