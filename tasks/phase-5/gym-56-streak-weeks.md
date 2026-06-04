@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-56
 title: "API: summary.current_streak = consecutive WEEKS (not days)"
 slug: gym-56-streak-weeks
-status: review
+status: done
 priority: medium
 type: refactor
 labels: [phase-5, api]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-05T00:00:00Z
 start_date: 2026-06-05T00:00:00Z
-finish_date: 2026-06-04T00:00:00Z
-updated: 2026-06-05T00:00:00Z
+finish_date: 2026-06-05T00:30:00Z
+updated: 2026-06-05T00:30:00Z
 epic: phase-5
 depends_on: [GYM-39]
 blocks: []
 related: [GYM-12, GYM-58]
-commits: [29c92a9]
+commits: [403d973]
 tests: []
 design_reports: []
 review_reports: []
@@ -67,3 +67,9 @@ counts from prev week; stale most-recent → streak 0.
 
 pytest summary: 103 passed, 8 warnings in 8.86s (all tests green including 6 new unit tests
 in `TestStreakWeeksUnit` and 2 integration tests in `TestStreakWeeksIntegration`).
+
+### 2026-06-05T00:30:00Z — recommit after parallel-merge race (done)
+The concurrent GYM-57 web agent accidentally swept these api files into its first commit (29c92a9),
+then soft-reset it — leaving the streak code UNCOMMITTED in the working tree (29c92a9 dangling, not
+on the branch). Orchestrator recommitted the 3 api files cleanly as `403d973` (explicit paths) and
+re-ran the suite on the committed state: 103 passed. `commits[]` corrected to 403d973.

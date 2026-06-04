@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-57
 title: "apps/web: Progress By Weight|By Set toggle + sparse x-axis; Dashboard label tweaks"
 slug: gym-57-progress-toggle-labels
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, frontend, design]
