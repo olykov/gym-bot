@@ -18,7 +18,7 @@ epic: phase-5
 depends_on: [GYM-64]
 blocks: []
 related: [GYM-12]
-commits: []
+commits: [37e3fe8]
 tests: []
 design_reports: []
 review_reports: []
@@ -81,3 +81,7 @@ Invoked the `frontend-design` plugin (Chalk & Iron, §9), worked in ultrathink. 
   add-inline dups, recap honesty, cross-screen staleness, BackButton ownership, "--accent is orange".
 
 Proposal awaiting operator approval before the build wave (GYM-64).
+
+### 2026-06-05T05:35:00Z — linked commit; mark review
+§12 design committed as `37e3fe8` (docs/frontend-spec.md + this task file only — no app code, not
+pushed). Status → review for operator sign-off.
