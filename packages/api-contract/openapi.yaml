@@ -630,6 +630,94 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /analytics/activity:
+    get:
+      tags: [analytics]
+      summary: Daily activity counts for a date range (contribution grid)
+      description: >
+        One entry per day that has activity within the range, with the number of
+        sets recorded that day. Scoped to the caller. Feeds the Mini App activity grid.
+      operationId: getActivity
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
+        - name: from
+          in: query
+          required: true
+          description: Inclusive start date of the range (date part only).
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          description: Inclusive end date of the range (date part only).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Activity counts, one entry per active day in the range.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/summary:
+    get:
+      tags: [analytics]
+      summary: Dashboard summary numbers for the caller
+      description: >
+        The four headline metrics for the Mini App dashboard: distinct exercises ever
+        logged, total sets, count of personal records, and the current consecutive-day
+        streak. Scoped to the caller.
+      operationId: getAnalyticsSummary
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '200':
+          description: The dashboard summary numbers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/exercise-progress:
+    get:
+      tags: [analytics]
+      summary: Weight/reps progress series for an exercise, grouped by set
+      description: >
+        Per-set time series of weight and reps for a single exercise, shaped for
+        ECharts (one series per set number). Scoped to the caller.
+      operationId: getExerciseProgress
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ExerciseNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '200':
+          description: Per-set progress series for the exercise.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ---------------------------------------------------------------- admin catalog
   /admin/muscles:
     post:
@@ -1144,6 +1232,71 @@ components:
         frequency:
           type: integer
           description: Number of recorded sessions for the exercise.
+
+    ActivityDay:
+      type: object
+      description: Sets recorded on a single day within the requested range.
+      required: [date, sets_count]
+      properties:
+        date:
+          type: string
+          format: date
+        sets_count:
+          type: integer
+          description: Number of sets recorded on this day.
+
+    AnalyticsSummary:
+      type: object
+      description: Headline dashboard metrics for the caller.
+      required: [exercises, sets, prs, current_streak]
+      properties:
+        exercises:
+          type: integer
+          description: Distinct exercises ever logged.
+        sets:
+          type: integer
+          description: Total sets recorded.
+        prs:
+          type: integer
+          description: Count of personal records.
+        current_streak:
+          type: integer
+          description: Current consecutive-day training streak.
+
+    ExercisePoint:
+      type: object
+      description: A single recorded point of weight and reps on a date.
+      required: [date, weight, reps]
+      properties:
+        date:
+          type: string
+          format: date
+        weight:
+          type: number
+        reps:
+          type: number
+
+    ExerciseSetSeries:
+      type: object
+      description: Progress series for one set number.
+      required: [set, points]
+      properties:
+        set:
+          type: integer
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExercisePoint'
+
+    ExerciseProgress:
+      type: object
+      description: Per-set progress series for an exercise, shaped for ECharts.
+      required: [series]
+      properties:
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExerciseSetSeries'
 
     # ---- static data
     StaticData:
