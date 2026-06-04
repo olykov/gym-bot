@@ -215,9 +215,12 @@ reused — no per-page borders/cards/spacings (§2).
 - **`<AppHeader>`** — title (Bebas Neue) + optional single action slot + optional Telegram
   `BackButton` wiring. Bottom hairline + scrim (§9.5). Respects `safe-area-inset-top`. Height is a
   token; container top-padding accounts for it.
-- **`<BottomNav>`** — v1 tabs **Dashboard · Progress** (reserve slots for Distribution · Profile).
-  Each tab = icon + Sora label, ≥44px touch target, active = `--accent` glyph + sliding indicator
-  (§9.4) + `--accent-weak` pill. Always visible, never disappears. Respects `safe-area-inset-bottom`.
+- **`<BottomNav>`** — tabs **Dashboard · Progress · History** (the History tab is added in §11;
+  Distribution · Profile remain reserved/commented slots for the later iteration). Each tab = icon +
+  Sora label, ≥44px touch target, active = `--accent` glyph + sliding indicator (§9.4) +
+  `--accent-weak` pill. Always visible, never disappears. Respects `safe-area-inset-bottom`. At 3 tabs
+  the indicator/label math is unchanged (tabs flex equally); History uses a stacked-bars/clock glyph
+  distinct from Dashboard's grid and Progress's line.
 - **`<Container>`** (internal to AppShell) — the single max-width column; the ONLY place page content
   mounts. No page sets its own width/padding.
 
@@ -274,3 +277,208 @@ reused — no per-page borders/cards/spacings (§2).
   (which is invisible/jarring in dark mode). **Verify chart line + tooltip contrast in dark.**
 - Responsive: `echarts-for-react` with a resize observer on the card; min legible font size enforced
   at 360px; legend wraps/scrolls rather than overflowing the container.
+
+---
+
+## 11. History & set-editing (v1)
+
+> Refined via the `frontend-design` plugin (2026-06-04, GYM-48). This is the *details + interaction*
+> layer for the History feature; it does NOT relax any §0–§10 rule (shell, single ~480px container,
+> spacing 4/8/12/16/24/32, tokens, mobile-first, Chalk & Iron). **Distinctive in the details,
+> disciplined in the structure.** Scope v1: **browse trainings by day → open a day → see exercises
+> with their sets → edit a set's weight/reps → delete a set.** Out of scope (v2 / GYM-51): add-set
+> retroactively, move a set between exercises, multi-set bulk edit.
+>
+> Backing contract (`packages/api-contract/openapi.yaml`):
+> `GET /training/days?from&to` → `TrainingDay[]` (`{date, muscles[], exercises_count, sets_count}`),
+> `GET /training/day/{date}` → `TrainingDayDetail` (`{date, exercises[]}`, each exercise
+> `{exercise_id, exercise_name, muscle_name, sets[]}`, each set `{training_id, set, weight, reps}`),
+> `PUT /training/{training_id}` body `{weight, reps}` → `Training`, `DELETE /training/{training_id}`
+> → 204. **The set's `training_id` is the mutation key** — carry it on every `<SetRow>`.
+
+### 11.1 Navigation — bottom-nav becomes 3 tabs
+- Tabs are now **Dashboard · Progress · History** (route `/history`). Same `<BottomNav>` contract
+  (§10.1): ≥44px target, `--accent` active glyph, sliding accent indicator (§9.4), `--accent-weak`
+  pill, `selectionChanged` haptic on switch, all motion behind `prefers-reduced-motion`. History glyph
+  = three short stacked horizontal bars over a baseline (a "log" mark), token-stroked like the others;
+  visually distinct from the Dashboard grid and the Progress line.
+- Add the tab to `apps/web/src/components/shell/navConfig.tsx` (the existing reserved-slots comment
+  stays; Distribution · Profile are still deferred). Routes: `/history` (day list) and
+  `/history/:date` (day detail) under the same `<AppShell>` — **no page builds its own chrome.**
+
+### 11.2 Day list (`/history`) — `<DayCard>` list from `GET /training/days`
+A reverse-chronological list of **one `<DayCard>` per training day**, inside the standard
+`<Container>` (16px padding, vertical rhythm). The card is a composition of the existing `<Card>`
+(one card style only — no new card variant):
+
+- **Date heading** — Bebas Neue, the hero of the row. Format human + condensed, e.g. **`MON 02 JUN`**
+  (weekday + day + month, upper, tabular). The full `YYYY` is shown only when the year differs from
+  the current year (keeps the 360px row tight). `--text`.
+- **Muscle chips** — a wrapping row of small Sora chips from `day.muscles[]` (e.g. `Chest` `Triceps`).
+  Chip = `--accent-weak` background + `--text` label, radius token, ≤2 lines then `+N` overflow chip.
+  Chips are **display-only** here (not filters in v1).
+- **Counts line** — Sora `--hint`, tabular-nums: `{exercises_count} exercises · {sets_count} sets`
+  (singular/plural handled). This is the "what happened that day" at-a-glance.
+- **Affordance** — the whole card is the tap target (≥44px tall), press → 0.98 scale 80ms (§9.4) +
+  `impactOccurred('light')` haptic, navigates to `/history/:date` (`date` = `day.date`, the API's
+  date string). A trailing chevron (`--hint`) signals drill-in. No per-card edit/delete here — editing
+  lives in the day detail (§11.4), keeping the list a pure browse surface.
+
+**Ordering & pagination (window-based, NOT offset).** The contract paginates by the `from`/`to`
+window, mirroring the activity grid — there is no `offset/limit`. v1 default window = **last ~12 weeks**
+(`to = today`, `from = today − ~84d`); list is already newest-first from the API. "Load older" =
+**expand the window backward** another ~12 weeks (`from -= 84d`, same `to`) and re-query; render the
+fuller list (TanStack Query caches per window key). Trigger via an **infinite-scroll sentinel**
+(IntersectionObserver near the list bottom) with a manual **"Load earlier"** `<Card>`-styled button as
+the non-JS/reduced-motion fallback. Stop expanding when a window returns no new earliest day (we've
+reached the user's first training). Whale-user guard: the window is bounded per fetch, so a
+multi-year history never loads as one unbounded list (see §11.7).
+
+- **Query key:** `["training", "days", from, to]` (consistent with `["analytics","activity",from,to]`).
+- **Loading:** `SkeletonCard` × ~5 matching the `<DayCard>` shape (a Bebas-height bar, two chip
+  blocks, a hint-line) — never a spinner, never a layout shift (§10.4).
+- **Empty (no trainings at all):** `<EmptyState>` — Bebas headline "NO TRAININGS YET", Sora subline
+  "Log a set in the bot and it shows up here." No action button in the Mini App (logging happens in
+  the bot). New-user path must not fan out extra queries (§0 / ARCH §2 "empty path is expensive").
+- **Empty tail (window exhausted):** stop the sentinel, show a quiet Sora `--hint` "That's the
+  beginning." footer — not an error.
+- **Error:** `<ErrorState>` inline (Sora message + retry → re-runs the query).
+
+### 11.3 Day detail (`/history/:date`) — `GET /training/day/{date}`
+- **Back:** wire the Telegram **`BackButton`** (`WebApp.BackButton.show()` + `onClick → navigate(-1)`,
+  hidden on unmount) so the native ← returns to the list. The `<AppHeader>` title is the day in Bebas
+  (e.g. `MON 02 JUN`); the bottom-nav stays visible (History tab active) — detail is a sub-route, not
+  a modal page.
+- **Body:** exercises **grouped** (the API already groups by exercise). Each exercise = a `<Card>`
+  with a header row — exercise name (Sora 600, `--text`) + a small muscle chip (`muscle_name`,
+  `--accent-weak`) — then its sets as a column of `<SetRow>`:
+  - **`<SetRow>`** — leading `Set {n}` label (Sora `--hint`), trailing the figure **`{weight}kg × {reps}`**
+    where `{weight}`/`{reps}` are Bebas-leaning emphasis with `tabular-nums` so rows align and don't
+    jitter. Example rendered row: **`Set 1 — 100kg × 8`**. ≥44px tall, one row style reused
+    (extends the `<ListRow>` idea), `<Divider>` between rows.
+  - **Tap a `<SetRow>`** → opens the **`<BottomSheet>` set editor** (§11.4) for that `training_id`,
+    with `impactOccurred('light')` haptic. The row is the only edit entry point — no inline edit fields
+    in the list (avoids fat-finger edits while scrolling).
+  - **Swipe-left on a `<SetRow>`** reveals a `--accent` **Delete** action (the touch-native delete
+    gesture); the same delete also lives inside the sheet (§11.4) so it's reachable without the gesture
+    and on desktop. Both paths run the confirm in §11.4.
+- **States:** `SkeletonCard` matching the exercise/set layout while loading; `<EmptyState>` "EMPTY DAY"
+  if a detail somehow has no sets (e.g. the last set was just deleted — then auto-`navigate(-1)` back to
+  the list after the optimistic update lands); `<ErrorState>` + retry on error; 404 → "This day has no
+  trainings" empty state, not a crash.
+- **Query key:** `["training", "day", date]`.
+
+### 11.4 Set editor — `<BottomSheet>` with steppers, MainButton save, delete + confirm
+The single interaction for editing/removing a set. **Bottom-sheet** (mobile-native, thumb-reachable),
+NOT a centered modal:
+
+- **`<BottomSheet>`** — slides up from the bottom inside the shell, anchored to `safe-area-inset-bottom`,
+  `--bg` surface with the §9.5 top hairline + grab-handle, a scrim over the page (tap-scrim or
+  BackButton dismisses). Max-width = the container width (it never goes wider than the column). Slide
+  is 240ms ease-out, **behind `prefers-reduced-motion`** (reduced = instant, no slide). Focus-trapped
+  while open; `BackButton` while the sheet is open closes the sheet first (one back-step), not the page.
+- **Header:** the set's identity, read-only — `{exercise_name}` (Sora 600) + `Set {n}` (`--hint`).
+  Only weight/reps are mutable (matches `TrainingUpdate`); muscle/exercise/set-number are NOT editable
+  in v1 (moving a set = GYM-51).
+- **Two `<Stepper>` fields** — **Weight (kg)** and **Reps**:
+  - `<Stepper>` (a.k.a. `<NumberField>`) = a **−** button, a center numeric value, a **+** button; the
+    value is also a tappable `<input inputmode="decimal">` (weight) / `inputmode="numeric"` (reps) so a
+    user can type directly instead of tapping +/- many times. Buttons ≥44×44px, value in Bebas/tabular-
+    nums (no jitter on change), generous hit area.
+  - **Weight:** min 0, **step 2.5kg** on the buttons (gym-plate granularity), decimals allowed via the
+    keyboard for plate-math (e.g. 102.5) — `inputmode="decimal"`, accept `.`/`,` and normalize.
+  - **Reps:** min 0, integer, step 1.
+  - Long-press / hold-to-repeat on ± is a nice-to-have, not required; if added it must respect reduced-
+    motion (no animated ramp) and remain ≥44px.
+- **Save:** the Telegram **`MainButton`** (`setText('SAVE')`, `show()`, `onClick`), with
+  `notificationOccurred('success')` haptic on success. While saving, `MainButton.showProgress()`.
+  `MainButton` is hidden on sheet close/unmount. Fires `PUT /training/{training_id}` `{weight, reps}`.
+  Save is disabled (MainButton hidden/`hideProgress`+disabled) when the value is unchanged or invalid
+  (empty / negative).
+- **Delete:** a clearly secondary **Delete set** affordance inside the sheet (Sora label, `--accent`
+  text, NOT a full red fill — accent is sparing per §9.3), separated from Save so it's not mis-tapped.
+  Tapping it (or the swipe-delete in §11.3) opens a **confirm step** — an in-sheet two-button confirm
+  ("Delete this set?" → **Cancel** / **Delete**) with `notificationOccurred('warning')` haptic; the
+  destructive **Delete** is the accent button. Confirmed → `DELETE /training/{training_id}`.
+  Two-step confirm is mandatory (fat-finger guard, §11.7).
+
+**Optimistic update + cache invalidation (the cross-screen contract).** Both mutations are optimistic
+via TanStack Query `onMutate`:
+- **Edit:** snapshot, optimistically patch the set in `["training","day",date]` (and the `sets_count`
+  is unchanged), close the sheet immediately. `onError` → roll back to the snapshot + show an inline
+  `<ErrorState>`/toast "Couldn't save — restored." (rollback is mandatory, §11.7). `onSettled` →
+  invalidate.
+- **Delete:** snapshot, optimistically remove the `<SetRow>` from the day detail and decrement the
+  day's `sets_count`/`exercises_count` (drop the exercise group if it was its last set); if the day is
+  now empty, `navigate(-1)`. `onError` → restore. `onSettled` → invalidate.
+- **Invalidate on settle (so Dashboard/Progress refresh):**
+  `["training","day",date]`, `["training","days"]` (all windows), `["analytics","summary"]`,
+  `["analytics","activity"]`, and `["analytics","exercise-progress"]` (a PR/weight edit can move the
+  chart). Editing weight can change a PR → the Dashboard PRs card and the Progress chart must re-fetch;
+  this is why summary + activity + exercise-progress are all in the invalidation set.
+
+### 11.5 New primitives to add (token-only, reused — define them once in `apps/web/src/components/ui`)
+All four are **tokens-only** (spacing 4/8/12/16/24/32, color via §3 + §9.3 vars), mobile-first at
+360px, built once and reused (no per-page variants, §2). They **reuse** existing primitives where
+possible: `<DayCard>` and the day-detail exercise group are compositions of `<Card>`; `<SetRow>`
+extends `<ListRow>`; loading/empty/error always go through `<Skeleton>`/`<EmptyState>`/`<ErrorState>`.
+
+- **`<BottomSheet>`** — bottom-anchored sheet (grab-handle, scrim, safe-area-bottom inset, §9.5
+  hairline, reduced-motion-guarded slide, focus-trap, BackButton-to-close). Generic: it holds the set
+  editor now and is reusable for any future sheet. One sheet style only.
+- **`<Stepper>` / `<NumberField>`** — ≥44px ± buttons + typed numeric input, Bebas/tabular-nums value,
+  configurable `min`/`step`/`inputMode`/`integer`, decimal-comma normalization. Reused for Weight and
+  Reps (and any future numeric field).
+- **`<DayCard>`** — the one history-row card (date heading Bebas, muscle chips, counts line, chevron,
+  press state, navigates). A `<Card>` composition; reused for every day in the list.
+- **`<SetRow>`** — the one set row (`Set {n}` + `{weight}kg × {reps}`, tabular-nums, ≥44px, swipe-to-
+  delete, tap-to-edit). Extends `<ListRow>`; reused for every set in the day detail.
+- A small **`<Chip>`** (muscle chip, `--accent-weak`/`--text`) may be extracted if not already present;
+  if a chip primitive exists from §10, reuse it rather than re-defining.
+
+### 11.6 States + motion (light + dark, reduced-motion)
+- **Skeletons match layout:** day-list = `SkeletonCard`×5 shaped like `<DayCard>`; day-detail =
+  exercise-group skeletons with set-row bars. No spinners, no layout shift (§10.4).
+- **Empty:** no-trainings (whole list) and empty-day both use `<EmptyState>` (Bebas headline + Sora
+  subline); window-exhausted uses a quiet `--hint` footer, not an empty state.
+- **Error + retry:** `<ErrorState>` for query errors; mutation errors surface as the rollback
+  toast/inline message (never a raw error dump).
+- **Motion:** route-mount stagger of the list/day-detail children (§9.4, 0/60/120/180ms rise+fade);
+  card/row press 0.98@80ms; sheet slide 240ms; **all behind `prefers-reduced-motion: reduce`** (then:
+  instant opacity only, no slide/stagger/scale). **Haptics stay** (not motion): light on
+  navigate/open-sheet, success on save, warning on delete-confirm, `selectionChanged` on tab switch.
+- **Light + dark:** all surfaces are Telegram `themeParams`; the only app-owned colors are
+  `--accent`/`--accent-weak` (§9.3), which already adapt per theme. **Verify in dark:** muscle-chip
+  `--accent-weak` contrast, the `<SetRow>` divider hairline, and the bottom-sheet scrim over a
+  near-black `--bg`.
+
+### 11.7 Gaps / risks (plugin lens — concrete)
+- **Fat-finger delete (highest risk):** browsing → accidental swipe/tap could destroy a set. Mitigation:
+  destructive action is **never one-tap** — swipe reveals (doesn't delete), and both swipe and in-sheet
+  delete route through the **two-step in-sheet confirm** (§11.4) with a warning haptic. The accent
+  Delete button is spatially separated from Save.
+- **Optimistic-rollback correctness:** an edit/delete that the API rejects (409/404/network) must
+  visibly restore prior state. Snapshot in `onMutate`, restore in `onError`, surface a non-scary
+  "couldn't save — restored" message. Must be tested for both edit and delete; a silent desync between
+  the optimistic UI and the server is the worst outcome.
+- **Decimal weight on mobile keyboards:** `2.5kg` plate math needs decimals, but mobile numeric
+  keyboards vary (`.` vs `,`, locale). Use `inputmode="decimal"`, accept both separators, normalize to
+  a dot before `PUT`; ± buttons step 2.5 so most edits need no typing at all. Reps stay integer
+  (`inputmode="numeric"`). Guard against empty/`NaN`/negative before enabling Save.
+- **Large day (many sets / many exercises):** a high-volume day detail could be a long scroll. v1 keeps
+  it a simple scroll inside the container (acceptable); group headers are sticky-able later. No
+  virtualization in v1 (YAGNI) — revisit only if a real day exceeds ~hundreds of sets.
+- **Whale-user day-list pagination:** a multi-year user must not load all days at once. The window-based
+  `from`/`to` fetch (default 12 weeks, expand-on-scroll) bounds every request; stop when the earliest
+  window yields no new days. This is the key scalability guard and mirrors the activity-grid window
+  discipline (heavy unbounded reads are the §0/ARCH §2 anti-pattern).
+- **Cross-screen staleness:** a weight edit can change a PR, streak, or the activity cell. The §11.4
+  invalidation set (day, days, summary, activity, exercise-progress) is mandatory so Dashboard/Progress
+  never show stale numbers after an edit. Missing one key = a visible inconsistency between tabs.
+- **`training_id` is the contract key, not array index:** sets are keyed by `training_id`
+  (`TrainingSet.training_id`); never mutate by list position (the optimistic reorder/removal would hit
+  the wrong row). Always carry `training_id` on `<SetRow>` and in the mutation.
+- **BackButton ownership:** the day detail and the open bottom-sheet both want the Telegram
+  `BackButton`. Define a clear stack: sheet-open → Back closes the sheet; sheet-closed on
+  `/history/:date` → Back returns to the list; on `/history` → Back is hidden (bottom-nav is the nav).
+  Mis-wiring double-pops or strands the user — wire show/hide on mount/unmount deterministically.
