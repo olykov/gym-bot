@@ -379,14 +379,18 @@ def get_analytics_summary(
     Metrics:
         exercises: count(distinct exercise_id) — distinct exercises ever logged.
         sets: count(*) — total training rows (one row = one set).
-        prs: count of distinct exercises for which the user has any training row.
-            Reason: every exercise with at least one set has a de-facto max-weight
-            personal record (the best weight ever lifted for that exercise).
-            Equivalently: prs == exercises (since both count distinct exercise_id
-            over the user's training rows).  Kept as a separate metric because the
-            frontend displays them as separate headline numbers, and the definition
-            can be tightened later (e.g., exercises where weight > global average)
-            without a schema change.
+        prs: count of all-time PR events — training rows where the logged weight
+            strictly exceeds the running max weight seen previously for the same
+            (user_id, exercise_id), ordered chronologically by (date, set).
+            Reason: the previous definition (prs = count(distinct exercise_id))
+            made prs always equal to exercises, which rendered as two identical
+            numbers on the 2×2 dashboard and looked like a bug (GYM-44).
+            The new definition counts genuinely new personal-record moments: the
+            first set of any exercise always counts (prev_max IS NULL), and
+            subsequent sets count only when weight is strictly greater than every
+            prior set for that exercise.  This produces a meaningfully different
+            metric (prs <= sets, and typically prs < exercises for exercisers who
+            have been training consistently with progressive overload).
         current_streak: consecutive calendar days up to today (UTC) with >=1 set.
             Reason: training timestamps are stored in UTC (Postgres TIMESTAMP WITHOUT
             TIME ZONE, inserted as NOW() which the server interprets as UTC).  Using
@@ -407,13 +411,12 @@ def get_analytics_summary(
     if cached is not None:
         return schemas.AnalyticsSummary(**cached)
 
-    # Single aggregate query for exercises, sets, prs.
+    # Aggregate query for exercises and sets.
     agg = db.execute(
         text("""
             SELECT
                 COUNT(DISTINCT exercise_id) AS exercises,
-                COUNT(*)                    AS sets,
-                COUNT(DISTINCT exercise_id) AS prs
+                COUNT(*)                    AS sets
             FROM training
             WHERE user_id = :uid
         """),
@@ -422,7 +425,34 @@ def get_analytics_summary(
 
     exercises = int(agg[0]) if agg else 0
     sets_total = int(agg[1]) if agg else 0
-    prs = int(agg[2]) if agg else 0
+
+    # PR event query: count rows where weight exceeds the running max for that
+    # (exercise_id) up to (but not including) the current row, ordered by date
+    # then set.  The first set for each exercise has prev_max IS NULL and always
+    # counts as a PR.
+    # Reason: uses a window function over the RLS-scoped training rows; no
+    # per-row subquery so it remains sargable — Postgres evaluates the window
+    # over the index-filtered partition without an additional sequential scan.
+    pr_row = db.execute(
+        text("""
+            WITH windowed AS (
+                SELECT
+                    weight,
+                    max(weight) OVER (
+                        PARTITION BY exercise_id
+                        ORDER BY date, "set"
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                    ) AS prev_max
+                FROM training
+                WHERE user_id = :uid
+            )
+            SELECT COUNT(*) FROM windowed
+            WHERE prev_max IS NULL OR weight > prev_max
+        """),
+        {"uid": uid},
+    ).fetchone()
+
+    prs = int(pr_row[0]) if pr_row else 0
 
     # Streak: fetch all distinct active dates ordered DESC, count consecutive run
     # ending at today (UTC).

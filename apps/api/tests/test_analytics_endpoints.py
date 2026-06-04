@@ -287,12 +287,18 @@ class TestSummaryEndpoint:
             f"User A trained today; expected streak >= 1, got {data['current_streak']}"
         )
 
-    def test_summary_prs_equals_exercises(self, analytics_client):
-        """prs == exercises (every trained exercise has a PR by definition).
+    def test_summary_prs_is_pr_event_count(self, analytics_client):
+        """prs counts all-time PR events, not distinct exercises (GYM-44).
 
-        Reason: prs is defined as count(distinct exercise_id) from training,
-        same as exercises.  Every exercise with >= 1 training row has a de-facto
-        max-weight personal record.
+        Seed layout for User A:
+          - 1 private exercise (priv_ex_a), 2 training rows, both weight=100.0,
+            inserted at NOW() with set=1 and set=2.
+          - Ordered by (date, set): set=1 is first (prev_max IS NULL -> PR);
+            set=2 has prev_max=100.0, weight==prev_max -> NOT a PR.
+          - Expected prs = 1; exercises = 1.
+
+        This confirms the new definition produces a distinct (computable) value
+        and that the window-function implementation is correct on the seeded fixture.
         """
         resp = analytics_client.get(
             "/api/v1/analytics/summary",
@@ -300,9 +306,15 @@ class TestSummaryEndpoint:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["prs"] == data["exercises"], (
-            f"prs should equal exercises (same SQL subquery). "
+        # Exactly 1 PR event: the first set for the single seeded exercise.
+        assert data["prs"] == 1, (
+            f"Expected prs=1 (one PR event for the single seeded exercise). "
             f"Got prs={data['prs']}, exercises={data['exercises']}"
+        )
+        # exercises == 1 as well, but prs is computed differently — they happen
+        # to match here only because one exercise starts exactly one PR chain.
+        assert data["exercises"] == 1, (
+            f"Expected exercises=1 from conftest seed; got {data['exercises']}"
         )
 
     def test_summary_cross_user_isolation(self, analytics_client):
