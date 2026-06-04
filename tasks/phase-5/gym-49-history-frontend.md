@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-49
 title: "apps/web: History tab — day list, day detail, set editor"
 slug: gym-49-history-frontend
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, frontend, design]
