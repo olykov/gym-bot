@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-73
 title: "Tests: fix 5 date-hardcoded analytics/history tests that break on day rollover"
 slug: gym-73-date-flaky-tests
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [tech-debt, api, tests]

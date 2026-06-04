@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-72
 title: "apps/web: record picker v2 — continue-today + muscle/exercise tiles; last-session pre-fill; PR×reps; prefetch"
 slug: gym-72-record-picker-v2
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, frontend, design, perf]
