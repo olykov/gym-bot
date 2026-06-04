@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-12
 title: "Phase 5: Client Telegram Mini App (apps/web) on the Core API"
 slug: gym-12-rebuild-website
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, frontend]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-06-04T10:00:00Z
-finish_date: null
-updated: 2026-06-04T16:40:00Z
+finish_date: 2026-06-04T17:30:00Z
+updated: 2026-06-04T17:30:00Z
 epic: roadmap
 depends_on: [GYM-9, GYM-11]
 blocks: []
 related: [GYM-4, GYM-38, GYM-39, GYM-40, GYM-41, GYM-42, GYM-43, GYM-44, GYM-45]
-commits: []
+commits: [c776447, ccded67]
 tests: []
 design_reports: []
 review_reports: []
@@ -81,6 +81,17 @@ plugin (skill)** on every UI task and obey `docs/frontend-spec.md`.
 
 ### 2026-05-31T16:00:00Z — task created
 The heavy site cannot recur by design.
+
+### 2026-06-04T17:30:00Z — SHIPPED to prod + operator smoke passed (done)
+Phase 5 MVP live. Orchestrated 8 sub-tasks across 4 waves: GYM-38 (contract) + GYM-40 (redis env) →
+GYM-39 (analytics API sargable + Redis cache, 73 tests) + GYM-41 (apps/web shell, "Chalk & Iron",
+frontend-design plugin) → GYM-42 (MVP pages) + GYM-44 (prs = PR-events) → GYM-43 (build/CI/nginx).
+Merged phase-5/mini-app -> main (ccded67), deploy run 26948208190 success (built web_frontend incl.
+TS-client gen). Operator applied the live nginx swap (`/` -> web_frontend, `/webhook` unchanged,
+`/admin/` temporary-degraded) and confirmed: the new Mini App loads, Dashboard (activity-grid +
+summary) + Progress (exercise chart) work, light/dark good — "выглядит абалденно". apps/web is now
+the Telegram Mini App at gymbot.olykov.com. Deferred/backlog: GYM-45 (echarts code-split), admin
+relocation (+ its Vite base fix), muscle-distribution + profile pages, bot button rename.
 
 ### 2026-06-04T09:00:00Z — re-scoped: it's the client Mini App, mobile-first, design-system-first
 Operator clarified apps/web is the in-Telegram client app on the CURRENT domain (admin moves later,
