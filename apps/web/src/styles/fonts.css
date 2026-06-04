@@ -1,0 +1,30 @@
+/* Self-hosted webfonts — "Chalk & Iron" signature (spec §9.2).
+   .woff2 only, font-display:swap, no Google-Fonts runtime request.
+   Fallback stack is set in tokens.css (--font-display / --font-body) so the
+   swap from Oswald/system is not jarring. */
+
+@font-face {
+    font-family: "Bebas Neue";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/fonts/bebas-neue-400.woff2") format("woff2");
+}
+
+/* Sora ships as a variable font (400..700) in one latin .woff2; both weights
+   reference the same asset and the instance is selected by font-weight. */
+@font-face {
+    font-family: "Sora";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/fonts/sora-400.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Sora";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("/fonts/sora-600.woff2") format("woff2");
+}

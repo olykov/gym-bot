@@ -1,0 +1,91 @@
+/* Design tokens — the single source for color/spacing/radii/shadow/type.
+ *
+ * Color base (--bg, --text, --hint, --link, --button, --button-text,
+ * --secondary-bg) is owned by Telegram themeParams and written at runtime by
+ * src/telegram/theme.ts on load + `themeChanged` (spec §3). The values below
+ * are the fallback palette for when the app is opened OUTSIDE Telegram, and
+ * they also seed first paint before the SDK reports a theme.
+ *
+ * The app-owned brand layer (--accent*, the activity ramp, grain) does NOT come
+ * from Telegram so the brand survives any theme (spec §9.3). It adapts to
+ * light/dark via the [data-theme] attribute that theme.ts sets.
+ */
+
+:root {
+    /* ---- Telegram-owned base (fallback = light) ---- */
+    --bg: #ffffff;
+    --text: #1a1a1a;
+    --hint: #8a8f99;
+    --link: #2a7ade;
+    --button: #2a7ade;
+    --button-text: #ffffff;
+    --secondary-bg: #f2f3f5;
+
+    /* ---- App-owned brand layer (Chalk & Iron, spec §9.3) ---- */
+    /* Single decisive accent. Light Chalk Red; overridden in dark below. */
+    --accent: #e5482f;
+    /* Derived, theme-agnostic so we never hardcode a second hue. */
+    --accent-weak: color-mix(in srgb, var(--accent) 14%, transparent);
+    /* Hairline divider = --hint at 12% (spec §2 / §9.5). */
+    --hairline: color-mix(in srgb, var(--hint) 12%, transparent);
+
+    /* Activity-grid ramp (chalk -> iron), keyed to --accent (spec §9.3). */
+    --grid-empty-bg: var(--secondary-bg);
+    --grid-empty-border: color-mix(in srgb, var(--hint) 12%, transparent);
+    --grid-l1: color-mix(in srgb, var(--accent) 18%, var(--secondary-bg));
+    --grid-l2: color-mix(in srgb, var(--accent) 40%, var(--secondary-bg));
+    --grid-l3: color-mix(in srgb, var(--accent) 68%, var(--secondary-bg));
+    --grid-l4: color-mix(in srgb, var(--accent) 100%, var(--secondary-bg));
+
+    /* ---- Typography ---- */
+    --font-display: "Bebas Neue", "Oswald", ui-sans-serif, sans-serif;
+    --font-body: "Sora", ui-sans-serif, system-ui, sans-serif;
+
+    /* ---- Shape / depth ---- */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
+
+    /* ---- Shell chrome heights (consumed by Tailwind spacing tokens) ---- */
+    --header-h: 52px;
+    --nav-h: 60px;
+    --container-max: 480px;
+
+    /* ---- Motion ---- */
+    --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+    --dur-reveal: 240ms;
+}
+
+/* Dark mode: brand layer adapts. theme.ts sets data-theme="dark" from
+   Telegram's colorScheme; we also honour the OS preference as a fallback. */
+:root[data-theme="dark"] {
+    --bg: #17181a;
+    --text: #f0f1f3;
+    --hint: #8a8f99;
+    --link: #6ab2f2;
+    --button: #6ab2f2;
+    --button-text: #0d0e10;
+    --secondary-bg: #232427;
+
+    /* Brighter accent for contrast on near-black (spec §9.3). */
+    --accent: #ff6a4d;
+    /* Empty grid cell must stay visible on dark: white @4% over --bg. */
+    --grid-empty-bg: color-mix(in srgb, #ffffff 4%, var(--bg));
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        --bg: #17181a;
+        --text: #f0f1f3;
+        --hint: #8a8f99;
+        --link: #6ab2f2;
+        --button: #6ab2f2;
+        --button-text: #0d0e10;
+        --secondary-bg: #232427;
+        --accent: #ff6a4d;
+        --grid-empty-bg: color-mix(in srgb, #ffffff 4%, var(--bg));
+        --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+}

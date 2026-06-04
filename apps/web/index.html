@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Gym</title>
+  <!-- Telegram Mini App runtime. @twa-dev/sdk wraps this global. -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Self-hosted webfonts are preloaded so the swap is fast; no Google
+       Fonts CSS request on the critical path (spec §9.2). -->
+  <link rel="preload" href="/fonts/bebas-neue-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/sora-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/sora-600.woff2" as="font" type="font/woff2" crossorigin />
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>
