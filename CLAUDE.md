@@ -5,7 +5,13 @@ For the bigger picture and the rebuild plan, read:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — target architecture and decisions
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phased execution plan
 - [docs/agentic-plan.md](docs/agentic-plan.md) — the subagent setup we plan to add
-- [.claude/skills/telegram-design/](.claude/skills/telegram-design/) — Telegram UI/keyboard design skill
+- [.claude/skills/telegram-design/](.claude/skills/telegram-design/) — Telegram UI/keyboard design skill (BOT keyboards, aiogram — not web)
+- [docs/frontend-spec.md](docs/frontend-spec.md) — BINDING spec for the client Mini App `apps/web` (mobile-first, fixed shell, design system)
+
+> **Frontend (apps/web) rule:** all UI/design work on the client Mini App goes through the
+> **`frontend-design-engineer`** agent, which MUST invoke the **`frontend-design`** plugin (skill)
+> on every UI task and obey [docs/frontend-spec.md](docs/frontend-spec.md): one fixed shell
+> (header + bottom-nav + single container), mobile-first, Telegram-theme tokens, allowed-libs only.
 
 ---
 
@@ -17,7 +23,8 @@ A Telegram gym training-logger that is being grown into a multi-client platform.
 |-----------|------|-------|--------|
 | Telegram bot | `apps/bot/` | aiogram 3.28 + FastAPI webhook, Redis FSM | live (prod) |
 | Admin/Core API | `apps/api/` | FastAPI + SQLAlchemy, JWT | live |
-| Mini App + Admin UI | `apps/admin/` | React 18 + Vite + Tailwind | live (this is the in-Telegram Mini App) |
+| Mini App + Admin UI | `apps/admin/` | React 18 + Vite + Tailwind | live (current in-Telegram Mini App; admin part relocates later — backlog) |
+| Client Mini App | `apps/web/` | React 18 + Vite + Tailwind, mobile-first | planned (Phase 5, GYM-12) — the client Telegram Mini App on `gymbot.olykov.com`, replaces apps/admin as the Mini App |
 | Data stores | compose | postgres:16, redis:7 | live |
 | Legacy website | `site_old/` | Next.js (direct DB access) | deprecated, off — to be rebuilt |
 
@@ -30,10 +37,14 @@ These were hard-won in the webhook migration and must stay:
 - **State**: aiogram FSM backed by **Redis** (`RedisStorage`). ❌ Never an in-memory dict for user state.
 - **DB access**: **connection pool** (`ThreadedConnectionPool`) via `get_cursor()` context manager. ❌ Never a single global connection/cursor.
 
-Known debt (tracked in [docs/ROADMAP.md](docs/ROADMAP.md)) — be aware, don't pretend it's solved:
-- DB calls are **synchronous psycopg2 on the async event loop** (HP-1, still open). The bot is not yet truly async at the DB layer.
-- **No Postgres RLS**; per-user isolation is hand-written `WHERE user_id` and duplicated across the bot and the admin API.
-- **No single backend owns the DB** — bot and admin API are two independent DB clients.
+Resolved since (Phases 2–4, do not re-introduce the old patterns):
+- **Single DB owner**: only `apps/api` (Core API) touches Postgres. The bot calls the API via
+  service-token auth (GYM-9/10); it holds NO DB connection. ❌ Never add `pg`/psycopg2 to the bot.
+- **Postgres RLS is LIVE** (GYM-11, deployed 2026-06-04): per-user isolation is enforced by the DB
+  under role `app_rw` via GUC context (`app.user_id`/`app.role` from `session.info`), fail-closed.
+  Hand-written `WHERE user_id` remains only as defence-in-depth. New user-owned tables MUST use the
+  `enable_user_rls()` / `enable_catalog_rls()` helpers (see [docs/frontend-spec.md] sibling
+  `packages/db/README.md`). ❌ Never run the app as a superuser/`myuser` at runtime.
 
 ## How to Run / Build / Deploy
 
