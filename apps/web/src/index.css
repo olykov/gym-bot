@@ -98,6 +98,23 @@
     animation-delay: calc(var(--reveal-i, 0) * 60ms);
 }
 
+/* Activity-grid ink-in (spec §9.4) — cells fade in once on first paint, with a
+   per-cell --cell-delay set by <ActivityGrid>. Disabled under reduced motion. */
+@keyframes ink-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.grid-cell {
+    opacity: 0;
+    animation: ink-in 220ms var(--ease-out-soft) forwards;
+    animation-delay: var(--cell-delay, 0ms);
+}
+
 /* Skeleton shimmer (spec §10.4). */
 @keyframes shimmer {
     0% {
@@ -136,6 +153,10 @@
         animation: none;
     }
     .shimmer {
+        animation: none;
+    }
+    .grid-cell {
+        opacity: 1;
         animation: none;
     }
     .press-95:active {
