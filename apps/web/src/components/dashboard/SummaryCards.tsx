@@ -21,13 +21,13 @@ export function SummaryCards({ summary, animate }: SummaryCardsProps) {
             <StatCard value={<Num value={summary.sets} animate={animate} />} label="Sets" />
             <StatCard
                 value={<Num value={summary.prs} animate={animate} />}
-                label="PRs"
+                label="PRs set"
                 accent
                 chip={<StatChip>PR</StatChip>}
             />
             <StatCard
                 value={<Num value={summary.current_streak} animate={animate} />}
-                label="Streak"
+                label="Week streak"
             />
         </div>
     );

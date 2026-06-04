@@ -12,17 +12,28 @@ import { Card } from "@/components/ui/Card";
 import { SkeletonChart } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ChipRow, type ChipOption } from "@/components/progress/ChipRow";
-import { ExerciseProgressChart } from "@/components/progress/ExerciseProgressChart";
+import {
+    ExerciseProgressChart,
+    type ProgressMode,
+} from "@/components/progress/ExerciseProgressChart";
 import {
     useExerciseProgress,
     useExercises,
     useMuscles,
 } from "@/hooks/useAnalytics";
 
+const MODE_OPTIONS: { value: ProgressMode; label: string }[] = [
+    { value: "weight", label: "By Weight" },
+    { value: "set", label: "By Set" },
+];
+
 export function Progress() {
     const [muscle, setMuscle] = useState<ChipOption | null>(null);
     const [exercise, setExercise] = useState<ChipOption | null>(null);
+    // Default to the overall strength trend (max weight per session). GYM-57.
+    const [mode, setMode] = useState<ProgressMode>("weight");
 
     const muscles = useMuscles();
     // Disabled until a muscle is picked (no extra query on the empty path).
@@ -54,13 +65,21 @@ export function Progress() {
     return (
         <>
             <Card>
-                <ChipRow
-                    label="Muscle"
-                    options={muscleOptions}
-                    selectedId={muscle?.id ?? null}
-                    onSelect={pickMuscle}
-                    loading={muscles.isLoading}
+                <SegmentedControl
+                    ariaLabel="Progress view"
+                    options={MODE_OPTIONS}
+                    value={mode}
+                    onChange={setMode}
                 />
+                <div className="mt-4">
+                    <ChipRow
+                        label="Muscle"
+                        options={muscleOptions}
+                        selectedId={muscle?.id ?? null}
+                        onSelect={pickMuscle}
+                        loading={muscles.isLoading}
+                    />
+                </div>
                 {muscle ? (
                     <div className="mt-4">
                         <ChipRow
@@ -78,6 +97,7 @@ export function Progress() {
                 muscle={muscle}
                 exercise={exercise}
                 progress={progress}
+                mode={mode}
             />
         </>
     );
@@ -88,10 +108,12 @@ function ChartArea({
     muscle,
     exercise,
     progress,
+    mode,
 }: {
     muscle: ChipOption | null;
     exercise: ChipOption | null;
     progress: ReturnType<typeof useExerciseProgress>;
+    mode: ProgressMode;
 }) {
     // No selection yet — guidance, no query fired.
     if (!muscle || !exercise) {
@@ -123,6 +145,7 @@ function ChartArea({
         <ExerciseProgressChart
             title={exercise.label}
             progress={progress.data!}
+            mode={mode}
         />
     );
 }

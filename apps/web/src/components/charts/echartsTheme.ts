@@ -79,6 +79,29 @@ export function formatAxisDate(value: number): string {
     return `${day} ${AXIS_MONTHS[d.getMonth()]}`;
 }
 
+/** Target number of x-axis labels — keeps the axis legible at 360px (GYM-57 §10.5). */
+const MAX_AXIS_LABELS = 5;
+
+/**
+ * Indices to label on a category x-axis so the axis never crowds at 360px
+ * regardless of point count (GYM-57 §2a). For `count` categories return the set
+ * of indices to label: up to {@link MAX_AXIS_LABELS} evenly-spaced positions
+ * (always first + last). The full date still rides in the tooltip.
+ */
+export function sparseLabelIndices(count: number): Set<number> {
+    const keep = new Set<number>();
+    if (count <= 0) return keep;
+    if (count <= MAX_AXIS_LABELS) {
+        for (let i = 0; i < count; i++) keep.add(i);
+        return keep;
+    }
+    const step = (count - 1) / (MAX_AXIS_LABELS - 1);
+    for (let i = 0; i < MAX_AXIS_LABELS; i++) {
+        keep.add(Math.round(i * step));
+    }
+    return keep;
+}
+
 /** Shared, token-bound base option (axes, grid, tooltip, legend, text style). */
 export function baseChartOption(vars: CssVars) {
     const axisText = {
@@ -114,19 +137,20 @@ export function baseChartOption(vars: CssVars) {
             extraCssText: "font-variant-numeric: tabular-nums;",
         },
         xAxis: {
-            type: "time" as const,
+            // Category axis over the distinct session dates: the chart supplies
+            // `data` + a thinning `axisLabel.interval` so only a few sparse
+            // `DD MMM` labels render at 360px (GYM-57 §2a). The full date rides
+            // in the tooltip. Equal-spaced points read cleanly as a progression.
+            type: "category" as const,
+            boundaryGap: false,
             axisLine: { lineStyle: { color: vars.hint } },
             axisLabel: {
                 ...axisText,
-                // Single compact `DD MMM` label per tick (no ECharts' default
-                // two-tier month/year-over-day labels that collide at 360px).
-                // hideOverlap drops colliding ticks; margin lifts off the line.
-                formatter: formatAxisDate,
-                hideOverlap: true,
+                // `data` holds ms-epoch strings; render the compact `DD MMM`.
+                // The chart sets `interval` to keep only sparse labels.
+                formatter: (value: string) => formatAxisDate(Number(value)),
                 margin: 10,
             },
-            // Keep ticks sparse so labels breathe in a 360px column.
-            maxInterval: 3600 * 24 * 1000 * 7,
             axisTick: { show: false },
             splitLine: { show: false },
         },
