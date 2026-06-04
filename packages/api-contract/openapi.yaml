@@ -724,6 +724,42 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /analytics/recent-exercises:
+    get:
+      tags: [analytics]
+      summary: The caller's most-recently-trained distinct exercises
+      description: >
+        The caller's most-recently-trained distinct exercises, newest first, each
+        carrying the last working set's weight/reps and the date it was recorded.
+        Powers the record flow's fast lane and the cold-open pre-fill (spec §12.9)
+        in a single read. Dates are naive-tolerant (GYM-30).
+      operationId: getRecentExercises
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of exercises to return.
+          schema:
+            type: integer
+            default: 8
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: Distinct exercises ordered by most recently trained, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecentExercise'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /analytics/top-muscles:
     get:
       tags: [analytics]
@@ -1415,6 +1451,25 @@ components:
         frequency:
           type: integer
           description: Number of recorded sessions for the exercise.
+
+    RecentExercise:
+      type: object
+      description: >
+        A distinct exercise the caller has trained, carrying the last working
+        set's weight/reps and the date it was recorded. Dates are naive-tolerant (GYM-30).
+      required: [muscle_name, exercise_name, last_weight, last_reps, last_date]
+      properties:
+        muscle_name:
+          type: string
+        exercise_name:
+          type: string
+        last_weight:
+          type: number
+        last_reps:
+          type: number
+        last_date:
+          type: string
+          format: date
 
     TopMuscle:
       type: object
