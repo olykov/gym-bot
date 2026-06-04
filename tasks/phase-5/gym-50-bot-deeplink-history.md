@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-50
 title: "Bot: point the Mini App button at the History tab (deep-link)"
 slug: gym-50-bot-deeplink-history
-status: backlog
+status: review
 priority: low
 type: feature
 labels: [phase-5, bot]
@@ -11,14 +11,14 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-04T18:00:00Z
-start_date: null
-finish_date: null
+start_date: 2026-06-04T21:40:00Z
+finish_date: 2026-06-04T00:00:00Z
 updated: 2026-06-04T18:00:00Z
 epic: phase-5
 depends_on: [GYM-49]
 blocks: []
 related: [GYM-12]
-commits: []
+commits: [c66299f]
 tests: []
 design_reports: []
 review_reports: []
@@ -47,3 +47,8 @@ Verify the WebApp opens straight on History.
 
 ### 2026-06-04T18:00:00Z — task created
 Confirm Telegram forwards start_param into the WebApp; otherwise use the URL fragment.
+
+### 2026-06-04 — implemented (c66299f)
+Before: button text "Edit trainings", url = WEB_APP_URL (bare root).
+After:  button text "My trainings",   url = WEB_APP_URL.rstrip("/") + "/history".
+No callback_data, FSM state, handler, or row-order change. ButtonStyle left neutral (no style on this WebApp button). py_compile passed clean.
