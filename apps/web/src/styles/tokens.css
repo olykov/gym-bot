@@ -50,6 +50,11 @@
     /* ---- Shell chrome heights (consumed by Tailwind spacing tokens) ---- */
     --header-h: 52px;
     --nav-h: 60px;
+    /* The center FAB lifts upward into content space (spec §12.1/§12.8); the
+       content container must clear this lift ON TOP of the nav height so a
+       card's tap target never hides under the raised circle. Keep in sync with
+       FAB_LIFT in NavFab.tsx. */
+    --fab-lift: 16px;
     --container-max: 480px;
 
     /* ---- Motion ---- */

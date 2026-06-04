@@ -20,6 +20,7 @@ import { Dashboard } from "@/pages/Dashboard";
 import { Progress } from "@/pages/Progress";
 import { History } from "@/pages/History";
 import { HistoryDay } from "@/pages/HistoryDay";
+import { Profile } from "@/pages/Profile";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
             { path: "progress", element: <Progress /> },
             { path: "history", element: <History /> },
             { path: "history/:date", element: <HistoryDay /> },
+            { path: "profile", element: <Profile /> },
             { path: "*", element: <Navigate to="/dashboard" replace /> },
         ],
     },

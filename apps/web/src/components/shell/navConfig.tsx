@@ -1,7 +1,10 @@
 /**
- * Bottom-nav tab config (spec §10.1). v1 = Dashboard · Progress; Distribution
- * and Profile slots are reserved (commented) for the later iteration. Icons are
- * inline token-colored SVGs (no icon library — stays inside the §1 stack).
+ * Bottom-nav tab config (spec §10.1 / §12.1). The four ROUTE tabs in visual
+ * order: Dashboard · Progress · History · Profile. The center `+` is NOT a tab
+ * here — it is an ACTION (`<NavFab>`) rendered by `<BottomNav>` between index 1
+ * and 2, so it never appears in this list. Profile is now a real (stub) tab;
+ * Distribution remains deferred (not added). Icons are inline token-colored
+ * SVGs (no icon library — stays inside the §1 stack).
  */
 import type { ReactNode } from "react";
 
@@ -56,5 +59,23 @@ export const NAV_TABS: NavTab[] = [
             </svg>
         ),
     },
-    // Reserved for the later iteration (spec §2): Distribution · Profile.
+    {
+        to: "/profile",
+        label: "Profile",
+        // A simple person mark: a head circle over a shoulders arc — token-
+        // stroked, distinct from Dashboard's grid, Progress's line, and
+        // History's log (spec §12.1).
+        icon: (active) => (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <circle cx="12" cy="8" r="3.5" stroke={stroke(active)} strokeWidth="2" />
+                <path
+                    d="M5 20c0-3.5 3.1-6 7-6s7 2.5 7 6"
+                    stroke={stroke(active)}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                />
+            </svg>
+        ),
+    },
+    // Distribution stays deferred for a later iteration (spec §2 / §12.1).
 ];
