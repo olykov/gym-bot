@@ -5,7 +5,8 @@
  * a >=44px touch target (icon + Sora label). The active tab gets the --accent
  * glyph and a sliding indicator that translates under the active tab (180ms,
  * gated by prefers-reduced-motion). Switching tabs fires a Telegram
- * `selectionChanged` haptic. Respects safe-area-inset-bottom.
+ * `selectionChanged` haptic. Clears the home-indicator / Telegram bottom inset
+ * via max(env(safe-area-inset-bottom), --tg-safe-bottom) (Bot API 8.0, spec §4).
  */
 import { NavLink, useLocation } from "react-router-dom";
 import { hapticSelection } from "@/telegram/webapp";
@@ -22,7 +23,10 @@ export function BottomNav() {
     return (
         <nav
             className="fixed inset-x-0 bottom-0 z-20 border-t border-hairline bg-bg"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            style={{
+                paddingBottom:
+                    "max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px))",
+            }}
         >
             <div className="relative mx-auto flex h-nav max-w-container">
                 {/* Sliding active indicator (spec §9.4). */}

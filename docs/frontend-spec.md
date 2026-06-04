@@ -69,7 +69,28 @@ Every page renders inside ONE shared `<AppShell>`. No page builds its own chrome
 - **Safe areas:** use `env(safe-area-inset-*)` for the fixed header/footer.
 
 ## 4. Telegram Mini App integration (mandatory)
-- On load: `WebApp.ready()` → `WebApp.expand()`; read `initData` / `initDataUnsafe`.
+- On load: `WebApp.ready()` → **request true fullscreen** (Bot API 8.0), read `initData` /
+  `initDataUnsafe`.
+- **Fullscreen (Bot API 8.0, GYM-54).** The app boots into **true fullscreen**, not just fullsize.
+  On boot, after `ready()`, call `WebApp.requestFullscreen()` guarded by
+  `WebApp.isVersionAtLeast('8.0')` and wrapped in try/catch; on failure / old client / desktop, **fall
+  back to `WebApp.expand()`**. Subscribe to `fullscreenChanged`. The SDK is `@twa-dev/sdk` `^8.x`
+  (the Bot API 8.0 surface: `requestFullscreen`, `isFullscreen`, `fullscreenChanged`, `safeAreaInset`,
+  `contentSafeAreaInset`, `safeAreaChanged`, `contentSafeAreaChanged`).
+- **Content safe-areas (critical in fullscreen).** In fullscreen Telegram overlays its own controls
+  (close / menu) at the very top of the WebApp, so the fixed `<AppHeader>` MUST sit **below** them and
+  never under the Telegram close button. On boot and on every `safeAreaChanged` /
+  `contentSafeAreaChanged` / `fullscreenChanged`, read `WebApp.contentSafeAreaInset` (the area clear of
+  Telegram's overlaid controls) and `WebApp.safeAreaInset` (device notch / home-indicator) and write
+  them to CSS vars: `--tg-content-top`/`--tg-content-bottom` (device inset + content inset, the
+  header/footer clearance) and `--tg-safe-top/bottom/left/right` (device only). The shell chrome then
+  pads with **`max(env(safe-area-inset-*), var(--tg-*))`** so it clears the Telegram controls in
+  fullscreen AND still respects the notch in fullsize / a plain browser:
+  - `<AppHeader>` top padding = `max(env(safe-area-inset-top), var(--tg-content-top))`.
+  - `<Container>` top padding adds the header height to that same max; bottom padding =
+    `max(env(safe-area-inset-bottom), var(--tg-safe-bottom)) + nav height`.
+  - `<BottomNav>` bottom padding = `max(env(safe-area-inset-bottom), var(--tg-safe-bottom))`.
+  All vars default to `0px` outside Telegram, so the `max()` degrades to the plain `env()` values.
 - **Auth:** POST `initData` → Core API Mini App auth (`verify_telegram_webapp_auth` path) → JWT held
   in memory/session; the generated client sends it. Reuse the `apps/admin` pattern. RLS then scopes
   all data to the caller automatically (fail-closed).
@@ -368,15 +389,21 @@ multi-year history never loads as one unbounded list (see §11.7).
   trainings" empty state, not a crash.
 - **Query key:** `["training", "day", date]`.
 
-### 11.4 Set editor — `<BottomSheet>` with steppers, MainButton save, delete + confirm
+### 11.4 Set editor — `<BottomSheet>` with steppers, in-sheet sticky Save, delete + confirm
 The single interaction for editing/removing a set. **Bottom-sheet** (mobile-native, thumb-reachable),
 NOT a centered modal:
 
-- **`<BottomSheet>`** — slides up from the bottom inside the shell, anchored to `safe-area-inset-bottom`,
-  `--bg` surface with the §9.5 top hairline + grab-handle, a scrim over the page (tap-scrim or
-  BackButton dismisses). Max-width = the container width (it never goes wider than the column). Slide
-  is 240ms ease-out, **behind `prefers-reduced-motion`** (reduced = instant, no slide). Focus-trapped
-  while open; `BackButton` while the sheet is open closes the sheet first (one back-step), not the page.
+- **`<BottomSheet>`** — slides up from the bottom inside the shell, anchored to the bottom safe-area
+  (`max(env(safe-area-inset-bottom), --tg-safe-bottom)`, §4), `--bg` surface with the §9.5 top hairline
+  + grab-handle, a scrim over the page (tap-scrim or BackButton dismisses). Max-width = the container
+  width (it never goes wider than the column). Slide is 240ms ease-out, **behind
+  `prefers-reduced-motion`** (reduced = instant, no slide). Focus-trapped while open; `BackButton` while
+  the sheet is open closes the sheet first (one back-step), not the page.
+- **Sheet fit — NEVER clip (GYM-54).** The panel is capped at a `max-height` of
+  `calc(100dvh − max(env(safe-area-inset-top), --tg-content-top) − ~24px margin)`, is a flex column,
+  and its body region is `overflow-y:auto`. A tall sheet therefore scrolls **internally** instead of
+  running off-screen, so Weight + Reps + Save + Delete are always reachable and the lowest field
+  (Reps) is never clipped. The body's bottom padding clears the device / Telegram bottom inset.
 - **Header:** the set's identity, read-only — `{exercise_name}` (Sora 600) + `Set {n}` (`--hint`).
   Only weight/reps are mutable (matches `TrainingUpdate`); muscle/exercise/set-number are NOT editable
   in v1 (moving a set = GYM-51).
@@ -390,11 +417,16 @@ NOT a centered modal:
   - **Reps:** min 0, integer, step 1.
   - Long-press / hold-to-repeat on ± is a nice-to-have, not required; if added it must respect reduced-
     motion (no animated ramp) and remain ≥44px.
-- **Save:** the Telegram **`MainButton`** (`setText('SAVE')`, `show()`, `onClick`), with
-  `notificationOccurred('success')` haptic on success. While saving, `MainButton.showProgress()`.
-  `MainButton` is hidden on sheet close/unmount. Fires `PUT /training/{training_id}` `{weight, reps}`.
-  Save is disabled (MainButton hidden/`hideProgress`+disabled) when the value is unchanged or invalid
-  (empty / negative).
+- **Save:** an **in-sheet sticky SAVE button** (token-only, `--accent` fill per §9.3, `--button-text`
+  label, ≥48px), pinned to the bottom of the sheet's scroll viewport (`position:sticky; bottom:0`)
+  above the bottom safe-area, with `notificationOccurred('success')` haptic on success. Fires
+  `PUT /training/{training_id}` `{weight, reps}` then closes optimistically. Save is **disabled** when
+  the value is unchanged or invalid (empty / negative / non-integer reps) — same logic as before.
+  > **Why in-sheet, not the native MainButton (GYM-54):** the Telegram native `MainButton` overlays the
+  > WebApp viewport bottom; inside a bottom-sheet it both *covered* the sheet's lowest field and gave
+  > the sheet no bottom anchor, so Reps clipped on real devices (this caused GYM-53 #1 + GYM-54). A
+  > sticky in-sheet button makes the sheet self-contained, predictable, and clip-proof, and works
+  > identically on desktop / old clients with no MainButton.
 - **Delete:** a clearly secondary **Delete set** affordance inside the sheet (Sora label, `--accent`
   text, NOT a full red fill — accent is sparing per §9.3), separated from Save so it's not mis-tapped.
   Tapping it (or the swipe-delete in §11.3) opens a **confirm step** — an in-sheet two-button confirm

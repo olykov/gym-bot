@@ -1,6 +1,6 @@
 /**
  * The set editor (spec §11.4) — the contents of the <BottomSheet>. Two
- * <Stepper>s (Weight / Reps), a Telegram MainButton SAVE, and a secondary
+ * <Stepper>s (Weight / Reps), a sticky in-sheet SAVE button, and a secondary
  * two-step Delete confirm. Edit + delete are optimistic via the useTraining
  * mutations; the parent owns the day `date` (the query key) and the close.
  *
@@ -8,19 +8,21 @@
  * (non-empty, non-negative, reps integer) AND changed from the original.
  * Weight steps 2.5kg and accepts decimals (comma-normalized); reps is integer.
  *
+ * SAVE is an in-sheet sticky button (`position:sticky; bottom:0`), NOT the
+ * Telegram native MainButton (GYM-54). The MainButton overlaid the WebApp
+ * viewport bottom and, inside a bottom-sheet, clipped the sheet's lowest field
+ * on real devices (it caused GYM-53 #1 + this bug). The sticky button stays
+ * pinned to the bottom of the sheet's scroll viewport, above the safe-area, so
+ * Weight + Reps + Save + Delete are all reachable and nothing is ever clipped.
+ *
  * Delete is never one-tap: tapping the header "Delete" control swaps in an
  * in-sheet "Delete this set?" Cancel/Delete confirm with a warning haptic
- * (§11.4). The delete affordance lives in the HEADER row — NOT the bottom of
- * the sheet — because the Telegram native MainButton (SAVE) owns the bottom of
- * the WebApp viewport and would cover any low control (the §11.7 fat-finger /
- * MainButton-overlap fix). No interactive element sits in the bottom strip.
+ * (§11.4). The accent Delete lives in the HEADER row, spatially separated from
+ * the bottom SAVE so it is not mis-tapped.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { TrainingSet } from "@/api/training";
-import {
-    hapticNotification,
-    mainButton,
-} from "@/telegram/webapp";
+import { hapticNotification } from "@/telegram/webapp";
 import { useDeleteSet, useEditSet } from "@/hooks/useTraining";
 import { Stepper, parseNumeric } from "@/components/ui/Stepper";
 
@@ -71,32 +73,16 @@ export function SetEditor({
 
     function save(): void {
         if (!canSave || weight === null || reps === null) return;
-        mainButton.showProgress();
         edit.mutate(
             { trainingId: set.training_id, body: { weight, reps } },
             {
-                onSuccess: () => {
-                    hapticNotification("success");
-                    onClose(); // optimistic UI already patched the row
-                },
-                onError: () => {
-                    mainButton.hideProgress();
-                },
+                onSuccess: () => hapticNotification("success"),
             },
         );
-        // Optimistic: close immediately; the success/err haptic still fires.
+        // Optimistic: the onMutate cache patch already applied, so close
+        // immediately; the success haptic still fires on settle.
         onClose();
     }
-
-    // Telegram MainButton drives SAVE (spec §11.4): show/enable on validity,
-    // hide on unmount. The handler is kept fresh via the effect deps.
-    useEffect(() => {
-        mainButton.show("SAVE");
-        mainButton.setEnabled(canSave);
-        const teardown = mainButton.onClick(save);
-        return teardown;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [canSave, weightText, repsText, set.training_id]);
 
     function startDelete(): void {
         hapticNotification("warning");
@@ -104,7 +90,6 @@ export function SetEditor({
     }
 
     function confirmDelete(): void {
-        mainButton.hide();
         del.mutate(set.training_id, {
             onSuccess: () => hapticNotification("success"),
         });
@@ -120,8 +105,8 @@ export function SetEditor({
     return (
         <div>
             {/* Header row: read-only identity (§11.4) + the delete affordance.
-               Delete lives HERE, in the header, so it can never be covered by
-               the Telegram MainButton that owns the viewport bottom (§11.7). */}
+               Delete lives HERE, in the header, spatially separated from the
+               bottom SAVE so it is not mis-tapped (§11.7). */}
             <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <h2
@@ -150,7 +135,7 @@ export function SetEditor({
             </div>
 
             {/* Two-step confirm (§11.4 / §11.7) — rendered high, under the
-               header, never in the MainButton bottom strip. */}
+               header, separated from the sticky SAVE. */}
             {confirmingDelete && (
                 <div className="mb-5 rounded-md border border-hairline bg-secondary-bg p-3">
                     <p className="text-base text-text">Delete this set?</p>
@@ -195,6 +180,23 @@ export function SetEditor({
                     integer
                     inputMode="numeric"
                 />
+            </div>
+
+            {/* Sticky in-sheet SAVE (§11.4, GYM-54) — pinned to the bottom of
+               the sheet's scroll viewport so it never scrolls away and is never
+               clipped (replaces the native Telegram MainButton). Accent fill per
+               §9.3; disabled when unchanged/invalid (same logic as before). The
+               -mx-4/px-4 cancel the body's horizontal padding so the button bar
+               spans the panel; the --bg backdrop hides content scrolling under. */}
+            <div className="sticky bottom-0 z-10 -mx-4 mt-6 bg-bg px-4 pb-1 pt-3">
+                <button
+                    type="button"
+                    onClick={save}
+                    disabled={!canSave}
+                    className="press-95 min-h-[48px] w-full rounded-md bg-accent text-base font-semibold uppercase tracking-wide text-button-text transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    Save
+                </button>
             </div>
         </div>
     );
