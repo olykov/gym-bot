@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-46
 title: "Contract: training day-list, day-detail, DELETE set + regen clients"
 slug: gym-46-training-history-contract
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, api-contract]
