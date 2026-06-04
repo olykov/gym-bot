@@ -82,6 +82,8 @@ def generate_start_markup() -> InlineKeyboardMarkup:
     elif not web_app_url.startswith("https://"):
         web_app_url = f"https://{web_app_url}"
 
+    history_url = web_app_url.rstrip("/") + "/history"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[[
             InlineKeyboardButton(
@@ -90,8 +92,8 @@ def generate_start_markup() -> InlineKeyboardMarkup:
                 style=ButtonStyle.SUCCESS,
             ),
             InlineKeyboardButton(
-                text="Edit trainings",
-                web_app=WebAppInfo(url=web_app_url),
+                text="My trainings",
+                web_app=WebAppInfo(url=history_url),
             ),
         ]]
     )
