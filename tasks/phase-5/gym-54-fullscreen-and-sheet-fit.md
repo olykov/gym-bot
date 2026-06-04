@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-54
 title: "apps/web: Telegram fullscreen mode + bottom-sheet fit (no clipping)"
 slug: gym-54-fullscreen-and-sheet-fit
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [phase-5, frontend, design]
