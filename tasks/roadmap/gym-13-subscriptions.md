@@ -38,3 +38,10 @@ subscriptions/entitlements domain in apps/api; tier middleware; payment provider
 
 ### 2026-05-31T16:00:00Z — task created
 Gates AI/advanced analytics/calorie tracker uniformly.
+
+### 2026-06-04 — sequencing: do AFTER the admin foundation
+Operator decision (2026-06-04): entitlements/limits/trials are SET by the operator, and there is
+nowhere to set them until the admin panel is rebuilt/relocated (it currently lives in apps/admin,
+degraded after the Phase 5 cutover). So GYM-13 is blocked on the admin-foundation work — build that
+first, then GYM-13. The entitlements rows are user-owned → reuse the RLS `enable_user_rls` convention
+([[gymbot-rls-architecture]]); admin writes them via admin-JWT routes.
