@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-62
 title: "apps/web: Progress pickers by frequency + open on top exercise's By Weight chart"
 slug: gym-62-progress-default-frequency
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, frontend, design]
