@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-70
 title: "Contract: GET /analytics/log-context (completed-sets + last-session + PR in one) + regen"
 slug: gym-70-log-context-contract
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api-contract, perf]
