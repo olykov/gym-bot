@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-39
 title: "API: analytics endpoints (sargable, RLS) + Redis cache"
 slug: gym-39-analytics-api-redis
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, api]

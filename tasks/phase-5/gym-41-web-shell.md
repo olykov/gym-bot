@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-41
 title: "apps/web: scaffold + AppShell + tokens + Telegram SDK + auth"
 slug: gym-41-web-shell
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, frontend, design]
