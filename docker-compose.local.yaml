@@ -106,6 +106,7 @@ services:
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       BOT_SERVICE_TOKEN: ${BOT_SERVICE_TOKEN}
+      REDIS_URL: ${REDIS_URL}
     ports:
       - "8001:8000"
     networks:
