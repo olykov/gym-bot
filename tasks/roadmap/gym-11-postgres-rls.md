@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-11
 title: "Phase 4: Postgres Row-Level Security"
 slug: gym-11-postgres-rls
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-4, security, db]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-05-31T16:00:00Z
 start_date: 2026-06-02T00:00:00Z
-finish_date: null
-updated: 2026-06-02T04:00:00Z
+finish_date: 2026-06-04T08:40:00Z
+updated: 2026-06-04T08:40:00Z
 epic: roadmap
 depends_on: [GYM-10]
 blocks: []
 related: [GYM-32, GYM-33, GYM-34, GYM-35, GYM-36, GYM-37, GYM-13]
-commits: []
+commits: [4ce64bb, e876208]
 tests:
   - apps/api/tests/conftest.py
   - apps/api/tests/test_rls_isolation.py
@@ -86,8 +86,8 @@ migration. Convention documented in docs/ARCHITECTURE.md + packages/db/README:
 - [x] Admin JWT sees all; service token never admin.
 - [x] Catalog: user sees `is_global`, can only modify own (`created_by = me`).
 - [x] `enable_user_rls()` / `enable_catalog_rls()` exist; a demo table is covered by one line.
-- [~] Validated on a backup-seeded copy of prod before deploy; rollback exists. (validated on
-      ephemeral seeded DB + rollback documented; live prod-backup validation = operator cutover step)
+- [x] Validated on a backup-seeded copy of prod before deploy; rollback exists. (ephemeral seeded
+      DB in tests + documented rollback; live cutover done 2026-06-04, Telegram smoke passed)
 
 ### Prod facts (grounding, 2026-06-02)
 App role `myuser` = `rolsuper=t, rolbypassrls=t`. Tables: `user_id` on training + hidden_*;
@@ -135,3 +135,14 @@ Kept in REVIEW (not done): NOT merged/deployed. Operator cutover (see packages/d
 assert 0 rows `is_global AND created_by IS NOT NULL` in muscles/exercises; (5) `alembic upgrade head`
 (as myuser); (6) Telegram smoke. Rollback: `alembic downgrade -1` + revert API to myuser. Flip to
 done after prod smoke confirms per-user isolation live.
+
+### 2026-06-04T08:40:00Z — DEPLOYED + prod smoke passed (done)
+Cutover executed safely (no downtime window): operator set APP_DB_PASSWORD, created the `app_rw`
+role on prod, ran the M4 data guard (0|0), `alembic stamp 0001_baseline` + `alembic upgrade head`
+via SSH tunnel (myuser) → RLS ENABLE+FORCE confirmed `t|t` on all 6 tables WHILE the old myuser API
+kept serving (superuser bypasses RLS). Then merged phase-4/rls -> main (e876208) and deployed
+(run 26940082789, success) — the new API came up as `app_rw` with grants+RLS already in place, no
+permission-denied window. Operator Telegram smoke: muscles/exercises lists populated, set recorded,
+PR highlight shown, Mini App history intact → per-user RLS isolation is LIVE and transparent.
+Phase 4 complete. Phase 5+ (GYM-12 website, GYM-13 subscriptions) unblocked; entitlements tables
+will reuse `enable_user_rls`.
