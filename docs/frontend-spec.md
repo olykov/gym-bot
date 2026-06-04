@@ -871,3 +871,15 @@ No new library is introduced (§1): all of the above are compositions of existin
   orange-red and is exactly the "one memorable accent moment" the aesthetic is built around. If the
   operator wants a literally pure-orange FAB, that's a one-token `--accent`-vs-new-`--fab` decision to
   raise at review — flagged, not silently chosen.
+
+### 12.9 Operator decisions (2026-06-05) — locked for the build
+1. **FAB color = `--accent`** (the brand Chalk-Red orange, §9.3 one-accent). No new `--fab` hue.
+2. **`recent-exercises` is IN scope** for this feature (not deferred): the fast lane uses ONE
+   `GET /analytics/recent-exercises` read (last-trained, cross-muscle, with `last_weight`/`last_reps`),
+   and the **cold-open pre-fill uses the actual last working set** from it (PR is only the labelled
+   fallback when an exercise has no recent row). This is the buttery path. Contract + API = GYM-66/67.
+3. **Exercise picker = frequency-first, mirror the bot's "top-N + show all":**
+   - Fast lane (cross-muscle): `recent-exercises` chips — 1 tap.
+   - Browse by muscle (fallback): the muscle's exercises **frequency-sorted**, render the **top ~6 + a
+     "Show all" chip** that expands the rest **client-side** (one `top-exercises?muscle&limit=200`
+     fetch; no extra endpoint). Same idea as the bot's "5 + load all", smoother (no round-trip).

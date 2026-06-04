@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-65
 title: "Design: spec §12 — 5-item nav + center FAB + smooth record-training flow (ultrathink, plugin)"
 slug: gym-65-record-flow-design
-status: review
+status: done
 priority: high
 type: research
 labels: [phase-5, frontend, design]
@@ -12,8 +12,8 @@ model: null
 reporter: oleksii
 created: 2026-06-05T04:00:00Z
 start_date: 2026-06-05T04:00:00Z
-finish_date: null
-updated: 2026-06-05T04:00:00Z
+finish_date: 2026-06-05T06:00:00Z
+updated: 2026-06-05T06:00:00Z
 epic: phase-5
 depends_on: [GYM-64]
 blocks: []
