@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-71
 title: "API: implement /analytics/log-context (completed-sets + last-session + PR)"
 slug: gym-71-log-context-api
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api, perf]
