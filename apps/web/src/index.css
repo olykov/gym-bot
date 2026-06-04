@@ -168,6 +168,36 @@
     animation: shimmer 1.4s ease-in-out infinite;
 }
 
+/* PR-beat celebration (spec §9.4 / §12.3) — a single brief --accent flare when
+ * a logged set beats the known PR. No confetti, no library; one pulse, then it
+ * settles. Off under prefers-reduced-motion (the value just updates). */
+@keyframes pr-pulse {
+    0% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+    }
+    60% {
+        box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);
+    }
+    100% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+    }
+}
+.pr-pulse {
+    animation: pr-pulse 600ms var(--ease-out-soft) 1;
+}
+
+@keyframes pr-flare {
+    0% {
+        background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+.pr-flare {
+    animation: pr-flare 700ms var(--ease-out-soft) 1;
+}
+
 /* Active-tab indicator + press micro-interaction (spec §9.4). */
 .press-95 {
     transition: transform 80ms var(--ease-out-soft);
@@ -202,6 +232,10 @@
         opacity: 1;
     }
     .sheet-panel {
+        animation: none;
+    }
+    .pr-pulse,
+    .pr-flare {
         animation: none;
     }
     * {

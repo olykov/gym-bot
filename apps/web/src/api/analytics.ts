@@ -16,6 +16,12 @@ export type Muscle = Schemas["Muscle"];
 export type Exercise = Schemas["Exercise"];
 export type TopMuscle = Schemas["TopMuscle"];
 export type TopExercise = Schemas["TopExercise"];
+export type RecentExercise = Schemas["RecentExercise"];
+export type CompletedSets = Schemas["CompletedSets"];
+export type PersonalRecord = Schemas["PersonalRecord"];
+export type MaxReps = Schemas["MaxReps"];
+export type MuscleCreate = Schemas["MuscleCreate"];
+export type ExerciseCreate = Schemas["ExerciseCreate"];
 
 /** GET /analytics/summary — the four dashboard numbers (scoped to the caller). */
 export function fetchSummary(signal?: AbortSignal): Promise<AnalyticsSummary> {
@@ -97,4 +103,79 @@ export function fetchExerciseProgress(
         `/analytics/exercise-progress?${qs}`,
         { signal },
     );
+}
+
+/**
+ * GET /analytics/recent-exercises?limit — the caller's most-recently-trained
+ * distinct exercises (cross-muscle, newest first), each carrying the last
+ * working set's weight/reps. Powers the record flow's fast lane and the
+ * cold-open pre-fill in a single read (spec §12.9).
+ *
+ * @param limit - max exercises to return (the fast lane uses 8).
+ */
+export function fetchRecentExercises(
+    limit: number,
+    signal?: AbortSignal,
+): Promise<RecentExercise[]> {
+    const qs = new URLSearchParams({ limit: String(limit) }).toString();
+    return apiRequest<RecentExercise[]>(`/analytics/recent-exercises?${qs}`, {
+        signal,
+    });
+}
+
+/**
+ * GET /analytics/completed-sets?muscle&exercise&date — the set NUMBERS already
+ * recorded for an exercise on a date. Drives the record flow's auto set-number
+ * (spec §12.3) so the user never picks a set number.
+ *
+ * @param muscle - muscle group name.
+ * @param exercise - exercise name.
+ * @param date - calendar date (YYYY-MM-DD), usually today.
+ */
+export function fetchCompletedSets(
+    muscle: string,
+    exercise: string,
+    date: string,
+    signal?: AbortSignal,
+): Promise<CompletedSets> {
+    const qs = new URLSearchParams({ muscle, exercise, date }).toString();
+    return apiRequest<CompletedSets>(`/analytics/completed-sets?${qs}`, {
+        signal,
+    });
+}
+
+/**
+ * GET /analytics/personal-record?muscle&exercise — the caller's heaviest set
+ * for an exercise, or `null` when there's no history. Labels the PR target chip
+ * and is the cold-open pre-fill fallback (spec §12.3).
+ *
+ * @param muscle - muscle group name.
+ * @param exercise - exercise name.
+ */
+export function fetchPersonalRecord(
+    muscle: string,
+    exercise: string,
+    signal?: AbortSignal,
+): Promise<PersonalRecord | null> {
+    const qs = new URLSearchParams({ muscle, exercise }).toString();
+    return apiRequest<PersonalRecord | null>(
+        `/analytics/personal-record?${qs}`,
+        { signal },
+    );
+}
+
+/**
+ * POST /muscles — create a private muscle for the caller (add-inline, spec
+ * §12.2). Returns the created (or existing) muscle row.
+ */
+export function createMuscle(body: MuscleCreate): Promise<Muscle> {
+    return apiRequest<Muscle>("/muscles", { method: "POST", body });
+}
+
+/**
+ * POST /exercises — create a private exercise under a muscle, referenced by
+ * name (the muscle is created if needed, per contract). Add-inline (spec §12.2).
+ */
+export function createExercise(body: ExerciseCreate): Promise<Exercise> {
+    return apiRequest<Exercise>("/exercises", { method: "POST", body });
 }

@@ -9,12 +9,14 @@
  * The header title comes from the active route (set per-page below), so the
  * shell stays identical while the context label changes.
  */
+import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AppHeader } from "./AppHeader";
 import { BottomNav } from "./BottomNav";
 import { Container } from "./Container";
 import { NAV_TABS } from "./navConfig";
 import { formatDayHeading } from "@/components/history/historyWindow";
+import { RecordSheet } from "@/components/record/RecordSheet";
 
 /**
  * Resolve the header title for the current route. Tab routes use the nav label;
@@ -33,6 +35,10 @@ export function AppShell() {
     const location = useLocation();
     const title = titleForPath(location.pathname);
 
+    // The record sheet lives at the shell so the center FAB (in <BottomNav>) can
+    // open it from anywhere without per-page wiring (spec §12.2 / GYM-69).
+    const [recordOpen, setRecordOpen] = useState(false);
+
     return (
         <div className="relative h-full overflow-hidden bg-secondary-bg">
             {/* Chalk-dust grain, page background only (spec §9.5). */}
@@ -48,7 +54,10 @@ export function AppShell() {
                 </Container>
             </div>
 
-            <BottomNav />
+            <BottomNav onRecord={() => setRecordOpen(true)} />
+
+            {/* The record flow (spec §12) — opened by the NavFab onRecord. */}
+            <RecordSheet open={recordOpen} onClose={() => setRecordOpen(false)} />
         </div>
     );
 }

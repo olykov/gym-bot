@@ -16,6 +16,7 @@ export type TrainingDayExercise = Schemas["TrainingDayExercise"];
 export type TrainingSet = Schemas["TrainingSet"];
 export type TrainingUpdate = Schemas["TrainingUpdate"];
 export type Training = Schemas["Training"];
+export type TrainingCreate = Schemas["TrainingCreate"];
 
 /**
  * GET /training/days?from&to — one entry per training day, newest first.
@@ -41,6 +42,11 @@ export function fetchTrainingDay(
         `/training/day/${encodeURIComponent(date)}`,
         { signal },
     );
+}
+
+/** POST /training — record one set; the server assigns id/date/user_id. */
+export function createTraining(body: TrainingCreate): Promise<Training> {
+    return apiRequest<Training>("/training", { method: "POST", body });
 }
 
 /** PUT /training/{training_id} — update a set's weight and reps. */

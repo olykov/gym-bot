@@ -1,0 +1,82 @@
+/**
+ * In-sheet inline add field (spec §12.2) — a tiny text input + a confirm action
+ * for the `+ Muscle` / `+ Exercise` add-inline flow and the new-user
+ * "ADD YOUR FIRST EXERCISE" prompt. No new screen, no modal: it lives inside
+ * the record sheet body. Token-only, ≥44px targets.
+ *
+ * On submit it reports the trimmed name to the parent (which fires the create
+ * mutation + optimistic insert). It stays controlled by the parent for `pending`
+ * and `error` so a failed create keeps the typed name (spec §12.5). Submit is
+ * disabled while empty or pending.
+ */
+import { useState } from "react";
+
+interface AddInlineFieldProps {
+    placeholder: string;
+    /** Label for the submit button (e.g. "Add"). */
+    actionLabel: string;
+    pending?: boolean;
+    error?: string | null;
+    onSubmit: (name: string) => void;
+    onCancel?: () => void;
+}
+
+export function AddInlineField({
+    placeholder,
+    actionLabel,
+    pending = false,
+    error = null,
+    onSubmit,
+    onCancel,
+}: AddInlineFieldProps) {
+    const [name, setName] = useState("");
+    const trimmed = name.trim();
+    const canSubmit = trimmed.length > 0 && !pending;
+
+    function submit(): void {
+        if (!canSubmit) return;
+        onSubmit(trimmed);
+    }
+
+    return (
+        <div>
+            <div className="flex items-stretch gap-2">
+                <input
+                    type="text"
+                    value={name}
+                    autoFocus
+                    placeholder={placeholder}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                            e.preventDefault();
+                            submit();
+                        }
+                    }}
+                    className="min-h-[44px] flex-1 rounded-md border border-hairline bg-secondary-bg px-3 text-base text-text outline-none placeholder:text-hint"
+                />
+                <button
+                    type="button"
+                    onClick={submit}
+                    disabled={!canSubmit}
+                    className="press-95 min-h-[44px] shrink-0 rounded-md bg-accent px-4 text-base font-semibold uppercase tracking-wide text-button-text disabled:opacity-40"
+                >
+                    {pending ? "…" : actionLabel}
+                </button>
+                {onCancel ? (
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        aria-label="Cancel"
+                        className="press-95 min-h-[44px] shrink-0 rounded-md border border-hairline bg-bg px-3 text-base text-hint"
+                    >
+                        ×
+                    </button>
+                ) : null}
+            </div>
+            {error ? (
+                <p className="mt-2 text-label text-accent">{error}</p>
+            ) : null}
+        </div>
+    );
+}

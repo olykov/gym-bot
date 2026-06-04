@@ -25,6 +25,7 @@ import type { TrainingSet } from "@/api/training";
 import { hapticNotification } from "@/telegram/webapp";
 import { useDeleteSet, useEditSet } from "@/hooks/useTraining";
 import { Stepper, parseNumeric } from "@/components/ui/Stepper";
+import { SheetSaveButton } from "@/components/ui/SheetSaveButton";
 
 export interface EditorTarget {
     set: TrainingSet;
@@ -182,22 +183,11 @@ export function SetEditor({
                 />
             </div>
 
-            {/* Sticky in-sheet SAVE (§11.4, GYM-54) — pinned to the bottom of
-               the sheet's scroll viewport so it never scrolls away and is never
-               clipped (replaces the native Telegram MainButton). Accent fill per
-               §9.3; disabled when unchanged/invalid (same logic as before). The
-               -mx-4/px-4 cancel the body's horizontal padding so the button bar
-               spans the panel; the --bg backdrop hides content scrolling under. */}
-            <div className="sticky bottom-0 z-10 -mx-4 mt-6 bg-bg px-4 pb-1 pt-3">
-                <button
-                    type="button"
-                    onClick={save}
-                    disabled={!canSave}
-                    className="press-95 min-h-[48px] w-full rounded-md bg-accent text-base font-semibold uppercase tracking-wide text-button-text transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                    Save
-                </button>
-            </div>
+            {/* Sticky in-sheet SAVE (§11.4, GYM-54) — the shared
+               <SheetSaveButton>, pinned to the bottom of the sheet's scroll
+               viewport so it never clips (replaces the native MainButton).
+               Disabled when unchanged/invalid (same logic as before). */}
+            <SheetSaveButton label="Save" onClick={save} disabled={!canSave} />
         </div>
     );
 }
