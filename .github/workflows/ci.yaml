@@ -15,6 +15,7 @@ env:
   BOT_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot-app
   ADMIN_BACKEND_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot-admin-backend
   ADMIN_FRONTEND_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot-admin-frontend
+  WEB_FRONTEND_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot-web-frontend
 
 jobs:
   build-bot:
@@ -65,8 +66,27 @@ jobs:
           docker build -f apps/admin/Dockerfile -t ${{ env.ADMIN_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }} apps/admin/
           docker push ${{ env.ADMIN_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }}
 
+  build-web-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build and push web frontend Docker image
+        # Build context is the repo root so the Dockerfile can access
+        # packages/api-contract/openapi.yaml to generate the TS client inside
+        # the build (the generated clients/typescript/ dir is gitignored).
+        run: |
+          docker build -f apps/web/Dockerfile -t ${{ env.WEB_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }} .
+          docker push ${{ env.WEB_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }}
+
   deploy:
-    needs: [build-bot, build-admin-backend, build-admin-frontend]
+    needs: [build-bot, build-admin-backend, build-admin-frontend, build-web-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +116,8 @@ jobs:
           ADMIN_BACKEND_TAG: ${{ env.BUILD_TAG }}
           ADMIN_FRONTEND_IMAGE: ${{ env.ADMIN_FRONTEND_IMAGE }}
           ADMIN_FRONTEND_TAG: ${{ env.BUILD_TAG }}
+          WEB_FRONTEND_IMAGE: ${{ env.WEB_FRONTEND_IMAGE }}
+          WEB_FRONTEND_TAG: ${{ env.BUILD_TAG }}
           GOOGLE_SHEET_ID: "${{ secrets.GOOGLE_SHEET_ID }}"
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
           TELEGRAM_WEBHOOK_SECRET: "${{ secrets.TELEGRAM_WEBHOOK_SECRET }}"

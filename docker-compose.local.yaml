@@ -126,6 +126,20 @@ services:
     depends_on:
       - admin_backend
 
+  web_frontend:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: always
+    container_name: web_frontend
+    hostname: web_frontend
+    ports:
+      - "5175:80"
+    networks:
+      - core-infra
+    depends_on:
+      - admin_backend
+
 volumes:
   redis_data:
 

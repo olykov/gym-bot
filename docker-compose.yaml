@@ -98,6 +98,18 @@ services:
     depends_on:
       - admin_backend
 
+  web_frontend:
+    image: "${WEB_FRONTEND_IMAGE}:${WEB_FRONTEND_TAG}"
+    restart: always
+    container_name: web_frontend
+    hostname: web_frontend
+    ports:
+      - "5175:80"
+    networks:
+      - core-infra
+    depends_on:
+      - admin_backend
+
 volumes:
   redis_data:
 

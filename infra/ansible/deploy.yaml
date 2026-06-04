@@ -27,6 +27,8 @@
           ADMIN_BACKEND_TAG={{ lookup('env', 'ADMIN_BACKEND_TAG') }}
           ADMIN_FRONTEND_IMAGE={{ lookup('env', 'ADMIN_FRONTEND_IMAGE') }}
           ADMIN_FRONTEND_TAG={{ lookup('env', 'ADMIN_FRONTEND_TAG') }}
+          WEB_FRONTEND_IMAGE={{ lookup('env', 'WEB_FRONTEND_IMAGE') }}
+          WEB_FRONTEND_TAG={{ lookup('env', 'WEB_FRONTEND_TAG') }}
           GOOGLE_SHEET_ID={{ lookup('env', 'GOOGLE_SHEET_ID') }}
           TELEGRAM_BOT_TOKEN={{ lookup('env', 'TELEGRAM_BOT_TOKEN') }}
           TELEGRAM_WEBHOOK_SECRET={{ lookup('env', 'TELEGRAM_WEBHOOK_SECRET') }}
