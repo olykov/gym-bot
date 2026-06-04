@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-68
 title: "apps/web: 5-item bottom nav + raised center FAB + Profile stub"
 slug: gym-68-nav-5item-fab
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, frontend, design]

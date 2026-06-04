@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-67
 title: "API: implement /analytics/recent-exercises (last set per recent exercise)"
 slug: gym-67-recent-exercises-api
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api]
