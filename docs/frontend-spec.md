@@ -514,3 +514,360 @@ extends `<ListRow>`; loading/empty/error always go through `<Skeleton>`/`<EmptyS
   `BackButton`. Define a clear stack: sheet-open → Back closes the sheet; sheet-closed on
   `/history/:date` → Back returns to the list; on `/history` → Back is hidden (bottom-nav is the nav).
   Mis-wiring double-pops or strands the user — wire show/hide on mount/unmount deterministically.
+
+---
+
+## 12. Record training (nav + log flow)
+
+> Refined via the `frontend-design` plugin (2026-06-05, GYM-65, ultrathink). This is the *details +
+> interaction* layer for **recording a training inside the Mini App** — it does NOT relax any §0–§11
+> rule (shell, single ~480px container, spacing 4/8/12/16/24/32, tokens, mobile-first, Chalk & Iron).
+> **Distinctive in the details, disciplined in the structure.** Scope: (a) the bottom-nav grows to a
+> **5-item Instagram-style bar with a raised center `+`**, and (b) a **super-smooth record flow** that
+> logs a workout in far fewer taps than the bot. The bot stays; the Mini App becomes a first-class
+> logger.
+>
+> **Design north star.** Gym logging is repetitive: the same few exercises, set after set, at weights
+> close to last time. The whole flow is tuned so the *second set onward costs ~1 tap*. The hero
+> interaction is **pre-fill** (weight/reps already filled from the user's own history) + **auto-advance**
+> (Save a set → the panel re-arms for the next set, same pre-fill, set-number incremented). Everything
+> else is a fallback for the cold path (first ever set, new exercise).
+>
+> Backing contract (all RLS-scoped, exist today — `packages/api-contract/openapi.yaml`):
+> `POST /training` (`TrainingCreate {muscle_name, exercise_name, set, weight, reps}` → `Training`),
+> `GET /analytics/top-muscles` → `TopMuscle[]` (`{name, frequency}`),
+> `GET /analytics/top-exercises?muscle&limit` → `TopExercise[]` (`{name, frequency}`),
+> `GET /analytics/completed-sets?muscle&exercise&date` → `CompletedSets {sets:int[]}` (auto next set #),
+> `GET /analytics/personal-record?muscle&exercise` → `PersonalRecord | null` (`{weight, reps, date}`),
+> `GET /analytics/max-reps?muscle&exercise&weight` → `MaxReps {max_reps}` (reps pre-fill at a weight),
+> `GET /muscles` + `GET /muscles/{id}/exercises` (browse fallback),
+> `POST /muscles` (`MuscleCreate {name}`) + `POST /exercises` (`ExerciseCreate {name, muscle_name}`)
+> (add-inline). The one thing the contract does NOT have is a **cross-muscle "recent exercises"** read
+> and a **"last set" pre-fill** read — the MVP is designed to work fully without them, and §12.7 flags
+> them as a small, separate nice-to-have.
+
+### 12.1 Bottom-nav becomes 5 items with a raised center FAB
+The bar grows from 3 route-tabs to **4 route-tabs + 1 center action** (Instagram pattern: feed-ish
+tabs left, a publish `+` dead-center, profile far-right):
+
+```
+┌───────────────────────────────────────────────┐
+│  Dashboard   Progress   ( + )   History  Profile│   ← the bar (h-nav, fixed)
+│     ▢          ⌁          ●        ☰       ◔     │       ● = raised orange circle FAB
+└──────────────────────────────●─────────────────┘
+                          (lifted above the bar)
+```
+
+- **Route tabs (4):** `Dashboard · Progress · History · Profile`. Same `<BottomNav>` tab contract
+  (§10.1): icon + Sora label, ≥44px target, active = `--accent` glyph + `--accent-weak` pill, sliding
+  indicator (§9.4), `selectionChanged` haptic on switch, all motion behind `prefers-reduced-motion`.
+- **Center item (1) — the FAB, an ACTION not a route.** A new `<NavFab>`: a **circular, `--accent`
+  (Chalk Red — NOTE the operator says "orange"; the committed Chalk & Iron accent IS the warm
+  orange-red `--accent`, so the FAB uses `--accent`, NOT a new hue — §9.3 "one accent, period"),
+  raised** button sitting in the center slot, **elevated above the bar's top edge** (`translateY` up by
+  ~`16px`, the bar reserves the center slot's width but renders no tab there). A bold `+` glyph in
+  `--button-text`, one shadow token for the lift, a 1px `--bg` ring so it reads as a distinct shape
+  against the bar. ≥56px diameter (a comfortable thumb CTA, larger than the 44px tabs — it must *stand
+  out as THE primary action*). Tap → `impactOccurred('medium')` haptic + opens the **record sheet**
+  (§12.2); it does **not** navigate, has no active/route state, and is never "selected".
+- **The sliding active-indicator covers only the 4 route tabs, skipping the center.** Current math
+  (`width = 100/tabCount`, `translateX = activeIndex * 100%`, §9.4 `BottomNav.tsx`) assumes equal
+  flex tabs and breaks with a non-tab center slot. Fix: the bar is a 5-slot flex where the **center
+  slot is a fixed-width spacer** (the FAB is absolutely positioned/over it), and the indicator is
+  computed over the **route tabs only** — index map `{Dashboard:0, Progress:1, History:2, Profile:3}`,
+  and the indicator's `translateX` accounts for the center gap (i.e. the 2 right tabs are offset by one
+  slot). Concretely: render the 4 tabs in their visual order with the spacer between index 1 and 2; the
+  indicator width = `(100% − centerSlotWidth) / 4` and its X position is the active tab's measured left
+  edge (use a `ref`-measured offset rather than a naive `index * 100%`, since the slots are no longer
+  uniform). Center tap never moves the indicator.
+- **Shell contract preserved (§2 / §10.1):** the bar stays `position:fixed`, full-width, `border-t`,
+  `bg-bg`, bottom padding `max(env(safe-area-inset-bottom), var(--tg-safe-bottom))`. The raised FAB's
+  lift must NOT escape the safe-area: the circle's lifted top may rise above the bar, but its tap area
+  and the bar's own bottom inset are unchanged, so on a notched / home-indicator device the FAB never
+  collides with the home indicator (the bar already pads for it; the FAB lifts *upward*, into content
+  space, not downward). See §12.8 safe-area note.
+- **`navConfig.tsx` change:** add `History` (already present from §11) + a new `Profile` tab; the
+  center `+` is **not** a `NavTab` (it's not a route) — it's a distinct `centerAction` rendered by
+  `<BottomNav>` between tab index 1 and 2. The old "reserved slots" comment is resolved: Profile is now
+  a real (stub) tab; Distribution remains deferred/commented.
+- **Profile tab = a STUB route, designed as a slot only.** Route `/profile` renders inside the same
+  `<AppShell>` (no own chrome) and shows a single `<EmptyState>` — Bebas headline "PROFILE", Sora
+  subline "Coming soon." No data fetch (the empty path fires zero queries, §0 / ARCH §2). Glyph =
+  a simple person mark (head + shoulders), token-stroked, distinct from the other three. **We design
+  the slot, not the screen** — the actual profile feature is a separate task.
+
+### 12.2 Record flow — structure (one `<BottomSheet>`, two phases)
+Tapping `+` opens **one `<BottomSheet>`** (reuse the §11.4/§11.5 primitive — bottom-anchored,
+grab-handle, scrim, safe-area-bottom, internal scroll so it never clips, BackButton-closes-sheet-first,
+240ms slide behind `prefers-reduced-motion`). The sheet is a small **two-phase** machine, NOT a wizard
+with many screens:
+
+```
+  +  ──▶  [ Phase A: PICK EXERCISE ]  ──pick──▶  [ Phase B: LOG SETS ]  ──"Done"──▶  close
+                  ▲                                     │
+                  └──────── "Switch exercise" ──────────┘
+```
+
+- **Phase A — exercise picker** (`<RecordPicker>`): get the user onto an exercise in **1 tap** on the
+  hot path. Header "RECORD" (Bebas). Body, in priority order:
+  1. **Frequent exercises, 1-tap chips (the fast lane).** A wrapping/scrolling row of the user's most-
+     trained exercises as `<Chip>`-style buttons, each labelled `exercise_name` with a tiny
+     `muscle_name` sub-label. **MVP source (existing API):** fan-in `top-muscles` → for the top ~3
+     muscles call `top-exercises?muscle&limit=3`, merge + sort by `frequency` desc, take the top ~6–8.
+     This is a small bounded fan-out (≤4 cheap RLS reads, all cached by TanStack Query, fired only when
+     the sheet opens). It approximates "recents" well because frequency ≈ what you train. Tapping a
+     chip → **Phase B** immediately (this is the 1-tap path). *(§12.7 flags a single `recent-exercises`
+     endpoint that would replace this fan-out with one ordered read and add true last-trained ordering
+     + last weight/reps — strictly an upgrade, not required for MVP.)*
+  2. **Muscle → exercise browse (the fallback).** Below the fast lane, a `<ChipRow>` of muscles
+     (`top-muscles` first, then any remaining from `/muscles`); picking a muscle reveals its exercises
+     (`top-exercises?muscle&limit=200`, same as Progress §10.3) as a second chip row. Picking an
+     exercise → **Phase B**. This is the cold path (new exercise not in the fast lane) and costs 2 taps
+     (muscle, exercise).
+  3. **Add inline.** At the end of the muscle row a `+ Muscle` chip; at the end of an exercise row a
+     `+ Exercise` chip. Tapping opens a tiny inline text field (in-sheet, not a new screen) → on submit
+     `POST /muscles` / `POST /exercises {name, muscle_name}`, optimistically insert the new chip and
+     **auto-select it into Phase B**. (`POST /exercises` creates the muscle if needed, per contract.)
+     New users with an empty catalog land here naturally (§12.6 empty state points at it).
+- **Phase B — set-logging panel** (`<SetLogger>`, §12.3): the heart. The same sheet *swaps its body*
+  to the logger (no nav, no new route, no re-open). A back-affordance ("← Switch exercise", small, top-
+  left of the panel) returns to Phase A while keeping the sheet open. "Done" / scrim / BackButton
+  closes the whole sheet.
+
+> **Why one sheet with a body-swap, not multi-screen:** keeps the user in a single thumb-zone surface,
+> preserves the §11.4 "in-sheet sticky Save, never the Telegram MainButton" decision (clip-proof on
+> real devices, GYM-54), and makes auto-advance feel like staying in place rather than navigating.
+
+### 12.3 The set-logging panel (`<SetLogger>`) — the smooth core
+For the chosen `{muscle_name, exercise_name}`, the panel is built to make **each set ~1 tap**:
+
+```
+ ┌─────────────────────────────────────────────┐
+ │ ← Switch exercise                            │
+ │ BENCH PRESS            · Chest                │   ← exercise identity (Bebas + muscle Chip)
+ │                                              │
+ │ TODAY                                        │
+ │  Set 1 — 100kg × 8     Set 2 — 100kg × 7     │   ← already-logged sets today (completed-sets)
+ │                                              │
+ │ SET 3                            PR 102.5kg  │   ← auto set #, PR target chip (--accent)
+ │  WEIGHT                 REPS                  │
+ │  [ − ] [ 100.0 kg ] [+] [ − ] [ 8 ] [+]      │   ← two big <Stepper>s, PRE-FILLED
+ │                                              │
+ │  ┌─────────────────────────────────────────┐ │
+ │  │             SAVE SET                     │ │   ← in-sheet sticky Save (--accent), §11.4
+ │  └─────────────────────────────────────────┘ │
+ │  Done                                        │   ← quiet secondary "finish" affordance
+ └─────────────────────────────────────────────┘
+```
+
+- **Exercise identity (read-only):** `{exercise_name}` in Bebas + a muscle `<Chip>` (`--accent-weak`).
+- **"Today" recap:** a compact, tabular row/grid of sets already logged today for this exercise, using
+  `<SetRow>`-style figures (`Set n — {w}kg × {r}`). Source: this session's just-saved sets (optimistic,
+  always correct) **unioned with** what's already on the server. Server source = `completed-sets`
+  (gives the set *numbers* already recorded today; it returns numbers only, not weight/reps — so the
+  recap shows full `w×r` for sets logged *this session* and a plain `Set n ✓` marker for sets the
+  server already had before this session). This recap is what makes "where am I" obvious and removes
+  the bot's "pick set number" step entirely.
+- **Auto set-number:** `nextSet = max(completed-sets.sets ∪ this-session sets) + 1` (so it's correct
+  even mid-session and after the §11 history edits). Shown as the panel's "SET {n}" heading — the user
+  **never picks a set number** (the bot's step 3 is gone).
+- **Pre-filled `<Stepper>`s (the magic):** two big steppers, reusing §11.5 `<Stepper>`:
+  - **Weight** — `min 0, step 2.5, inputmode="decimal"`, unit `kg`, tabular Bebas value (§11.4 plate
+    granularity, decimal-comma normalized).
+  - **Reps** — `min 0, step 1, integer, inputmode="numeric"`.
+  - **Pre-fill rules (MVP, existing API), in priority order:**
+    1. **Same session, same exercise:** pre-fill weight+reps from **the last set the user just logged
+       this session** for this exercise (held in component/sheet state). This is the dominant case
+       during a workout and needs no network call → truly ~1 tap (just Save).
+    2. **Cold open (first set today):** pre-fill weight = `PersonalRecord.weight`, reps =
+       `PersonalRecord.reps` from `personal-record` (the user's heaviest is a sane, motivating anchor;
+       they nudge ±2.5 to today's working weight). If `personal-record` is `null` (never trained this
+       exercise) → empty fields with `--hint` placeholders ("kg" / "reps") and Save disabled until both
+       are valid. *(Optional polish using existing API: after the user sets a weight, fire
+       `max-reps?weight` to pre-fill the rep count they've hit at that weight — debounced, nice-to-have,
+       not required for MVP.)*
+    > **Why PR, not last-set, for the cold pre-fill:** the contract has **no last-set endpoint** today;
+    > `personal-record` is the closest existing "what do I lift" anchor. §12.7 flags a `last-set` /
+    > `recent-exercises` addition that would make the cold open pre-fill the *actual last working set*
+    > (better than the PR) — the single biggest smoothness upgrade, but a separate task.
+  - **PR target chip:** when `personal-record` exists, show a small `PR {weight}kg` chip (`--accent`
+    text, graphical accent use, a11y-OK §9.3) by the SET heading, so the user sees the bar to beat.
+- **Save set (in-sheet sticky, §11.4 — NOT the Telegram MainButton):** a sticky `--accent`-fill button
+  (`--button-text` label, ≥48px), pinned at the bottom of the sheet's scroll viewport above the bottom
+  safe-area. Disabled when weight/reps are empty/invalid (negative, `NaN`, non-integer reps). On tap:
+  `POST /training {muscle_name, exercise_name, set: nextSet, weight, reps}`.
+- **Auto-advance (the loop):** on a successful `POST`:
+  1. `notificationOccurred('success')` haptic.
+  2. Append the set to the "Today" recap (optimistic, full `w×r`).
+  3. **Re-arm the panel for the next set in place** — `nextSet += 1`, **keep the same weight/reps
+     pre-filled** (the just-logged values; gym sets repeat), Save re-enabled. No sheet close, no
+     scroll-jump (the panel stays anchored; the recap grows above). The user can Save again immediately
+     → **+1 tap per additional set**. (Reduced-motion: the recap append is an instant insert, no slide.)
+  4. **PR-beat celebration:** if the saved `weight` strictly exceeds the known `PersonalRecord.weight`
+     (or any weight when none existed), fire the §9.4 single accent pulse on the SET/PR chip +
+     `notificationOccurred('success')` (already fired) — a brief `--accent` flare on the recap row, no
+     confetti, no library, behind `prefers-reduced-motion` (then: the PR chip just flips to the new
+     value, no flare). Update the local PR anchor so a second PR in the session also celebrates.
+- **Switch exercise / Done:**
+  - **"← Switch exercise"** → body-swaps back to Phase A (sheet stays open), session recap for the
+    previous exercise is preserved in cache.
+  - **"Done"** (quiet secondary, Sora `--hint`) and the scrim / BackButton both **close the sheet**.
+    Closing triggers the cross-screen invalidation set (§12.5) so Dashboard/Progress/History refresh.
+
+**Tap-count budget (the acceptance bar):**
+| Scenario | Taps | Breakdown |
+|---|---|---|
+| Open the flow | 1 | the `+` FAB |
+| First set of a *frequent* exercise | +2 | tap the exercise chip (1) → SAVE (1) *(weight/reps pre-filled from PR)* |
+| First set of a *non-frequent* exercise (browse) | +3 | muscle chip (1) → exercise chip (1) → SAVE (1) |
+| **Each additional set, same exercise** | **+1** | **SAVE** *(set #, weight, reps all pre-filled)* |
+| Adjust weight by one plate then save | +2 | `+`/`−` 2.5kg (1) → SAVE (1) |
+| Switch to another frequent exercise | +1 | its chip (Phase A is one back-tap away) |
+> A full "3 exercises × 4 sets" workout on the hot path ≈ `1 (open) + 3×(1 pick + 4 saves)` ≈ **16 taps**
+> vs the bot's `3 × 4 × 5 picks` = **60 picks**. ~1 tap per set is met for the repeat case.
+
+### 12.4 New primitives (token-only, reuse §10/§11 first)
+All token-only (spacing 4/8/12/16/24/32, color via §3+§9.3), mobile-first at 360px, built once
+(`apps/web/src/components/ui/` or `components/record/`), no per-page variants (§2). They **reuse**
+existing primitives heavily:
+
+- **`<NavFab>`** — the raised center action button for `<BottomNav>` (circle, `--accent`, `+` glyph in
+  `--button-text`, one shadow token, `--bg` ring, ≥56px, lifted ~16px, `impactOccurred('medium')` on
+  press, `press-95`). NOT a `NavLink` — an `onClick` that opens the record sheet. One FAB style only.
+- **`<RecordSheet>`** — the record flow controller: composes the existing **`<BottomSheet>`** and swaps
+  its body between **`<RecordPicker>`** (Phase A) and **`<SetLogger>`** (Phase B). Owns the
+  chosen-exercise state, the session-logged-sets state, and the cross-screen invalidation on close.
+- **`<RecordPicker>`** (Phase A) — built from existing parts: the frequent-exercise **fast lane**
+  (reuse `<Chip>`/chip-button styling), the muscle/exercise **browse** rows (reuse `<ChipRow>` from
+  §10.3 verbatim), and the **add-inline** field. Loading = skeleton chips (`<ChipRow loading>` already
+  does this). No new card style.
+- **`<SetLogger>`** (Phase B) — the set panel: exercise identity (Bebas + `<Chip>`), the "Today" recap
+  (reuse `<SetRow>` figures), two **`<Stepper>`s** (reused verbatim from §11.5, just different
+  `step`/`min`/`inputMode` props), the **in-sheet sticky SAVE** (the §11.4 pattern, extract a shared
+  `<SheetSaveButton>` if not already factored), the PR chip (`<Chip>` with `--accent` text), and the
+  "Switch exercise"/"Done" affordances. Auto-advance + PR-beat live here.
+- **(maybe) `<SheetSaveButton>`** — if the §11.4 set-editor's sticky Save isn't already a reusable
+  component, extract it so the editor and the logger share one sticky-Save (one style only). If it's
+  inline today, factor it once here.
+- **`<ProfileStub>`** — trivial: an `<EmptyState>` "PROFILE / Coming soon", zero queries. Lives at
+  `/profile`. (Designed as a slot, per §12.1.)
+
+No new library is introduced (§1): all of the above are compositions of existing primitives + tokens.
+
+### 12.5 Data, queries, and the cross-screen contract
+- **Reads (all via TanStack Query, fired only when the sheet opens — never on app mount):**
+  - fast lane: `["analytics","top-muscles"]` (shared cache with Progress) + a few
+    `["analytics","top-exercises",muscle,3]`; merged client-side into the frequent list.
+  - browse: reuse §10.3 hooks `useTopMuscles` / `useTopExercises` / `useMuscles` as-is.
+  - per-exercise on entering Phase B: `["analytics","completed-sets",muscle,exercise,today]` (auto set
+    #) + `["analytics","personal-record",muscle,exercise]` (cold pre-fill + PR target). Both cheap,
+    cached, disabled until an exercise is chosen (empty path fires nothing, §0/ARCH §2).
+- **Write:** `POST /training` mutation. On success: update local "Today" recap + session pre-fill +
+  PR anchor (above). **No optimistic cross-screen patch needed** (we're appending, and the sheet shows
+  its own recap) — instead, **invalidate on sheet close / on each save settle** so the rest of the app
+  re-fetches:
+  `["analytics","summary"]`, `["analytics","activity"]`, `["analytics","completed-sets",…]`,
+  `["analytics","personal-record",muscle,exercise]`, `["analytics","exercise-progress",muscle,exercise]`,
+  `["training","days"]` (all windows), and `["training","day",today]`. **Why:** a new set changes the
+  streak/sets/PR (Dashboard), the activity grid cell, the progress chart, and today's History day —
+  missing one = a stale tab (the §11.7 cross-screen-staleness lesson).
+- **`createTraining`/`createMuscle`/`createExercise` errors:** the required §4/CLAUDE.md DB-op pattern —
+  on a failed `POST /training`, keep the sheet open, re-enable Save, surface a non-scary inline
+  message ("Couldn't save that set — try again."), do **not** advance the set number or append the
+  recap row (so the optimistic recap never lies). Add-inline failures keep the typed name in the field.
+
+### 12.6 States (empty / loading / error / light+dark / reduced-motion)
+- **Loading:** Phase A frequent + browse rows render `<ChipRow loading>` skeleton chips; entering Phase
+  B shows the steppers immediately with a tiny inline "loading your numbers…" placeholder until
+  `personal-record`/`completed-sets` resolve (then the pre-fill fills) — never a blocking spinner, no
+  layout shift (§10.4).
+- **Empty — brand-new user (no muscles/exercises/history):** Phase A shows an `<EmptyState>`-style
+  prompt inside the sheet — Bebas "ADD YOUR FIRST EXERCISE", Sora subline, with the **add-inline**
+  field front-and-center (muscle then exercise). After they add one, they drop straight into Phase B
+  with empty steppers (no PR yet). The empty path fires no analytics fan-out (top-muscles returns `[]`
+  → we skip the top-exercises calls). New-user first-run must never be a blank sheet (§0/ARCH §2).
+- **Empty — exercise with no history:** Phase B steppers are empty with `--hint` placeholders, no PR
+  chip, Save disabled until valid. First save becomes the PR (celebration fires).
+- **Error:** read errors (fast lane/browse) → inline `<ErrorState>` + retry inside the sheet (browse
+  still usable if only the fast-lane merge failed — degrade, don't block). Write error → §12.5 inline
+  message, sheet stays open.
+- **Light + dark:** all surfaces are Telegram `themeParams`; only `--accent`/`--accent-weak` are
+  app-owned and already adapt. **Verify in dark:** the `<NavFab>` `--accent` circle + its `--bg` ring +
+  shadow against a near-black bar (it must still read as raised, not vanish); the PR chip `--accent`
+  text contrast; the sheet scrim over near-black `--bg`.
+- **Reduced-motion (`prefers-reduced-motion: reduce`):** no sheet slide (instant), no auto-advance
+  recap slide (instant insert), no PR flare (chip value just updates), no FAB press-scale beyond
+  instant. **Haptics stay** (medium on open, success on save, the PR success): they are feedback, not
+  motion (§9.4).
+
+### 12.7 API: existing vs additions
+- **Exists today — the MVP is fully buildable on these (no new endpoint required to ship):**
+  `POST /training`, `GET /analytics/top-muscles`, `GET /analytics/top-exercises`,
+  `GET /analytics/completed-sets`, `GET /analytics/personal-record`, `GET /analytics/max-reps`,
+  `GET /muscles`, `GET /muscles/{id}/exercises`, `POST /muscles`, `POST /exercises`. All RLS-scoped.
+- **Nice-to-have additions (separate task — they make it *buttery*, not *possible*):**
+  1. **`GET /analytics/recent-exercises?limit`** → ordered list of the user's **last-trained**
+     exercises across all muscles, each `{muscle_name, exercise_name, last_weight, last_reps,
+     last_date}`. **Payoff:** (a) replaces the §12.2 `top-muscles`+`top-exercises` fan-out with **one**
+     ordered read for the fast lane, AND (b) gives **true recency** (last-trained, not just frequent),
+     AND (c) carries **last weight/reps** so the cold-open pre-fill is the *actual last working set*
+     (strictly better than the PR anchor). This single endpoint is the biggest smoothness upgrade.
+  2. **`GET /analytics/last-set?muscle&exercise`** → `{set, weight, reps, date} | null`, the most recent
+     set for one exercise. **Payoff:** exact cold-open pre-fill for an exercise reached via *browse*
+     (not in the recent list) without loading its full progress series. (Subsumed by #1 for the fast
+     lane; useful for the browse path.) Until either lands, the MVP uses `personal-record` for the cold
+     pre-fill and same-session state for the hot pre-fill — good, just not the literal last set.
+  Both are small, read-only, RLS-scoped analytics endpoints mirroring the existing `top-*` shape;
+  neither blocks GYM-64. Flag them as a follow-up so the build can ship on the existing surface first.
+
+### 12.8 Gaps / risks (plugin lens — concrete)
+- **Tap-count budget is the acceptance test:** if the hot path (frequent exercise → save → save …)
+  isn't ~1 tap/extra-set, the feature failed its purpose. Guard it: pre-fill MUST be filled before the
+  user looks (same-session state needs no network; cold open shows steppers instantly and fills when
+  `personal-record` resolves), and Save MUST NOT close/reset the sheet. Measure against §12.3's table.
+- **Pre-fill correctness (silent-wrong is worse than empty):** a *wrong* pre-filled weight that the
+  user saves without noticing corrupts their log. Mitigations: the value is always **visible and
+  editable** (big Bebas in the stepper, not hidden); same-session pre-fill (the dominant case) is
+  exact; the cold-open PR anchor is clearly the PR (the `PR {w}kg` chip labels it), so the user knows
+  to nudge down to today's working weight. The `recent-exercises`/`last-set` additions (§12.7) remove
+  this risk by pre-filling the literal last set — until then, the PR anchor is a *known, labelled*
+  approximation, not a guess.
+- **Set-number race / correctness:** computing `nextSet` from `completed-sets ∪ session sets` (not a
+  naive counter) keeps it right even if the user logged a set in the bot earlier today, edited history
+  (§11), or has a gap. Recompute after each save and after a Phase-A switch. Two devices logging the
+  same exercise the same minute could collide on a set number — acceptable for v1 (single-user, single-
+  session is the norm); the server assigns the record id regardless, and a duplicate set number is a
+  cosmetic recap issue, not data loss. (A server-side "next set" would fully remove it — out of scope.)
+- **Fat-finger on the raised FAB vs tabs:** the lifted center button sits between History-side and
+  Progress-side tabs; its ≥56px circle must not overlap the adjacent tabs' ≥44px hit areas. Reserve a
+  fixed center slot wide enough that the circle + its ring clear the neighbours; keep ≥8px gap. The
+  FAB opens a sheet (reversible) — a mis-tap is cheap (scrim-dismiss), unlike a destructive action.
+- **Safe-area with the raised FAB:** the FAB lifts **upward** into content space, never downward, so
+  it never collides with the home-indicator/Telegram bottom inset (the bar already pads
+  `max(env(safe-area-inset-bottom), --tg-safe-bottom)`, §4). But the lifted circle now overlaps the
+  bottom ~16px of scrollable content — so the `<Container>` bottom padding must account for the FAB's
+  lift height **in addition** to the nav height (§4: bottom padding = `max(insets) + nav height` →
+  becomes `+ nav height + fab lift`), or a card's tap target can hide under the circle. Verify nothing
+  interactive sits under the FAB at the content bottom.
+- **Add-inline duplicates / typos:** `POST /muscles`/`POST /exercises` are idempotent-ish (return the
+  existing or created row per contract), so a duplicate name won't create a clone — but a typo creates
+  a private junk exercise. v1 accepts this (matches the bot); trim/normalize whitespace and case-fold
+  for the optimistic insert match. No rename/delete-exercise UI in v1 (YAGNI; the bot/admin can clean).
+- **"Today" recap honesty:** `completed-sets` returns set *numbers* only (no weight/reps), so for sets
+  the server already had before this session the recap shows `Set n ✓` (number only), while this-
+  session sets show full `w×r`. This is honest (no fabricated numbers) and still removes the bot's
+  set-pick step. The `recent-exercises`/full-day read could enrich it later; not required for MVP.
+- **Cross-screen staleness after logging:** the §12.5 invalidation set (summary, activity,
+  completed-sets, personal-record, exercise-progress, days, today's day) is mandatory on save-settle /
+  sheet-close so Dashboard/Progress/History never show stale numbers — a new set moves the streak, the
+  grid cell, the chart, and a PR. Missing one key = a visible inconsistency between tabs (§11.7).
+- **BackButton ownership (extends §11.7):** with the record sheet open, the Telegram `BackButton`
+  closes the **sheet** first (the `<BottomSheet>` already owns this). Inside the sheet, Phase B's "←
+  Switch exercise" is an *in-body* control, not the Telegram Back — so Back from Phase B closes the
+  whole sheet (one predictable back-step), it does not step B→A. Wire deterministically; don't strand.
+- **`--accent` is "orange enough":** the operator asked for an "orange" FAB; Chalk & Iron's `--accent`
+  is the warm orange-red `#E5482F`/`#FF6A4D` (§9.3). We deliberately do NOT introduce a second hue
+  (§9.3 "one accent, period") — the FAB IS the brand accent, which reads as a confident
+  orange-red and is exactly the "one memorable accent moment" the aesthetic is built around. If the
+  operator wants a literally pure-orange FAB, that's a one-token `--accent`-vs-new-`--fab` decision to
+  raise at review — flagged, not silently chosen.
