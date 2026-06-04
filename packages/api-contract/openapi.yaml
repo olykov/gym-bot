@@ -613,6 +613,41 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /analytics/log-context:
+    get:
+      tags: [analytics]
+      summary: Combined set-logger context for an exercise on a date
+      description: >
+        One read powering the record set-logger: the set numbers already logged on
+        `date` for this exercise, the most recent PRIOR session's sets (for per-set
+        pre-fill), and the personal record. Replaces firing completed-sets +
+        personal-record + a last-session lookup separately. Dates are
+        naive-tolerant (GYM-30).
+      operationId: getLogContext
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ExerciseNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
+        - name: date
+          in: query
+          required: true
+          description: Calendar date the log session is on (date part only).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: The combined log context for the exercise on the date.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogContext'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /analytics/history:
     get:
       tags: [analytics]
@@ -1433,6 +1468,42 @@ components:
         date:
           type: string
           format: date-time
+
+    LogSet:
+      type: object
+      description: A single set from a session, for set-logger pre-fill.
+      required: [set, weight, reps]
+      properties:
+        set:
+          type: integer
+        weight:
+          type: number
+        reps:
+          type: number
+
+    LogContext:
+      type: object
+      description: >
+        Combined set-logger context: sets already logged on the date, the most
+        recent prior session's sets, and the personal record. Dates are
+        naive-tolerant (GYM-30).
+      required: [completed_sets, last_session_sets, pr]
+      properties:
+        completed_sets:
+          type: array
+          items:
+            type: integer
+          description: Set numbers already logged on the date for this exercise.
+        last_session_sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogSet'
+          description: The most recent prior session's sets, ordered by set.
+        pr:
+          oneOf:
+            - $ref: '#/components/schemas/PersonalRecord'
+            - type: 'null'
+          description: The personal record, or null when no history exists.
 
     MaxReps:
       type: object
