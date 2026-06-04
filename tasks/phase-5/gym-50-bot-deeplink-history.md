@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-50
 title: "Bot: point the Mini App button at the History tab (deep-link)"
 slug: gym-50-bot-deeplink-history
-status: review
+status: done
 priority: low
 type: feature
 labels: [phase-5, bot]
