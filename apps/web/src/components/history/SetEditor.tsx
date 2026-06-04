@@ -8,8 +8,12 @@
  * (non-empty, non-negative, reps integer) AND changed from the original.
  * Weight steps 2.5kg and accepts decimals (comma-normalized); reps is integer.
  *
- * Delete is never one-tap: tapping "Delete set" swaps the footer to an in-sheet
- * "Delete this set?" Cancel/Delete confirm with a warning haptic (§11.4).
+ * Delete is never one-tap: tapping the header "Delete" control swaps in an
+ * in-sheet "Delete this set?" Cancel/Delete confirm with a warning haptic
+ * (§11.4). The delete affordance lives in the HEADER row — NOT the bottom of
+ * the sheet — because the Telegram native MainButton (SAVE) owns the bottom of
+ * the WebApp viewport and would cover any low control (the §11.7 fat-finger /
+ * MainButton-overlap fix). No interactive element sits in the bottom strip.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { TrainingSet } from "@/api/training";
@@ -18,7 +22,6 @@ import {
     mainButton,
 } from "@/telegram/webapp";
 import { useDeleteSet, useEditSet } from "@/hooks/useTraining";
-import { Divider } from "@/components/ui/Divider";
 import { Stepper, parseNumeric } from "@/components/ui/Stepper";
 
 export interface EditorTarget {
@@ -116,15 +119,60 @@ export function SetEditor({
 
     return (
         <div>
-            {/* Read-only identity (spec §11.4): exercise + set #, not editable. */}
-            <div className="mb-4">
-                <h2 id={titleId} className="text-base font-semibold text-text">
-                    {exerciseName}
-                </h2>
-                <p className="text-label uppercase tracking-wide text-hint">
-                    {headerSub}
-                </p>
+            {/* Header row: read-only identity (§11.4) + the delete affordance.
+               Delete lives HERE, in the header, so it can never be covered by
+               the Telegram MainButton that owns the viewport bottom (§11.7). */}
+            <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <h2
+                        id={titleId}
+                        className="truncate text-base font-semibold text-text"
+                    >
+                        {exerciseName}
+                    </h2>
+                    <p className="text-label uppercase tracking-wide text-hint">
+                        {headerSub}
+                    </p>
+                </div>
+
+                {/* Delete trigger — accent text, sparing per §9.3; ≥44px tap. */}
+                {!confirmingDelete && (
+                    <button
+                        type="button"
+                        onClick={startDelete}
+                        className="press-95 -mr-2 inline-flex min-h-[44px] shrink-0 items-center gap-1 px-2 text-base text-accent"
+                        aria-label={`Delete ${exerciseName} ${headerSub}`}
+                    >
+                        <TrashIcon />
+                        Delete
+                    </button>
+                )}
             </div>
+
+            {/* Two-step confirm (§11.4 / §11.7) — rendered high, under the
+               header, never in the MainButton bottom strip. */}
+            {confirmingDelete && (
+                <div className="mb-5 rounded-md border border-hairline bg-secondary-bg p-3">
+                    <p className="text-base text-text">Delete this set?</p>
+                    <div className="mt-3 flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setConfirmingDelete(false)}
+                            className="press-95 min-h-[44px] flex-1 rounded-md border border-hairline bg-bg text-base text-text"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={confirmDelete}
+                            disabled={del.isPending}
+                            className="press-95 min-h-[44px] flex-1 rounded-md bg-accent-weak text-base font-semibold text-accent disabled:opacity-50"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className="flex flex-col gap-6">
                 <Stepper
@@ -148,40 +196,28 @@ export function SetEditor({
                     inputMode="numeric"
                 />
             </div>
-
-            <Divider className="my-4" />
-
-            {/* Delete: two-step in-sheet confirm (spec §11.4 / §11.7). */}
-            {confirmingDelete ? (
-                <div>
-                    <p className="text-base text-text">Delete this set?</p>
-                    <div className="mt-3 flex gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setConfirmingDelete(false)}
-                            className="press-95 min-h-[44px] flex-1 rounded-md border border-hairline bg-bg text-base text-text"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={confirmDelete}
-                            disabled={del.isPending}
-                            className="press-95 min-h-[44px] flex-1 rounded-md bg-accent-weak text-base font-semibold text-accent disabled:opacity-50"
-                        >
-                            Delete
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <button
-                    type="button"
-                    onClick={startDelete}
-                    className="press-95 min-h-[44px] w-full text-center text-base text-accent"
-                >
-                    Delete set
-                </button>
-            )}
         </div>
+    );
+}
+
+/** Small trash glyph (token-stroked, inherits accent via currentColor). */
+function TrashIcon() {
+    return (
+        <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+        >
+            <path d="M3 6h18" />
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" />
+            <path d="M10 11v6M14 11v6" />
+        </svg>
     );
 }

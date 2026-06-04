@@ -62,6 +62,23 @@ export function seriesColorAt(vars: CssVars, index: number): string {
     return colors[index % colors.length];
 }
 
+const AXIS_MONTHS = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * Compact, single-tier x-axis label: `DD MMM` (e.g. `02 Jun`). One legible
+ * label per tick avoids ECharts' default month/year-over-day two-tier labels
+ * overlapping the day numbers in a 360px column (GYM-53 §10.5).
+ */
+export function formatAxisDate(value: number): string {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${day} ${AXIS_MONTHS[d.getMonth()]}`;
+}
+
 /** Shared, token-bound base option (axes, grid, tooltip, legend, text style). */
 export function baseChartOption(vars: CssVars) {
     const axisText = {
@@ -99,7 +116,17 @@ export function baseChartOption(vars: CssVars) {
         xAxis: {
             type: "time" as const,
             axisLine: { lineStyle: { color: vars.hint } },
-            axisLabel: axisText,
+            axisLabel: {
+                ...axisText,
+                // Single compact `DD MMM` label per tick (no ECharts' default
+                // two-tier month/year-over-day labels that collide at 360px).
+                // hideOverlap drops colliding ticks; margin lifts off the line.
+                formatter: formatAxisDate,
+                hideOverlap: true,
+                margin: 10,
+            },
+            // Keep ticks sparse so labels breathe in a 360px column.
+            maxInterval: 3600 * 24 * 1000 * 7,
             axisTick: { show: false },
             splitLine: { show: false },
         },

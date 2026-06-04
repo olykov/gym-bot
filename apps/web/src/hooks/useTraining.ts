@@ -8,6 +8,7 @@
  * (§11.7) — so an optimistic patch/removal always hits the right row.
  */
 import {
+    keepPreviousData,
     useMutation,
     useQuery,
     useQueryClient,
@@ -31,11 +32,20 @@ export function dayKey(date: string) {
     return ["training", "day", date] as const;
 }
 
-/** Day list for a date window (§11.2). Newest-first from the API. */
+/**
+ * Day list for a date window (§11.2). Newest-first from the API.
+ *
+ * `placeholderData: keepPreviousData` keeps the previous window's list rendered
+ * while a wider "load earlier" window fetches under a new query key, so there's
+ * no blank flash on infinite-scroll load-more (GYM-53 #4). Only the very first
+ * load (no prior data) shows skeletons; `isPlaceholderData` flags the in-flight
+ * widen so the page never renders a full skeleton over the kept list.
+ */
 export function useTrainingDays(from: string, to: string) {
     return useQuery<TrainingDay[]>({
         queryKey: daysKey(from, to),
         queryFn: ({ signal }) => fetchTrainingDays(from, to, signal),
+        placeholderData: keepPreviousData,
     });
 }
 

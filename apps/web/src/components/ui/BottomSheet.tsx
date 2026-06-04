@@ -71,8 +71,11 @@ export function BottomSheet({ open, onClose, titleId, children }: BottomSheetPro
                     tabIndex={-1}
                     className="sheet-panel w-full max-w-container rounded-t-lg border-t border-hairline bg-bg px-4 pt-3 outline-none"
                     style={{
+                        // Extra bottom inset keeps the last interactive field
+                        // (the Reps stepper) clear of the Telegram MainButton
+                        // strip that owns the viewport bottom (GYM-53 §11.7).
                         paddingBottom:
-                            "calc(env(safe-area-inset-bottom) + 24px)",
+                            "calc(env(safe-area-inset-bottom) + 56px)",
                     }}
                 >
                     {/* Grab handle (spec §9.5). */}

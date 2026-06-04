@@ -33,7 +33,11 @@ export function History() {
     const [exhausted, setExhausted] = useState(false);
 
     useEffect(() => {
-        if (!days.data) return;
+        // Only evaluate exhaustion on FRESH data for the current window. While
+        // keepPreviousData holds the prior list (isPlaceholderData), days.data
+        // still belongs to the older window — comparing it would falsely mark
+        // the list exhausted on every load-more (GYM-53 #4).
+        if (!days.data || days.isPlaceholderData) return;
         const earliest = days.data.length
             ? days.data[days.data.length - 1].date
             : null;
@@ -42,7 +46,7 @@ export function History() {
             setExhausted(true);
         }
         prevEarliest.current = earliest;
-    }, [days.data, steps]);
+    }, [days.data, days.isPlaceholderData, steps]);
 
     function loadEarlier(): void {
         if (!exhausted && !days.isFetching) setSteps((s) => s + 1);
