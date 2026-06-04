@@ -245,7 +245,7 @@ def get_max_reps_for_weight(
 )
 def get_top_exercises(
     muscle: str,
-    limit: int = 5,
+    limit: int = Query(default=5, ge=1, le=200),
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.TopExercise]:
@@ -253,9 +253,14 @@ def get_top_exercises(
 
     Maps to ``get_top_exercises_for_muscle(user, muscle, limit)``.
 
+    The ``limit`` parameter is capped at 200 — large enough for the Progress
+    picker to request all of a user's exercises for a muscle
+    (``?limit=200``), while guarding against unbounded scans.  Existing bot
+    callers that pass the default (5) are unaffected.
+
     Args:
         muscle: Muscle group name.
-        limit: Maximum number of exercises to return.
+        limit: Maximum number of exercises to return (1–200, default 5).
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
@@ -279,6 +284,57 @@ def get_top_exercises(
     )
 
     return [schemas.TopExercise(name=r[0], frequency=r[1]) for r in rows]
+
+
+@router.get(
+    "/analytics/top-muscles",
+    response_model=List[schemas.TopMuscle],
+    tags=["analytics"],
+)
+def get_top_muscles(
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> List[schemas.TopMuscle]:
+    """Return muscles the caller has trained, ranked by training frequency.
+
+    Feeds the Progress muscle picker so the most-trained muscles surface first.
+    Maps to the ``GET /analytics/top-muscles`` contract (GYM-60).
+
+    Query is sargable: the WHERE on ``user_id`` uses
+    ``idx_training_user_muscle (user_id, muscle_id)`` added in GYM-59's
+    migration 0003, so Postgres performs an index scan, not a sequential scan.
+
+    Result is cached under ``analytics:{user_id}:top-muscles:`` (90 s TTL).
+    Cache invalidation on training writes is already wired (GYM-47).
+
+    Args:
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        Muscles ranked by frequency descending, then alphabetically by name.
+    """
+    uid = principal["user_id"]
+    cache_key = make_key(uid, "top-muscles")
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return [schemas.TopMuscle(**item) for item in cached]
+
+    rows = db.execute(
+        text("""
+            SELECT m.name, COUNT(*) AS frequency
+            FROM training t
+            JOIN muscles m ON m.id = t.muscle_id
+            WHERE t.user_id = :uid
+            GROUP BY m.name
+            ORDER BY frequency DESC, m.name ASC
+        """),
+        {"uid": uid},
+    ).fetchall()
+
+    result = [schemas.TopMuscle(name=r[0], frequency=r[1]) for r in rows]
+    cache_set(cache_key, [{"name": item.name, "frequency": item.frequency} for item in result])
+    return result
 
 
 # ---------------------------------------------------------------------------

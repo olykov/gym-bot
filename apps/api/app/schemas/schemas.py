@@ -251,6 +251,16 @@ class TopExercise(BaseModel):
     frequency: int
 
 
+class TopMuscle(BaseModel):
+    """Muscle ranked by training frequency for the caller (GYM-60 contract).
+
+    Matches ``TopMuscle`` in packages/api-contract/openapi.yaml.
+    """
+
+    name: str
+    frequency: int
+
+
 # ---------------------------------------------------------------------------
 # Analytics (GYM-39) — dashboard / Mini App
 # ---------------------------------------------------------------------------
