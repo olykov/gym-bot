@@ -160,6 +160,58 @@ class TrainingUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Training history — GYM-47
+# ---------------------------------------------------------------------------
+
+class TrainingSet(BaseModel):
+    """A single recorded set within a training day's exercise.
+
+    Matches ``TrainingSet`` in packages/api-contract/openapi.yaml.
+    """
+
+    training_id: str
+    set: int
+    weight: float
+    reps: float
+
+
+class TrainingDayExercise(BaseModel):
+    """One exercise trained on a day, with denormalized names and its sets.
+
+    Matches ``TrainingDayExercise`` in the OpenAPI contract.
+    """
+
+    exercise_id: int
+    exercise_name: str
+    muscle_name: str
+    sets: List["TrainingSet"]
+
+
+class TrainingDay(BaseModel):
+    """One day the caller trained, summarised for the History list.
+
+    Matches ``TrainingDay`` in the OpenAPI contract.
+    ``date`` is a calendar date (not a timestamp).
+    """
+
+    date: date
+    muscles: List[str]
+    exercises_count: int
+    sets_count: int
+
+
+class TrainingDayDetail(BaseModel):
+    """Full detail of the caller's training on a single day.
+
+    Matches ``TrainingDayDetail`` in the OpenAPI contract.
+    ``exercises`` is empty when no rows exist for the date.
+    """
+
+    date: date
+    exercises: List[TrainingDayExercise]
+
+
+# ---------------------------------------------------------------------------
 # Analytics
 # ---------------------------------------------------------------------------
 

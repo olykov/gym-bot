@@ -21,6 +21,7 @@ from app.api.v1 import user_router
 from app.api.v1 import bot_router
 from app.api.v1 import exercises_router
 from app.api.v1 import analytics_router
+from app.api.v1 import training_history_router
 
 settings = get_settings()
 
@@ -37,7 +38,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Bot-facing contract endpoints (GYM-22) — mounted first
+# Bot-facing contract endpoints (GYM-22) — mounted first.
+# training_history_router (GYM-47) is included before bot_router so that
+# GET /training/days and GET /training/day/{date} take precedence over any
+# future dynamic /training/{id} GET, and DELETE /training/{id} is registered.
+app.include_router(training_history_router.router, prefix=settings.API_V1_STR)
 app.include_router(bot_router.router, prefix=settings.API_V1_STR)
 app.include_router(exercises_router.router, prefix=settings.API_V1_STR)
 app.include_router(analytics_router.router, prefix=settings.API_V1_STR)

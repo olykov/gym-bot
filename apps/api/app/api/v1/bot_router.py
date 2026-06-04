@@ -1,4 +1,4 @@
-"""Bot-facing endpoints — GYM-22 / GYM-26.
+"""Bot-facing endpoints — GYM-22 / GYM-26 / GYM-47.
 
 Covers users, muscles, and training operations.  Exercise endpoints are in
 exercises_router.py; analytics are in analytics_router.py.
@@ -12,6 +12,10 @@ Isolation logic is centralised in ``app.services.visibility``.
 Training id generation: uuid4().hex (32 lower-case hex chars).  This is the
 only scheme used across the API (GYM-22 unification decision).  The bot's
 legacy md5-based ids in existing rows are left untouched in the DB.
+
+Cache invalidation (GYM-47): every training mutation calls
+``cache.invalidate_user(uid)`` to purge stale analytics cache entries for
+that user.  The call is graceful — Redis errors never fail the HTTP request.
 """
 import logging
 import uuid
@@ -21,6 +25,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.cache import invalidate_user
 from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
@@ -352,6 +357,7 @@ def create_training(
         logger.error("Error creating training record: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save training record")
 
+    invalidate_user(uid)
     return training
 
 
@@ -405,4 +411,5 @@ def update_training(
         logger.error("Error updating training record: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update training record")
 
+    invalidate_user(uid)
     return training

@@ -107,3 +107,38 @@ def cache_set(key: str, value: Any, ttl: int = _CACHE_TTL) -> None:
             client.close()
         except Exception:
             pass
+
+
+def invalidate_user(user_id: int) -> None:
+    """Delete all analytics cache keys for a user.
+
+    Scans for and deletes every key matching ``analytics:{user_id}:*`` so
+    that Dashboard/Progress numbers reflect the latest training data
+    immediately after any mutation (create/update/delete).
+
+    Gracefully degrades if Redis is unavailable — any error is caught and
+    logged; the HTTP request is never failed due to a cache error.
+
+    Args:
+        user_id: The effective principal id whose cache entries to purge.
+    """
+    client = _get_client()
+    if client is None:
+        return
+    try:
+        pattern = f"analytics:{user_id}:*"
+        cursor = 0
+        while True:
+            cursor, keys = client.scan(cursor, match=pattern, count=100)
+            if keys:
+                client.delete(*keys)
+            if cursor == 0:
+                break
+        logger.debug("invalidate_user: purged analytics cache for user_id=%s", user_id)
+    except Exception as exc:
+        logger.warning("invalidate_user(user_id=%s) failed: %s", user_id, exc)
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
