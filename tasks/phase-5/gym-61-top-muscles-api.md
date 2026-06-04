@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-61
 title: "API: implement top-muscles (frequency); top-exercises returns all for a muscle"
 slug: gym-61-top-muscles-api
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, api]
