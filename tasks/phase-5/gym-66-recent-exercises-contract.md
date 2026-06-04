@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-66
 title: "Contract: GET /analytics/recent-exercises (last-trained + last weight/reps) + regen clients"
 slug: gym-66-recent-exercises-contract
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api-contract]
