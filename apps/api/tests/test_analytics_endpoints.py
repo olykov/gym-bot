@@ -145,8 +145,12 @@ class TestActivityEndpoint:
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
 
     def test_activity_contains_today(self, analytics_client):
-        """User A sees today as an active day (conftest seeds rows at NOW())."""
-        today = date.today()
+        """User A sees today as an active day (conftest seeds rows at NOW()).
+
+        Uses datetime.utcnow().date() to match the UTC clock used by the
+        DB seed (NOW()) and the endpoint's UTC day boundaries.
+        """
+        today = datetime.utcnow().date()
         frm = today - timedelta(days=7)
         resp = analytics_client.get(
             "/api/v1/analytics/activity",
@@ -166,8 +170,12 @@ class TestActivityEndpoint:
             assert item["sets_count"] > 0
 
     def test_activity_cross_user_isolation(self, analytics_client):
-        """Both users see today, but their data is scoped independently."""
-        today = date.today()
+        """Both users see today, but their data is scoped independently.
+
+        Uses datetime.utcnow().date() to match the UTC clock used by the
+        DB seed (NOW()) and the endpoint's UTC day boundaries.
+        """
+        today = datetime.utcnow().date()
         frm = today - timedelta(days=7)
 
         resp_a = analytics_client.get(

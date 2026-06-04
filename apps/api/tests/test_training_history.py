@@ -207,8 +207,12 @@ class TestListTrainingDays:
             assert isinstance(day["sets_count"], int)
 
     def test_today_appears_with_correct_counts(self, history_client):
-        """Conftest seeds 2 rows today for user A: 1 exercise, 2 sets."""
-        today = date.today()
+        """Conftest seeds 2 rows today for user A: 1 exercise, 2 sets.
+
+        Uses datetime.utcnow().date() to match the UTC clock used by the
+        DB seed (NOW()) and the endpoint's UTC day boundaries.
+        """
+        today = datetime.utcnow().date()
         resp = history_client.get(
             "/api/v1/training/days",
             params={"from": str(today), "to": str(today)},
@@ -261,8 +265,12 @@ class TestListTrainingDays:
             _delete_training_direct(superuser_url, extra_id)
 
     def test_cross_user_isolation(self, history_client):
-        """User A does not see user B's training days."""
-        today = date.today()
+        """User A does not see user B's training days.
+
+        Uses datetime.utcnow().date() to match the UTC clock used by the
+        DB seed (NOW()) and the endpoint's UTC day boundaries.
+        """
+        today = datetime.utcnow().date()
         resp_a = history_client.get(
             "/api/v1/training/days",
             params={"from": str(today), "to": str(today)},
@@ -385,8 +393,12 @@ class TestGetTrainingDay:
         assert data["exercises"] == []
 
     def test_cross_user_isolation(self, history_client, db_setup):
-        """User A's day detail does not include user B's exercises."""
-        today = date.today()
+        """User A's day detail does not include user B's exercises.
+
+        Uses datetime.utcnow().date() to match the UTC clock used by the
+        DB seed (NOW()) and the endpoint's UTC day boundaries.
+        """
+        today = datetime.utcnow().date()
         resp_a = history_client.get(
             f"/api/v1/training/day/{today}",
             headers=_service_headers(USER_A_ID),
