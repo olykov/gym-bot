@@ -166,6 +166,9 @@ theme), tuned for contrast in both modes:
 - **Surfaces / depth:** cards are `--bg` raised over a `--secondary-bg` page, separated by a single
   hairline (`--hint` at 10–12%) + one soft shadow token — NOT heavy Material elevation. One card
   style only (§2).
+- **`--accent` on text — a11y rule:** the accent is for **large** numerals/headlines (Bebas, ≥24px,
+  needs ≥3:1) and **graphical** marks (tab glyph, ring, chart line, chip). For **small** label/body
+  text use `--text`/`--hint`, never `--accent` (it won't clear 4.5:1 on `--bg` in both themes).
 - **Never** introduce a purple gradient, a second accent hue, or per-page colors. One accent, period.
 
 ### 9.4 Motion language
@@ -219,12 +222,13 @@ reused — no per-page borders/cards/spacings (§2).
   mounts. No page sets its own width/padding.
 
 ### 10.2 Dashboard components
-- **`<ActivityGrid>`** — GitHub-style 7×~53 grid, **Monday-first** (mirror site_old), chalk→iron
+- **`<ActivityGrid>`** — GitHub-style 7×N grid, **Monday-first** (mirror site_old), chalk→iron
   accent ramp (§9.3), one cell `title`/tooltip ("N sets on <date>"), "today" cell gets an `--accent`
-  ring. Must fit **inside the 360px container without horizontal scroll** — at 360px, scale cell size
-  down (target ~7–8px cell + 2px gap) OR allow a single deliberate horizontal scroll *inside* the
-  card (the only allowed edge case, §2); pick fixed-fit first, scroll only if a full year can't fit
-  legibly. Light + dark ramps both defined; **empty-cell visibility verified in dark**. Less/More
+  ring. **MVP window = the last ~26 weeks (6 months)** — this fits the 360px container WITHOUT any
+  horizontal scroll at ~9–10px cells (26 × ~11px ≈ 286px < ~328px usable), and matches site_old's
+  6-month view. **No in-card scroll in v1.** A full-year view is a deferred iteration (it would need
+  the single sanctioned in-card horizontal scroll, §2). The `from`/`to` query is set to that 26-week
+  window. Light + dark ramps both defined; **empty-cell visibility verified in dark**. Less/More
   legend in Sora. Data: `GET /analytics/activity?from&to` via TanStack Query.
 - **`<SummaryCards>`** — a **2×2 grid** of `<StatCard>` (mirror site_old's 4 numbers): **Exercises ·
   Sets · PRs · Streak** (from `/analytics/summary`). Big Bebas Neue numeral (count-up, §9.4) + Sora

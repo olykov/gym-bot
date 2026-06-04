@@ -34,9 +34,9 @@ Build the two MVP screens on the shell, consuming the analytics endpoints.
 ## Plan (owner: frontend-design-engineer — MUST invoke the `frontend-design` plugin; obey docs/frontend-spec.md)
 - **Dashboard** (tab 1): GitHub-style **`<ActivityGrid>`** (from `/analytics/activity`) + **2×2
   `<SummaryCards>`** (exercises / sets / PRs / streak, from `/analytics/summary`). Grid uses the
-  chalk→iron `--accent` ramp (spec §9.3, NOT GitHub green), Monday-first, "today" ring; must **fit
-  the 360px container** (scale cells; single in-card horizontal scroll only if a full year can't fit
-  legibly — the one allowed full-bleed exception). PRs stat is the `--accent` hero (count-up).
+  chalk→iron `--accent` ramp (spec §9.3, NOT GitHub green), Monday-first, "today" ring; **MVP window
+  = last ~26 weeks (6 mo), fits 360px with NO horizontal scroll** (full-year deferred). PRs stat is
+  the `--accent` hero (count-up).
 - **Progress** (tab 2): `<MusclePicker>`→`<ExercisePicker>` (existing list endpoints) +
   **`<ExerciseProgressChart>`** (ECharts) weight/reps series (from `/analytics/exercise-progress`),
   one series per set, responsive, legible at 360px. **ECharts themed via the `echartsTheme(cssVars)`
@@ -55,8 +55,8 @@ Build the two MVP screens on the shell, consuming the analytics endpoints.
 - [ ] Both screens populated for an existing user; graceful **`<EmptyState>`** for a new one (and no
       extra queries on the empty path).
 - [ ] Loading = skeletons matching layout (no spinner/jump); error = inline retry, no raw error dump.
-- [ ] Activity grid fits 360px (or single in-card scroll), Monday-first, accent ramp; **dark-mode
-      empty cells visible**.
+- [ ] Activity grid = last ~26 weeks (6 mo), fits 360px **with no horizontal scroll** in v1,
+      Monday-first, accent ramp (not green); **dark-mode empty cells visible**. (Full-year = deferred.)
 - [ ] Charts responsive + legible at 360px, themed to tokens, **dark-mode line + tooltip contrast
       verified**, multi-set distinguishable without color-only; cross-user data never visible (RLS).
 - [ ] `prefers-reduced-motion` respected (no count-up / ink-in when set).
