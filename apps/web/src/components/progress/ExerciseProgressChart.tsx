@@ -4,9 +4,13 @@
  *
  *  - **By Weight** (default): ONE line = the max weight logged per session/date —
  *    the strength-over-time trend ("how my bench grew"), derived client-side from
- *    the per-set series (no API change).
+ *    the per-set series (no API change). Each point carries the reps of that day's
+ *    heaviest set so the tooltip reads `{weight}kg × {reps}` (GYM-63).
  *  - **By Set**: one line per set number (the original behavior). Reps ride along
  *    in each tooltip row so the chart stays legible at 360px without a second axis.
+ *
+ * The tooltip shows `{weight}kg × {reps}` plus the full date in BOTH modes; reps
+ * rides in each point's `data.reps` (spec §10.5 token theming unchanged).
  *
  * X-axis labels are thinned to ~5 sparse `DD MMM` ticks (GYM-57 §2a); the full
  * date stays in the tooltip. Theming is bound to tokens (spec §10.5) via
@@ -84,7 +88,10 @@ export function ExerciseProgressChart({
                     : base.legend,
             tooltip: {
                 ...base.tooltip,
-                // Full date header + per-line weight (× reps when known).
+                // Full date header + per-line `{weight}kg × {reps}` (spec §11.2
+                // figure format). Reps rides in each point's `data.reps` in BOTH
+                // modes: By Set carries the set's reps; By Weight carries the
+                // reps of that date's heaviest set (see {@link byWeightSeries}).
                 formatter: (params: TooltipParam[]) => {
                     if (!params.length) return "";
                     const date = formatTooltipDate(params[0].axisValue);
@@ -92,7 +99,7 @@ export function ExerciseProgressChart({
                         .map((p) => {
                             const weight = p.value;
                             const reps = p.data?.reps;
-                            return `${p.marker}${p.seriesName}: ${weight} kg${
+                            return `${p.marker}${p.seriesName}: ${weight}kg${
                                 reps != null ? ` × ${reps}` : ""
                             }`;
                         })
@@ -143,26 +150,35 @@ function distinctSortedDates(progress: ExerciseProgress): number[] {
 /**
  * By Weight (default): one line = the MAX weight logged per session/date —
  * flatten all sets' points, group by date, take the max weight (GYM-57 §2b).
+ *
+ * Each derived point also carries the **reps of that max-weight set** so the
+ * tooltip can show `{weight}kg × {reps}` for the heaviest set of the day. On a
+ * tie (two sets at the same max weight), the FIRST encountered wins — we only
+ * replace on a strictly-greater weight (`>`), so the earlier set's reps stay.
  */
 function byWeightSeries(
     progress: ExerciseProgress,
     dates: number[],
     vars: ReturnType<typeof readCssVars>,
 ) {
-    const maxByDate = new Map<number, number>();
+    // Per date: the max weight and the reps of the set that set it.
+    const maxByDate = new Map<number, { weight: number; reps: number }>();
     for (const s of progress.series) {
         for (const p of s.points) {
             const ms = new Date(p.date).getTime();
             if (Number.isNaN(ms)) continue;
             const prev = maxByDate.get(ms);
-            if (prev == null || p.weight > prev) maxByDate.set(ms, p.weight);
+            // Strict `>` → ties keep the first-encountered set's reps.
+            if (prev == null || p.weight > prev.weight) {
+                maxByDate.set(ms, { weight: p.weight, reps: p.reps });
+            }
         }
     }
     // One value per category slot (null where the date has no point — none here,
     // every date came from the data, but keep it index-aligned).
     const data: Array<ChartPoint | null> = dates.map((ms) => {
-        const w = maxByDate.get(ms);
-        return w == null ? null : { value: w };
+        const top = maxByDate.get(ms);
+        return top == null ? null : { value: top.weight, reps: top.reps };
     });
     return {
         name: "Max weight",
