@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-48
 title: "Design: refine spec §11 History & set-editing via frontend-design plugin"
 slug: gym-48-history-design-spec
-status: review
+status: done
 priority: medium
 type: research
 labels: [phase-5, frontend, design]
@@ -12,7 +12,7 @@ model: null
 reporter: oleksii
 created: 2026-06-04T18:00:00Z
 start_date: 2026-06-04T19:15:00Z
-finish_date: null
+finish_date: 2026-06-04T20:35:00Z
 updated: 2026-06-04T12:00:21Z
 epic: phase-5
 depends_on: [GYM-46]

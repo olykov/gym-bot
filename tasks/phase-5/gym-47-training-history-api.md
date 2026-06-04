@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-47
 title: "API: training day-list/day-detail/DELETE + analytics cache invalidation"
 slug: gym-47-training-history-api
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, api]
