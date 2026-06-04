@@ -456,6 +456,80 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /training/days:
+    get:
+      tags: [training]
+      summary: List the caller's training days, grouped and reverse-chronological
+      description: >
+        Day-grouped view of the caller's training history for the History feature:
+        one entry per day the caller trained, newest day first. The optional `from`
+        and `to` query params bound the window (inclusive, date part only);
+        omitting them returns a default window. Dates are naive-tolerant (GYM-30).
+      operationId: listTrainingDays
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
+        - name: from
+          in: query
+          required: false
+          description: Inclusive start date of the window (date part only).
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Inclusive end date of the window (date part only).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Training days for the caller, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrainingDay'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /training/day/{date}:
+    get:
+      tags: [training]
+      summary: Detail of the caller's training on a single day
+      description: >
+        All sets the caller recorded on the given day, grouped by exercise with
+        muscle and exercise names denormalized so the client does not have to join.
+        The date is naive-tolerant (GYM-30).
+      operationId: getTrainingDay
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - name: date
+          in: path
+          required: true
+          description: Calendar date of the training day (date part only).
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '200':
+          description: The caller's training detail for the day.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingDayDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /training/{training_id}:
     put:
       tags: [training]
@@ -483,6 +557,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Training'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [training]
+      summary: Delete a training set owned by the authenticated user
+      description: >
+        Deletes the caller's own recorded set. Only the caller's own record can be
+        removed (RLS-scoped per identity / X-Act-As-User).
+      operationId: deleteTraining
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TrainingId'
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '204':
+          description: Training set deleted.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1177,6 +1271,70 @@ components:
           type: number
         reps:
           type: number
+
+    TrainingDay:
+      type: object
+      description: One day the caller trained, summarised for the History list.
+      required: [date, muscles, exercises_count, sets_count]
+      properties:
+        date:
+          type: string
+          format: date
+        muscles:
+          type: array
+          items:
+            type: string
+          description: Names of the muscle groups trained that day.
+        exercises_count:
+          type: integer
+          description: Distinct exercises trained that day.
+        sets_count:
+          type: integer
+          description: Total sets recorded that day.
+
+    TrainingSet:
+      type: object
+      description: A single recorded set within a training day's exercise.
+      required: [training_id, set, weight, reps]
+      properties:
+        training_id:
+          type: string
+          description: Server-assigned record id of the set.
+        set:
+          type: integer
+        weight:
+          type: number
+        reps:
+          type: number
+
+    TrainingDayExercise:
+      type: object
+      description: One exercise trained on a day, with denormalized names and its sets.
+      required: [exercise_id, exercise_name, muscle_name, sets]
+      properties:
+        exercise_id:
+          type: integer
+        exercise_name:
+          type: string
+        muscle_name:
+          type: string
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingSet'
+
+    TrainingDayDetail:
+      type: object
+      description: Full detail of the caller's training on a single day.
+      required: [date, exercises]
+      properties:
+        date:
+          type: string
+          format: date
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingDayExercise'
 
     # ---- analytics
     CompletedSets:
