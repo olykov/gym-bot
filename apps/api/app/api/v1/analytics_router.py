@@ -813,3 +813,230 @@ def get_exercise_progress(
         },
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# GYM-71: /analytics/log-context — combined set-logger context
+# ---------------------------------------------------------------------------
+
+
+def _resolve_exercise_id(
+    db: Session,
+    muscle: str,
+    exercise: str,
+) -> Optional[int]:
+    """Resolve exercise_id from muscle + exercise name via the RLS-scoped session.
+
+    Uses the same join pattern as ``get_exercise_progress`` so the user cannot
+    probe exercises invisible to them under RLS.
+
+    Args:
+        db: SQLAlchemy session (already GUC-wired for the calling user).
+        muscle: Muscle group name.
+        exercise: Exercise name.
+
+    Returns:
+        The integer exercise id, or ``None`` when not found / not visible.
+    """
+    row = (
+        db.query(models.Exercise.id)
+        .join(models.Muscle, models.Exercise.muscle == models.Muscle.id)
+        .filter(
+            models.Muscle.name == muscle,
+            models.Exercise.name == exercise,
+        )
+        .first()
+    )
+    return row[0] if row else None
+
+
+def _fetch_completed_sets(
+    db: Session,
+    uid: int,
+    exercise_id: int,
+    target_date: date,
+) -> List[int]:
+    """Return distinct set numbers logged on ``target_date`` for a user/exercise.
+
+    Uses a half-open range on the raw TIMESTAMP column so the predicate hits
+    ``idx_training_user_exercise (user_id, exercise_id)``.
+
+    Args:
+        db: SQLAlchemy session.
+        uid: User id (defence-in-depth; RLS already scopes the session).
+        exercise_id: Exercise id (already resolved via RLS-scoped lookup).
+        target_date: Calendar date to query.
+
+    Returns:
+        Sorted list of distinct set integers.
+    """
+    rows = db.execute(
+        text("""
+            SELECT DISTINCT "set"
+            FROM training
+            WHERE user_id     = :uid
+              AND exercise_id = :eid
+              AND date >= :day_start
+              AND date  < :day_end
+            ORDER BY "set"
+        """),
+        {
+            "uid": uid,
+            "eid": exercise_id,
+            "day_start": datetime.combine(target_date, datetime.min.time()),
+            "day_end": datetime.combine(target_date, datetime.max.time()),
+        },
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def _fetch_last_session_sets(
+    db: Session,
+    uid: int,
+    exercise_id: int,
+    target_date: date,
+) -> List[schemas.LogSet]:
+    """Return sets from the most recent session strictly before ``target_date``.
+
+    Uses a CTE to find ``max(date::date)`` < target_date for (user, exercise),
+    then selects all rows on that day ordered by set.  Sargable: the WHERE
+    predicates on ``user_id`` and ``exercise_id`` use
+    ``idx_training_user_exercise (user_id, exercise_id)``; the date upper-bound
+    keeps an index-range scan.  ``date::date`` appears only in the subquery
+    GROUP BY, never in a top-level WHERE, so the outer filter stays a plain
+    range on the timestamp column.
+
+    Args:
+        db: SQLAlchemy session.
+        uid: User id.
+        exercise_id: Exercise id.
+        target_date: The session date; only rows strictly before this date are
+            considered.
+
+    Returns:
+        Ordered list of LogSet (set, weight, reps), or empty list when no
+        prior session exists.
+    """
+    rows = db.execute(
+        text("""
+            WITH prior_day AS (
+                SELECT MAX(date::date) AS last_date
+                FROM training
+                WHERE user_id     = :uid
+                  AND exercise_id = :eid
+                  AND date < :day_start
+            )
+            SELECT t."set", t.weight, t.reps
+            FROM training t
+            JOIN prior_day pd ON t.date::date = pd.last_date
+            WHERE t.user_id     = :uid
+              AND t.exercise_id = :eid
+            ORDER BY t."set"
+        """),
+        {
+            "uid": uid,
+            "eid": exercise_id,
+            "day_start": datetime.combine(target_date, datetime.min.time()),
+        },
+    ).fetchall()
+    return [schemas.LogSet(set=r[0], weight=float(r[1]), reps=float(r[2])) for r in rows]
+
+
+def _fetch_personal_record(
+    db: Session,
+    uid: int,
+    exercise_id: int,
+) -> Optional[schemas.PersonalRecord]:
+    """Return the personal record (max weight) for a user/exercise.
+
+    Mirrors ``get_personal_record`` but takes a pre-resolved exercise_id to
+    avoid a redundant name-lookup join.
+
+    Args:
+        db: SQLAlchemy session.
+        uid: User id.
+        exercise_id: Exercise id.
+
+    Returns:
+        PersonalRecord or None when no training rows exist.
+    """
+    row = db.execute(
+        text("""
+            SELECT weight, reps, date
+            FROM training
+            WHERE user_id     = :uid
+              AND exercise_id = :eid
+            ORDER BY weight DESC, reps DESC, date DESC
+            LIMIT 1
+        """),
+        {"uid": uid, "eid": exercise_id},
+    ).fetchone()
+    if row is None:
+        return None
+    return schemas.PersonalRecord(weight=float(row[0]), reps=float(row[1]), date=row[2])
+
+
+@router.get(
+    "/analytics/log-context",
+    response_model=schemas.LogContext,
+    tags=["analytics"],
+)
+def get_log_context(
+    muscle: str,
+    exercise: str,
+    date: date,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> schemas.LogContext:
+    """Return the combined set-logger context for a user/exercise/date.
+
+    One cached read replaces three separate round-trips (completed-sets +
+    last-session + personal-record).  Resolves muscle and exercise by name
+    through the RLS-scoped session so the user cannot probe exercises that
+    are invisible to them.  Sargable queries use
+    ``idx_training_user_exercise (user_id, exercise_id)`` (GYM-59).
+
+    Args:
+        muscle: Muscle group name.
+        exercise: Exercise name.
+        date: Calendar date for the current log session.
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session (GUC-wired for the calling user).
+
+    Returns:
+        LogContext with completed_sets, last_session_sets, and pr.
+    """
+    uid = principal["user_id"]
+    cache_key = make_key(uid, "log-context", muscle=muscle, exercise=exercise, date=str(date))
+    cached = cache_get(cache_key)
+    if cached is not None:
+        pr_raw = cached.get("pr")
+        return schemas.LogContext(
+            completed_sets=cached["completed_sets"],
+            last_session_sets=[schemas.LogSet(**s) for s in cached["last_session_sets"]],
+            pr=schemas.PersonalRecord(**pr_raw) if pr_raw else None,
+        )
+
+    exercise_id = _resolve_exercise_id(db, muscle, exercise)
+    if exercise_id is None:
+        empty = schemas.LogContext(completed_sets=[], last_session_sets=[], pr=None)
+        cache_set(cache_key, {"completed_sets": [], "last_session_sets": [], "pr": None})
+        return empty
+
+    completed = _fetch_completed_sets(db, uid, exercise_id, date)
+    last_sets = _fetch_last_session_sets(db, uid, exercise_id, date)
+    pr = _fetch_personal_record(db, uid, exercise_id)
+
+    result = schemas.LogContext(completed_sets=completed, last_session_sets=last_sets, pr=pr)
+
+    pr_dict = {"weight": pr.weight, "reps": pr.reps, "date": str(pr.date)} if pr else None
+    cache_set(
+        cache_key,
+        {
+            "completed_sets": completed,
+            "last_session_sets": [{"set": s.set, "weight": s.weight, "reps": s.reps}
+                                  for s in last_sets],
+            "pr": pr_dict,
+        },
+    )
+    return result

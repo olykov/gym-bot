@@ -339,3 +339,34 @@ class RecentExercise(BaseModel):
     last_weight: float
     last_reps: float
     last_date: date
+
+
+# ---------------------------------------------------------------------------
+# Log-context (GYM-71) — combined set-logger payload
+# ---------------------------------------------------------------------------
+
+class LogSet(BaseModel):
+    """A single set from a prior session, for set-logger pre-fill.
+
+    Matches ``LogSet`` in packages/api-contract/openapi.yaml.
+    """
+
+    set: int
+    weight: float
+    reps: float
+
+
+class LogContext(BaseModel):
+    """Combined set-logger context: completed sets, last-session sets, and PR.
+
+    Matches ``LogContext`` in packages/api-contract/openapi.yaml (GYM-70).
+
+    Attributes:
+        completed_sets: Set numbers already logged on ``date`` for this exercise.
+        last_session_sets: Sets from the most recent prior session, ordered by set.
+        pr: Personal record (max weight), or null when no history exists.
+    """
+
+    completed_sets: List[int]
+    last_session_sets: List[LogSet]
+    pr: Optional[PersonalRecord] = None
