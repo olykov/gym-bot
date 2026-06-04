@@ -3,17 +3,17 @@ schema_version: 1
 id: GYM-73
 title: "Tests: fix 5 date-hardcoded analytics/history tests that break on day rollover"
 slug: gym-73-date-flaky-tests
-status: todo
-priority: medium
+status: in_progress
+priority: high
 type: bug-fix
 labels: [tech-debt, api, tests]
 assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-05T10:00:00Z
-start_date: null
+start_date: 2026-06-05T10:10:00Z
 finish_date: null
-updated: 2026-06-05T10:00:00Z
+updated: 2026-06-05T10:10:00Z
 epic: tech-debt
 depends_on: []
 blocks: []
