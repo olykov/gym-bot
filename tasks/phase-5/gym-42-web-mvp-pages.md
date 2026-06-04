@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-42
 title: "apps/web: MVP pages — dashboard activity-grid + summary, exercise progress"
 slug: gym-42-web-mvp-pages
-status: review
+status: done
 priority: medium
 type: feature
 labels: [phase-5, frontend, design]

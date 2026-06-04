@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-44
 title: "API: make summary.prs a real metric (PR events, not == exercises)"
 slug: gym-44-summary-prs-metric
-status: review
+status: done
 priority: medium
 type: refactor
 labels: [phase-5, api]
