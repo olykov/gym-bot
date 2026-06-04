@@ -325,3 +325,17 @@ class ExerciseProgress(BaseModel):
     """
 
     series: List[ExerciseSetSeries]
+
+
+class RecentExercise(BaseModel):
+    """A distinct exercise the caller trained recently, with last-set metadata.
+
+    Matches ``RecentExercise`` in packages/api-contract/openapi.yaml (GYM-66).
+    ``last_date`` is a calendar date (not a timestamp).
+    """
+
+    muscle_name: str
+    exercise_name: str
+    last_weight: float
+    last_reps: float
+    last_date: date

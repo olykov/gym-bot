@@ -287,6 +287,98 @@ def get_top_exercises(
 
 
 @router.get(
+    "/analytics/recent-exercises",
+    response_model=List[schemas.RecentExercise],
+    tags=["analytics"],
+)
+def get_recent_exercises(
+    limit: int = Query(default=8, ge=1, le=50),
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> List[schemas.RecentExercise]:
+    """Return the caller's most-recently-trained distinct exercises, newest first.
+
+    Per exercise_id, picks the row with the latest ``date`` (DISTINCT ON) to
+    obtain the last set's ``weight`` and ``reps``.  Those per-exercise snapshots
+    are then ordered by ``last_date DESC LIMIT :limit`` so the result reads
+    newest-trained first.
+
+    Query is sargable: the ``WHERE user_id = :uid`` predicate uses
+    ``idx_training_user_exercise`` or ``idx_training_user_date`` (GYM-59);
+    ``DISTINCT ON (exercise_id) … ORDER BY exercise_id, date DESC`` lets
+    Postgres satisfy the per-exercise latest-row requirement without a
+    full-scan subquery.
+
+    Result is cached under ``analytics:{user_id}:recent-exercises:{limit}``
+    (90 s TTL).  Training-mutation invalidation clears ``analytics:{uid}:*``
+    (GYM-47), so stale entries are evicted on any write.
+
+    Args:
+        limit: Maximum exercises to return (1–50, default 8).
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        List of RecentExercise ordered by most recently trained, newest first.
+    """
+    uid = principal["user_id"]
+    cache_key = make_key(uid, "recent-exercises", limit=limit)
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return [schemas.RecentExercise(**item) for item in cached]
+
+    # DISTINCT ON picks the latest row per exercise_id; the outer query
+    # re-orders by date desc and limits.  Both predicates (user_id) keep
+    # Postgres using the composite index rather than a seq-scan.
+    rows = db.execute(
+        text("""
+            SELECT muscle_name, exercise_name, last_weight, last_reps, last_date
+            FROM (
+                SELECT DISTINCT ON (t.exercise_id)
+                    m.name  AS muscle_name,
+                    e.name  AS exercise_name,
+                    t.weight AS last_weight,
+                    t.reps   AS last_reps,
+                    t.date::date AS last_date
+                FROM training t
+                JOIN exercises e ON e.id = t.exercise_id
+                JOIN muscles   m ON m.id = t.muscle_id
+                WHERE t.user_id = :uid
+                ORDER BY t.exercise_id, t.date DESC
+            ) latest
+            ORDER BY last_date DESC
+            LIMIT :lim
+        """),
+        {"uid": uid, "lim": limit},
+    ).fetchall()
+
+    result = [
+        schemas.RecentExercise(
+            muscle_name=r[0],
+            exercise_name=r[1],
+            last_weight=float(r[2]),
+            last_reps=float(r[3]),
+            last_date=r[4] if isinstance(r[4], date) else date.fromisoformat(str(r[4])),
+        )
+        for r in rows
+    ]
+    cache_set(
+        cache_key,
+        [
+            {
+                "muscle_name": item.muscle_name,
+                "exercise_name": item.exercise_name,
+                "last_weight": item.last_weight,
+                "last_reps": item.last_reps,
+                "last_date": str(item.last_date),
+            }
+            for item in result
+        ],
+    )
+    return result
+
+
+@router.get(
     "/analytics/top-muscles",
     response_model=List[schemas.TopMuscle],
     tags=["analytics"],
