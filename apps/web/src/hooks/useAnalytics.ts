@@ -14,12 +14,19 @@ import {
     fetchExercises,
     fetchMuscles,
     fetchSummary,
+    fetchTopExercises,
+    fetchTopMuscles,
     type ActivityDay,
     type AnalyticsSummary,
     type Exercise,
     type ExerciseProgress,
     type Muscle,
+    type TopExercise,
+    type TopMuscle,
 } from "@/api/analytics";
+
+/** Pull-all sentinel for the exercise picker (every exercise of a muscle). */
+const TOP_EXERCISES_LIMIT = 200;
 
 /** Dashboard summary numbers. */
 export function useSummary() {
@@ -56,6 +63,37 @@ export function useExercises(muscleId: number | null) {
         queryKey: ["muscles", muscleId, "exercises"],
         queryFn: ({ signal }) => fetchExercises(muscleId as number, signal),
         enabled: muscleId != null,
+        staleTime: 5 * 60_000,
+    });
+}
+
+/**
+ * Muscles ranked by the caller's training frequency (desc) — the Progress
+ * muscle picker. The endpoint already returns frequency order; the UI renders
+ * it verbatim (no client re-sort). A new user with no trainings gets `[]`,
+ * which drives the empty state with no further queries fired.
+ */
+export function useTopMuscles() {
+    return useQuery<TopMuscle[]>({
+        queryKey: ["analytics", "top-muscles"],
+        queryFn: ({ signal }) => fetchTopMuscles(signal),
+        // Frequency shifts slowly within a session; keep it fresh.
+        staleTime: 5 * 60_000,
+    });
+}
+
+/**
+ * A muscle's exercises ranked by training frequency (desc), all of them
+ * (`limit=200`) — the Progress exercise picker. Disabled until a muscle name
+ * is picked, so the empty path fires no query. Returned in frequency order;
+ * rendered verbatim.
+ */
+export function useTopExercises(muscle: string | null) {
+    return useQuery<TopExercise[]>({
+        queryKey: ["analytics", "top-exercises", muscle, TOP_EXERCISES_LIMIT],
+        queryFn: ({ signal }) =>
+            fetchTopExercises(muscle as string, TOP_EXERCISES_LIMIT, signal),
+        enabled: muscle != null,
         staleTime: 5 * 60_000,
     });
 }
