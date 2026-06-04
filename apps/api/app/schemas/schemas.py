@@ -197,3 +197,69 @@ class TopExercise(BaseModel):
 
     name: str
     frequency: int
+
+
+# ---------------------------------------------------------------------------
+# Analytics (GYM-39) — dashboard / Mini App
+# ---------------------------------------------------------------------------
+
+class ActivityDay(BaseModel):
+    """Sets recorded on a single day within the requested range.
+
+    Matches the ``ActivityDay`` schema in packages/api-contract/openapi.yaml.
+    ``date`` is a calendar date (not a timestamp).
+    """
+
+    date: date
+    sets_count: int
+
+
+class AnalyticsSummary(BaseModel):
+    """Headline dashboard metrics for the caller.
+
+    Matches ``AnalyticsSummary`` in the OpenAPI contract.
+
+    Attributes:
+        exercises: Distinct exercises ever logged by this user.
+        sets: Total sets recorded by this user.
+        prs: Number of exercises for which a max-weight personal record exists.
+        current_streak: Consecutive calendar days up to today with at least one
+            training set recorded.
+    """
+
+    exercises: int
+    sets: int
+    prs: int
+    current_streak: int
+
+
+class ExercisePoint(BaseModel):
+    """A single recorded point of weight and reps on a date.
+
+    Matches ``ExercisePoint`` in the OpenAPI contract.
+    ``date`` is a calendar date (not a timestamp).
+    """
+
+    date: date
+    weight: float
+    reps: float
+
+
+class ExerciseSetSeries(BaseModel):
+    """Progress series for one set number.
+
+    Matches ``ExerciseSetSeries`` in the OpenAPI contract.
+    """
+
+    set: int
+    points: List[ExercisePoint]
+
+
+class ExerciseProgress(BaseModel):
+    """Per-set progress series for an exercise, shaped for ECharts.
+
+    Matches ``ExerciseProgress`` in the OpenAPI contract.
+    Empty when no history exists for the exercise.
+    """
+
+    series: List[ExerciseSetSeries]

@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # impersonate Telegram users without sharing JWT_SECRET.
     BOT_SERVICE_TOKEN: str
 
+    # Redis URL for analytics cache (db index /1 keeps cache separate from bot FSM on /0).
+    # Default points to the shared gymbot_redis service defined in docker-compose.
+    # Override via REDIS_URL env var; not a secret (no credentials in the default).
+    REDIS_URL: str = "redis://gymbot_redis:6379/1"
+
     # CORS — comma-separated list of allowed origins.
     # Override via CORS_ALLOW_ORIGINS env var in production.
     CORS_ALLOW_ORIGINS: str = "https://gymbot.olykov.com"
