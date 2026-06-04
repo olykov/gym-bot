@@ -49,6 +49,20 @@
     .hairline {
         border-color: var(--hairline);
     }
+
+    /* The faintest separation (spec §12.2 v2, GYM-72) — an inset hairline that
+     * dissolves to transparent at both ends, the §9.5 "dissolve" idea at micro
+     * scale. Deliberately softer than the canonical <Divider> hard cut: used
+     * once, below the record picker's Continue tile, so the separation reads as
+     * a whisper, not a line. Token-only (--hairline), no magic colour. */
+    .record-divider-faint {
+        background-image: linear-gradient(
+            to right,
+            transparent,
+            var(--hairline),
+            transparent
+        );
+    }
 }
 
 /* ---------------------------------------------------------------------------

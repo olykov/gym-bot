@@ -1,31 +1,42 @@
 /**
- * Phase A of the record flow — the exercise picker (spec §12.2). Goal: get the
- * user onto an exercise in ONE tap on the hot path.
+ * Phase A of the record flow — the exercise picker (spec §12.2, GYM-72 v2).
  *
- * Layout, in priority order:
- *  1. Fast lane — `recent-exercises` 1-tap chips (cross-muscle, newest first),
- *     each carrying the last working set so Phase B pre-fills instantly.
- *  2. Browse fallback — a muscle <ChipRow> (top-muscles then /muscles); picking
- *     a muscle reveals its exercises frequency-sorted, rendered top ~6 + a
- *     "Show all" chip that expands the rest client-side (§12.9).
- *  3. Add inline — `+ Muscle` / `+ Exercise` open an in-sheet text field;
- *     create + optimistic insert + auto-select into Phase B.
+ * Layout, top to bottom:
+ *  1. Continue tile — the LAST exercise trained TODAY (derived from
+ *     `GET /training/day/{today}`: the exercise group whose set has the highest
+ *     training_id, i.e. the most recently logged). Tap → Phase B. Omitted
+ *     entirely when nothing was trained today.
+ *  2. A very light, fading hairline divider below the Continue tile (only shown
+ *     with the tile) — a whisper of separation, not a hard cut.
+ *  3. Muscle TILES (frequency-sorted top-muscles, then the rest of /muscles) →
+ *     on pick, exercise TILES in the SAME tile format (top ~6 + "Show all"
+ *     client-side expand, §12.9). Keep the add-inline + Muscle / + Exercise.
  *
- * Empty brand-new user (no recent, empty catalog) → an in-sheet
+ * The old 8-item "Recent" fast lane is removed (operator feedback): just-logged
+ * exercises aren't what you want next.
+ *
+ * Prefetch (§12.5 perf): on mount (sheet open) warm top-muscles + day/today and
+ * the Continue exercise's log-context; on muscle pick prefetch its exercises —
+ * so each pick lands instantly.
+ *
+ * Empty brand-new user (nothing today, empty catalog) → an in-sheet
  * "ADD YOUR FIRST EXERCISE" prompt with the add-inline field; no analytics
  * fan-out on the empty path (§12.6 / ARCH §2).
  */
-import { useMemo, useState } from "react";
-import { ChipRow, type ChipOption } from "@/components/progress/ChipRow";
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { AddInlineField } from "./AddInlineField";
 import { useMuscles, useTopMuscles, useTopExercises } from "@/hooks/useAnalytics";
+import { useTrainingDay } from "@/hooks/useTraining";
 import {
-    useRecentExercises,
     useCreateExercise,
     useCreateMuscle,
+    prefetchPickerReads,
+    prefetchMuscleExercises,
+    prefetchLogContext,
 } from "@/hooks/useRecord";
 import type { ChosenExercise } from "./types";
 
@@ -33,14 +44,23 @@ import type { ChosenExercise } from "./types";
 const BROWSE_VISIBLE = 6;
 
 interface RecordPickerProps {
+    /** Today's date (YYYY-MM-DD) — the day/log-context key for the Continue tile. */
+    today: string;
     /** Hand the chosen exercise to the controller → swaps to Phase B. */
     onPick: (chosen: ChosenExercise) => void;
 }
 
-export function RecordPicker({ onPick }: RecordPickerProps) {
-    const recent = useRecentExercises(true);
+/** The last exercise trained today: the group whose set has the highest id. */
+interface ContinueExercise {
+    muscleName: string;
+    exerciseName: string;
+}
+
+export function RecordPicker({ today, onPick }: RecordPickerProps) {
+    const qc = useQueryClient();
     const topMuscles = useTopMuscles();
     const muscles = useMuscles();
+    const day = useTrainingDay(today);
 
     const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
     const [showAllExercises, setShowAllExercises] = useState(false);
@@ -52,21 +72,68 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
     // Which add-inline field is open (if any).
     const [adding, setAdding] = useState<"muscle" | "exercise" | null>(null);
 
+    // Warm the picker reads + the Continue exercise's log-context on open (§12.5).
+    useEffect(() => {
+        prefetchPickerReads(qc, today);
+    }, [qc, today]);
+
+    // Continue = the exercise group whose set has the highest training_id
+    // (the most recently logged today). training_id is a serial id, so the
+    // largest value is the latest insert. Falls back to string compare.
+    const continueExercise: ContinueExercise | null = useMemo(() => {
+        const exs = day.data?.exercises ?? [];
+        if (exs.length === 0) return null;
+        let best: ContinueExercise | null = null;
+        let bestKey = -Infinity;
+        for (const ex of exs) {
+            for (const s of ex.sets) {
+                const k = Number(s.training_id);
+                const key = Number.isFinite(k) ? k : -Infinity;
+                if (key > bestKey) {
+                    bestKey = key;
+                    best = {
+                        muscleName: ex.muscle_name,
+                        exerciseName: ex.exercise_name,
+                    };
+                }
+            }
+        }
+        // No finite id anywhere → fall back to first appearance (alpha order).
+        if (!best && exs[0]) {
+            best = {
+                muscleName: exs[0].muscle_name,
+                exerciseName: exs[0].exercise_name,
+            };
+        }
+        return best;
+    }, [day.data]);
+
+    // Prefetch the Continue exercise's log-context so tapping it is instant.
+    useEffect(() => {
+        if (continueExercise) {
+            prefetchLogContext(
+                qc,
+                continueExercise.muscleName,
+                continueExercise.exerciseName,
+                today,
+            );
+        }
+    }, [qc, continueExercise, today]);
+
     // Merge top-muscles (frequency order) with the rest of the catalog, so a
     // user with private muscles never-trained can still browse them.
-    const muscleOptions: ChipOption[] = useMemo(() => {
+    const muscleOptions = useMemo(() => {
         const seen = new Set<string>();
-        const out: ChipOption[] = [];
-        let i = 0;
+        const out: string[] = [];
         for (const m of topMuscles.data ?? []) {
             if (seen.has(m.name)) continue;
             seen.add(m.name);
-            out.push({ id: i++, label: m.name });
+            out.push(m.name);
         }
         for (const m of muscles.data ?? []) {
             if (seen.has(m.name)) continue;
             seen.add(m.name);
-            out.push({ id: i++, label: m.name });
+            out.push(m.name);
         }
         return out;
     }, [topMuscles.data, muscles.data]);
@@ -77,20 +144,18 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
         : exerciseList.slice(0, BROWSE_VISIBLE);
     const hiddenCount = exerciseList.length - visibleExercises.length;
 
-    // Brand-new user: no recent exercises AND no muscles to browse.
+    // Brand-new user: nothing trained today AND no muscles to browse.
     const everythingLoaded =
-        !recent.isLoading && !topMuscles.isLoading && !muscles.isLoading;
+        !day.isLoading && !topMuscles.isLoading && !muscles.isLoading;
     const isEmptyNewUser =
-        everythingLoaded &&
-        (recent.data?.length ?? 0) === 0 &&
-        muscleOptions.length === 0;
+        everythingLoaded && !continueExercise && muscleOptions.length === 0;
 
-    function pickMuscle(option: ChipOption): void {
+    function pickMuscle(name: string): void {
         setShowAllExercises(false);
         setAdding(null);
-        setSelectedMuscle(
-            option.label === selectedMuscle ? null : option.label,
-        );
+        const next = name === selectedMuscle ? null : name;
+        setSelectedMuscle(next);
+        if (next) prefetchMuscleExercises(qc, next);
     }
 
     function submitMuscle(name: string): void {
@@ -115,7 +180,7 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
                 onSuccess: () => {
                     setAdding(null);
                     // Auto-select the new exercise into Phase B (§12.2). No
-                    // recent row yet → cold pre-fill falls back to PR/empty.
+                    // history yet → cold pre-fill stays empty until valid.
                     onPick({ muscleName, exerciseName: name });
                 },
             },
@@ -169,59 +234,53 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
         <div className="space-y-6 pb-2">
             <h2 className="font-display text-title text-text">RECORD</h2>
 
-            {/* Fast lane — recent-exercises 1-tap chips (§12.2). */}
-            <section>
-                <div className="mb-2 text-label uppercase tracking-wide text-hint">
-                    Recent
-                </div>
-                {recent.isLoading ? (
-                    <div className="flex gap-2 overflow-hidden">
-                        {Array.from({ length: 4 }).map((_, i) => (
-                            <Skeleton
-                                key={i}
-                                className="h-[52px] w-28 shrink-0 rounded-lg"
-                            />
-                        ))}
-                    </div>
-                ) : recent.isError ? (
-                    // Degrade, don't block: the browse path below still works.
-                    <p className="text-label text-hint">
-                        Couldn't load recents — browse below.
-                    </p>
-                ) : (recent.data?.length ?? 0) === 0 ? (
-                    <p className="text-label text-hint">
-                        No recents yet — browse below.
-                    </p>
-                ) : (
-                    <div className="-mx-1 flex flex-wrap gap-2 px-1">
-                        {recent.data?.map((ex) => (
-                            <button
-                                key={`${ex.muscle_name}/${ex.exercise_name}`}
-                                type="button"
-                                onClick={() =>
-                                    onPick({
-                                        muscleName: ex.muscle_name,
-                                        exerciseName: ex.exercise_name,
-                                        lastWeight: ex.last_weight,
-                                        lastReps: ex.last_reps,
-                                    })
-                                }
-                                className="press-95 flex min-h-[52px] flex-col items-start justify-center rounded-lg border border-hairline bg-secondary-bg px-4 py-2 text-left"
-                            >
-                                <span className="text-base font-semibold text-text">
-                                    {ex.exercise_name}
-                                </span>
-                                <span className="text-label text-hint">
-                                    {ex.muscle_name}
-                                </span>
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </section>
+            {/* Continue today — the last exercise trained today (§12.2 v2). */}
+            {day.isLoading ? (
+                <Skeleton className="h-[60px] w-full rounded-lg" />
+            ) : continueExercise ? (
+                <>
+                    <button
+                        type="button"
+                        onClick={() =>
+                            onPick({
+                                muscleName: continueExercise.muscleName,
+                                exerciseName: continueExercise.exerciseName,
+                            })
+                        }
+                        className="press-95 flex min-h-[60px] w-full items-center justify-between gap-3 rounded-lg border border-hairline bg-secondary-bg px-4 py-3 text-left"
+                    >
+                        <span className="min-w-0">
+                            <span className="block text-label uppercase tracking-wide text-hint">
+                                Continue today
+                            </span>
+                            <span className="mt-0.5 block truncate text-base font-semibold text-text">
+                                {continueExercise.exerciseName}
+                            </span>
+                            <span className="block truncate text-label text-hint">
+                                {continueExercise.muscleName}
+                            </span>
+                        </span>
+                        <span aria-hidden className="shrink-0 text-hint">
+                            ›
+                        </span>
+                    </button>
 
-            {/* Browse fallback — muscle row → exercise row (§12.2 / §12.9). */}
+                    {/* Very light, fading hairline — a whisper, not a hard cut
+                        (operator: "совсем лёгкий, ненавязчивый"). Inset + masked
+                        to transparent at both ends; only shown with Continue. */}
+                    <div
+                        aria-hidden
+                        className="record-divider-faint mx-auto h-px w-2/3"
+                    />
+                </>
+            ) : null}
+
+            {/* Muscle tiles → exercise tiles (§12.2 v2 / §12.9). */}
             <section className="space-y-4">
+                <div className="text-label uppercase tracking-wide text-hint">
+                    Muscle
+                </div>
+
                 {topMuscles.isError && muscles.isError ? (
                     <ErrorState
                         message="Couldn't load muscles."
@@ -230,20 +289,48 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
                             void muscles.refetch();
                         }}
                     />
+                ) : topMuscles.isLoading && muscles.isLoading ? (
+                    <div className="flex flex-wrap gap-2">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <Skeleton
+                                key={i}
+                                className="h-[52px] w-28 rounded-lg"
+                            />
+                        ))}
+                    </div>
                 ) : (
-                    <ChipRow
-                        label="Browse by muscle"
-                        options={muscleOptions}
-                        selectedId={
-                            muscleOptions.find((o) => o.label === selectedMuscle)
-                                ?.id ?? null
-                        }
-                        onSelect={pickMuscle}
-                        loading={topMuscles.isLoading && muscles.isLoading}
-                    />
+                    <div className="-mx-1 flex flex-wrap gap-2 px-1">
+                        {muscleOptions.map((name) => {
+                            const active = name === selectedMuscle;
+                            return (
+                                <button
+                                    key={name}
+                                    type="button"
+                                    onClick={() => pickMuscle(name)}
+                                    aria-pressed={active}
+                                    className={`press-95 flex min-h-[52px] items-center rounded-lg px-4 text-base transition-colors ${
+                                        active
+                                            ? "border border-transparent bg-accent-weak font-semibold text-accent"
+                                            : "border border-hairline bg-secondary-bg text-text"
+                                    }`}
+                                >
+                                    {name}
+                                </button>
+                            );
+                        })}
+                        {/* Add a muscle inline (§12.2). */}
+                        {adding === "muscle" ? null : (
+                            <button
+                                type="button"
+                                onClick={() => setAdding("muscle")}
+                                className="press-95 flex min-h-[52px] items-center rounded-lg border border-dashed border-hairline px-4 text-base text-hint"
+                            >
+                                + Muscle
+                            </button>
+                        )}
+                    </div>
                 )}
 
-                {/* Add a muscle inline (§12.2). */}
                 {adding === "muscle" ? (
                     <AddInlineField
                         placeholder="New muscle name"
@@ -257,15 +344,7 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
                         onSubmit={submitMuscle}
                         onCancel={() => setAdding(null)}
                     />
-                ) : (
-                    <button
-                        type="button"
-                        onClick={() => setAdding("muscle")}
-                        className="press-95 min-h-[44px] rounded-full border border-dashed border-hairline px-4 text-base text-hint"
-                    >
-                        + Muscle
-                    </button>
-                )}
+                ) : null}
 
                 {/* Exercises of the selected muscle: top ~6 + "Show all" (§12.9). */}
                 {selectedMuscle ? (
@@ -278,7 +357,7 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
                                 {Array.from({ length: 4 }).map((_, i) => (
                                     <Skeleton
                                         key={i}
-                                        className="h-[44px] w-24 rounded-full"
+                                        className="h-[52px] w-28 rounded-lg"
                                     />
                                 ))}
                             </div>
@@ -299,7 +378,7 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
                                                 exerciseName: ex.name,
                                             })
                                         }
-                                        className="press-95 flex min-h-[44px] items-center whitespace-nowrap rounded-full border border-hairline px-4 text-base text-text"
+                                        className="press-95 flex min-h-[52px] items-center rounded-lg border border-hairline bg-secondary-bg px-4 text-base text-text"
                                     >
                                         {ex.name}
                                     </button>
@@ -308,7 +387,7 @@ export function RecordPicker({ onPick }: RecordPickerProps) {
                                     <button
                                         type="button"
                                         onClick={() => setShowAllExercises(true)}
-                                        className="press-95 flex min-h-[44px] items-center whitespace-nowrap rounded-full bg-accent-weak px-4 text-base font-semibold text-accent"
+                                        className="press-95 flex min-h-[52px] items-center rounded-lg bg-accent-weak px-4 text-base font-semibold text-accent"
                                     >
                                         Show all ({hiddenCount})
                                     </button>

@@ -608,27 +608,33 @@ with many screens:
                   └──────── "Switch exercise" ──────────┘
 ```
 
-- **Phase A — exercise picker** (`<RecordPicker>`): get the user onto an exercise in **1 tap** on the
-  hot path. Header "RECORD" (Bebas). Body, in priority order:
-  1. **Frequent exercises, 1-tap chips (the fast lane).** A wrapping/scrolling row of the user's most-
-     trained exercises as `<Chip>`-style buttons, each labelled `exercise_name` with a tiny
-     `muscle_name` sub-label. **MVP source (existing API):** fan-in `top-muscles` → for the top ~3
-     muscles call `top-exercises?muscle&limit=3`, merge + sort by `frequency` desc, take the top ~6–8.
-     This is a small bounded fan-out (≤4 cheap RLS reads, all cached by TanStack Query, fired only when
-     the sheet opens). It approximates "recents" well because frequency ≈ what you train. Tapping a
-     chip → **Phase B** immediately (this is the 1-tap path). *(§12.7 flags a single `recent-exercises`
-     endpoint that would replace this fan-out with one ordered read and add true last-trained ordering
-     + last weight/reps — strictly an upgrade, not required for MVP.)*
-  2. **Muscle → exercise browse (the fallback).** Below the fast lane, a `<ChipRow>` of muscles
-     (`top-muscles` first, then any remaining from `/muscles`); picking a muscle reveals its exercises
-     (`top-exercises?muscle&limit=200`, same as Progress §10.3) as a second chip row. Picking an
-     exercise → **Phase B**. This is the cold path (new exercise not in the fast lane) and costs 2 taps
-     (muscle, exercise).
-  3. **Add inline.** At the end of the muscle row a `+ Muscle` chip; at the end of an exercise row a
-     `+ Exercise` chip. Tapping opens a tiny inline text field (in-sheet, not a new screen) → on submit
-     `POST /muscles` / `POST /exercises {name, muscle_name}`, optimistically insert the new chip and
-     **auto-select it into Phase B**. (`POST /exercises` creates the muscle if needed, per contract.)
-     New users with an empty catalog land here naturally (§12.6 empty state points at it).
+- **Phase A — exercise picker** (`<RecordPicker>`, v2 — restructured per operator feedback, GYM-72).
+  Header "RECORD" (Bebas). The old 8-item "Recent" fast lane is **removed** — just-logged exercises
+  aren't what you want next. Body, top to bottom:
+  1. **Continue tile (the hot path).** A single full-width tile = the **last exercise trained TODAY**,
+     derived client-side from `GET /training/day/{today}` (the exercise group whose set has the highest
+     `training_id`, i.e. the most recently logged). It reuses the tile language (rounded-lg, hairline,
+     `--secondary-bg`, `press-95`): a quiet "CONTINUE TODAY" eyebrow (Sora `--hint`), the
+     `exercise_name` in `--text`, the `muscle_name` in `--hint`, and a trailing chevron (drill-in
+     grammar, mirrors `<DayCard>`). Tap → **Phase B** immediately. **If nothing was trained today the
+     tile is omitted entirely** (no empty placeholder).
+  2. **A very light, fading divider** below the Continue tile — an **inset hairline masked to
+     transparent at both ends** (`.record-divider-faint`, a horizontal `--hairline` gradient, width
+     ~2/3, centered). It is deliberately softer than the canonical `<Divider>` hard cut: a whisper of
+     separation per the operator ("совсем лёгкий, ненавязчивый"). **Only rendered when the Continue tile
+     is present** (token-only, no magic colour; the §9.5 "dissolve" idea at micro scale).
+  3. **Muscle tiles → exercise tiles (the browse path).** Below the divider, the muscles
+     (`top-muscles` frequency order first, then any remaining from `/muscles`) as a **wrapping tile
+     grid** in the same tile format (the old Recent-chip style: ≥52px rounded-lg `--secondary-bg`
+     hairline buttons; active = `--accent-weak`/`--accent` pill). Picking a muscle reveals its exercises
+     (`top-exercises?muscle&limit=200`, frequency-sorted, §12.9) as **exercise tiles in the SAME
+     format** — **top ~6 + a "Show all" tile** that expands the rest client-side. Picking an exercise →
+     **Phase B**. Browse cold path costs 2 taps (muscle, exercise).
+  4. **Add inline.** A `+ Muscle` tile in the muscle grid and a `+ Exercise` affordance under the
+     exercise tiles open a tiny inline text field (in-sheet, not a new screen) → on submit
+     `POST /muscles` / `POST /exercises {name, muscle_name}`, optimistically insert + **auto-select into
+     Phase B**. (`POST /exercises` creates the muscle if needed, per contract.) Brand-new users with no
+     training today and an empty catalog land on the "ADD YOUR FIRST EXERCISE" prompt (§12.6).
 - **Phase B — set-logging panel** (`<SetLogger>`, §12.3): the heart. The same sheet *swaps its body*
   to the logger (no nav, no new route, no re-open). A back-affordance ("← Switch exercise", small, top-
   left of the panel) returns to Phase A while keeping the sheet open. "Done" / scrim / BackButton
@@ -647,9 +653,9 @@ For the chosen `{muscle_name, exercise_name}`, the panel is built to make **each
  │ BENCH PRESS            · Chest                │   ← exercise identity (Bebas + muscle Chip)
  │                                              │
  │ TODAY                                        │
- │  Set 1 — 100kg × 8     Set 2 — 100kg × 7     │   ← already-logged sets today (completed-sets)
+ │  Set 1 — 100kg × 8     Set 2 — 100kg × 7     │   ← already-logged sets today (log-context)
  │                                              │
- │ SET 3                            PR 102.5kg  │   ← auto set #, PR target chip (--accent)
+ │ SET 3                       PR 102.5kg × 5   │   ← auto set #, PR target chip (--accent)
  │  WEIGHT                 REPS                  │
  │  [ − ] [ 100.0 kg ] [+] [ − ] [ 8 ] [+]      │   ← two big <Stepper>s, PRE-FILLED
  │                                              │
@@ -661,37 +667,40 @@ For the chosen `{muscle_name, exercise_name}`, the panel is built to make **each
 ```
 
 - **Exercise identity (read-only):** `{exercise_name}` in Bebas + a muscle `<Chip>` (`--accent-weak`).
+- **One read powers Phase B (perf, §12.5):** `GET /analytics/log-context?muscle&exercise&date=today`
+  (GYM-71) returns `{completed_sets:int[], last_session_sets:[{set,weight,reps}], pr:{weight,reps,date}
+  |null}` in **one round-trip** — it replaces the old three reads (`completed-sets` + `personal-record`
+  + the recent pre-fill).
 - **"Today" recap:** a compact, tabular row/grid of sets already logged today for this exercise, using
   `<SetRow>`-style figures (`Set n — {w}kg × {r}`). Source: this session's just-saved sets (optimistic,
-  always correct) **unioned with** what's already on the server. Server source = `completed-sets`
-  (gives the set *numbers* already recorded today; it returns numbers only, not weight/reps — so the
-  recap shows full `w×r` for sets logged *this session* and a plain `Set n ✓` marker for sets the
-  server already had before this session). This recap is what makes "where am I" obvious and removes
-  the bot's "pick set number" step entirely.
-- **Auto set-number:** `nextSet = max(completed-sets.sets ∪ this-session sets) + 1` (so it's correct
-  even mid-session and after the §11 history edits). Shown as the panel's "SET {n}" heading — the user
-  **never picks a set number** (the bot's step 3 is gone).
+  always correct) **unioned with** `log-context.completed_sets` (the set *numbers* already recorded
+  today; numbers only, no weight/reps — so the recap shows full `w×r` for sets logged *this session*
+  and a plain `Set n ✓` marker for sets the server already had before this session). This recap makes
+  "where am I" obvious and removes the bot's "pick set number" step entirely.
+- **Auto set-number:** `nextSet = max(log-context.completed_sets ∪ this-session sets) + 1` (so it's
+  correct even mid-session and after the §11 history edits). Shown as the panel's "SET {n}" heading —
+  the user **never picks a set number** (the bot's step 3 is gone).
 - **Pre-filled `<Stepper>`s (the magic):** two big steppers, reusing §11.5 `<Stepper>`:
   - **Weight** — `min 0, step 2.5, inputmode="decimal"`, unit `kg`, tabular Bebas value (§11.4 plate
     granularity, decimal-comma normalized).
   - **Reps** — `min 0, step 1, integer, inputmode="numeric"`.
-  - **Pre-fill rules (MVP, existing API), in priority order:**
+  - **Pre-fill rules (GYM-72 — last-session, NOT PR), in priority order for set N:**
     1. **Same session, same exercise:** pre-fill weight+reps from **the last set the user just logged
-       this session** for this exercise (held in component/sheet state). This is the dominant case
-       during a workout and needs no network call → truly ~1 tap (just Save).
-    2. **Cold open (first set today):** pre-fill weight = `PersonalRecord.weight`, reps =
-       `PersonalRecord.reps` from `personal-record` (the user's heaviest is a sane, motivating anchor;
-       they nudge ±2.5 to today's working weight). If `personal-record` is `null` (never trained this
-       exercise) → empty fields with `--hint` placeholders ("kg" / "reps") and Save disabled until both
-       are valid. *(Optional polish using existing API: after the user sets a weight, fire
-       `max-reps?weight` to pre-fill the rep count they've hit at that weight — debounced, nice-to-have,
-       not required for MVP.)*
-    > **Why PR, not last-set, for the cold pre-fill:** the contract has **no last-set endpoint** today;
-    > `personal-record` is the closest existing "what do I lift" anchor. §12.7 flags a `last-set` /
-    > `recent-exercises` addition that would make the cold open pre-fill the *actual last working set*
-    > (better than the PR) — the single biggest smoothness upgrade, but a separate task.
-  - **PR target chip:** when `personal-record` exists, show a small `PR {weight}kg` chip (`--accent`
-    text, graphical accent use, a11y-OK §9.3) by the SET heading, so the user sees the bar to beat.
+       this session** for this exercise (held in sheet state). The dominant in-workout case; no network
+       call → truly ~1 tap (just Save).
+    2. **Last session, set N:** pre-fill from `log-context.last_session_sets` matched on the **same set
+       number** (`{set,weight,reps}` for `set === nextSet`) — i.e. *the weight/reps you did for that
+       exact set last session*. This is the literal last working set, far better than the old PR anchor.
+       Recomputed after each save (nextSet advances → the next last-session set fills).
+    3. **No match (new exercise / no prior session set N):** empty fields with `--hint` placeholders
+       ("kg" / "reps"), **Save disabled until both are valid**.
+    > **The PR is NOT a pre-fill source anymore (operator feedback).** A pre-filled PR weight is the
+    > wrong anchor (it's your heaviest, not your working weight); `last_session_sets` gives the actual
+    > last working set per set-number, which is what you'll repeat. The PR now only labels the target
+    > chip below.
+  - **PR target chip:** when `log-context.pr` exists, show a small **`PR {weight}kg × {reps}`** chip
+    (`--accent` text, graphical accent use, a11y-OK §9.3) by the SET heading, so the user sees the bar
+    to beat. (A session PR with no reps source drops the `× {reps}` part.)
 - **Save set (in-sheet sticky, §11.4 — NOT the Telegram MainButton):** a sticky `--accent`-fill button
   (`--button-text` label, ≥48px), pinned at the bottom of the sheet's scroll viewport above the bottom
   safe-area. Disabled when weight/reps are empty/invalid (negative, `NaN`, non-integer reps). On tap:
@@ -718,8 +727,8 @@ For the chosen `{muscle_name, exercise_name}`, the panel is built to make **each
 | Scenario | Taps | Breakdown |
 |---|---|---|
 | Open the flow | 1 | the `+` FAB |
-| First set of a *frequent* exercise | +2 | tap the exercise chip (1) → SAVE (1) *(weight/reps pre-filled from PR)* |
-| First set of a *non-frequent* exercise (browse) | +3 | muscle chip (1) → exercise chip (1) → SAVE (1) |
+| Continue today's last exercise | +1 | tap the Continue tile (1) — pre-filled from last-session set 1 |
+| First set of an exercise (browse) | +3 | muscle tile (1) → exercise tile (1) → SAVE (1) *(pre-filled from last session)* |
 | **Each additional set, same exercise** | **+1** | **SAVE** *(set #, weight, reps all pre-filled)* |
 | Adjust weight by one plate then save | +2 | `+`/`−` 2.5kg (1) → SAVE (1) |
 | Switch to another frequent exercise | +1 | its chip (Phase A is one back-tap away) |
@@ -737,15 +746,17 @@ existing primitives heavily:
 - **`<RecordSheet>`** — the record flow controller: composes the existing **`<BottomSheet>`** and swaps
   its body between **`<RecordPicker>`** (Phase A) and **`<SetLogger>`** (Phase B). Owns the
   chosen-exercise state, the session-logged-sets state, and the cross-screen invalidation on close.
-- **`<RecordPicker>`** (Phase A) — built from existing parts: the frequent-exercise **fast lane**
-  (reuse `<Chip>`/chip-button styling), the muscle/exercise **browse** rows (reuse `<ChipRow>` from
-  §10.3 verbatim), and the **add-inline** field. Loading = skeleton chips (`<ChipRow loading>` already
-  does this). No new card style.
+- **`<RecordPicker>`** (Phase A, v2 — GYM-72) — built from existing parts: the **Continue tile** (the
+  last exercise trained today, a `<Card>`-style tile), a **faint fading divider** below it
+  (`.record-divider-faint`), the muscle/exercise **tiles** (the same ≥52px rounded-lg
+  `--secondary-bg`/hairline tile, top ~6 + "Show all"), and the **add-inline** field. No 8-item recent
+  fast lane. Loading = skeleton tiles. No new card style.
 - **`<SetLogger>`** (Phase B) — the set panel: exercise identity (Bebas + `<Chip>`), the "Today" recap
   (reuse `<SetRow>` figures), two **`<Stepper>`s** (reused verbatim from §11.5, just different
-  `step`/`min`/`inputMode` props), the **in-sheet sticky SAVE** (the §11.4 pattern, extract a shared
-  `<SheetSaveButton>` if not already factored), the PR chip (`<Chip>` with `--accent` text), and the
-  "Switch exercise"/"Done" affordances. Auto-advance + PR-beat live here.
+  `step`/`min`/`inputMode` props), the **in-sheet sticky SAVE** (the shared `<SheetSaveButton>`,
+  §11.4), the PR chip (`PR {w}kg × {r}` from `log-context.pr`, `--accent` text), and the
+  "Switch exercise"/"Done" affordances. One `log-context` read powers it; auto-advance + PR-beat live
+  here.
 - **(maybe) `<SheetSaveButton>`** — if the §11.4 set-editor's sticky Save isn't already a reusable
   component, extract it so the editor and the logger share one sticky-Save (one style only). If it's
   inline today, factor it once here.
@@ -756,19 +767,25 @@ No new library is introduced (§1): all of the above are compositions of existin
 
 ### 12.5 Data, queries, and the cross-screen contract
 - **Reads (all via TanStack Query, fired only when the sheet opens — never on app mount):**
-  - fast lane: `["analytics","top-muscles"]` (shared cache with Progress) + a few
-    `["analytics","top-exercises",muscle,3]`; merged client-side into the frequent list.
-  - browse: reuse §10.3 hooks `useTopMuscles` / `useTopExercises` / `useMuscles` as-is.
-  - per-exercise on entering Phase B: `["analytics","completed-sets",muscle,exercise,today]` (auto set
-    #) + `["analytics","personal-record",muscle,exercise]` (cold pre-fill + PR target). Both cheap,
-    cached, disabled until an exercise is chosen (empty path fires nothing, §0/ARCH §2).
+  - Continue tile: `["training","day",today]` (reuse the §11 `useTrainingDay` hook) — the last exercise
+    trained today is the group whose set has the highest `training_id` (derived client-side).
+  - browse: reuse §10.3 hooks `useTopMuscles` / `useTopExercises` / `useMuscles` as-is (muscle/exercise
+    tiles).
+  - per-exercise on entering Phase B: **one** `["analytics","log-context",muscle,exercise,today]`
+    (auto set # + last-session pre-fill + PR), cached with a long `staleTime`/`gcTime` (~10m) so a
+    re-entered exercise is instant, disabled until an exercise is chosen (empty path fires nothing,
+    §0/ARCH §2).
+- **Prefetch (perf, §12.3 #3):** on sheet open, warm `["analytics","top-muscles"]` + `["training",
+  "day",today]` and the Continue exercise's `["analytics","log-context",…]`; on muscle pick, prefetch
+  that muscle's `["analytics","top-exercises",muscle,200]`. All with the long staleTime/gcTime so the
+  session stays instant after the first warm.
 - **Write:** `POST /training` mutation. On success: update local "Today" recap + session pre-fill +
   PR anchor (above). **No optimistic cross-screen patch needed** (we're appending, and the sheet shows
-  its own recap) — instead, **invalidate on sheet close / on each save settle** so the rest of the app
-  re-fetches:
-  `["analytics","summary"]`, `["analytics","activity"]`, `["analytics","completed-sets",…]`,
-  `["analytics","personal-record",muscle,exercise]`, `["analytics","exercise-progress",muscle,exercise]`,
-  `["training","days"]` (all windows), and `["training","day",today]`. **Why:** a new set changes the
+  its own recap) — instead, **invalidate on each save settle** so the rest of the app re-fetches:
+  `["analytics","summary"]`, `["analytics","activity"]`,
+  `["analytics","log-context",muscle,exercise]` (auto set #/PR/recap stay correct),
+  `["analytics","exercise-progress",muscle,exercise]`, `["training","days"]` (all windows), and
+  `["training","day",today]` (also refreshes the Continue tile). **Why:** a new set changes the
   streak/sets/PR (Dashboard), the activity grid cell, the progress chart, and today's History day —
   missing one = a stale tab (the §11.7 cross-screen-staleness lesson).
 - **`createTraining`/`createMuscle`/`createExercise` errors:** the required §4/CLAUDE.md DB-op pattern —
@@ -777,9 +794,9 @@ No new library is introduced (§1): all of the above are compositions of existin
   recap row (so the optimistic recap never lies). Add-inline failures keep the typed name in the field.
 
 ### 12.6 States (empty / loading / error / light+dark / reduced-motion)
-- **Loading:** Phase A frequent + browse rows render `<ChipRow loading>` skeleton chips; entering Phase
-  B shows the steppers immediately with a tiny inline "loading your numbers…" placeholder until
-  `personal-record`/`completed-sets` resolve (then the pre-fill fills) — never a blocking spinner, no
+- **Loading:** Phase A Continue tile + muscle/exercise tiles render skeleton tiles of the same height;
+  entering Phase B shows the steppers immediately with a tiny inline "loading your numbers…"
+  placeholder until `log-context` resolves (then the pre-fill fills) — never a blocking spinner, no
   layout shift (§10.4).
 - **Empty — brand-new user (no muscles/exercises/history):** Phase A shows an `<EmptyState>`-style
   prompt inside the sheet — Bebas "ADD YOUR FIRST EXERCISE", Sora subline, with the **add-inline**

@@ -48,7 +48,7 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
                     onDone={onClose}
                 />
             ) : (
-                <RecordPicker onPick={setChosen} />
+                <RecordPicker today={today} onPick={setChosen} />
             )}
         </BottomSheet>
     );

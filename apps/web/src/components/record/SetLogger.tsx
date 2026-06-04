@@ -2,12 +2,16 @@
  * Phase B of the record flow — the set-logging panel (spec §12.3). The heart:
  * built so each set costs ~1 tap.
  *
- *  - Today recap = `completed-sets` set NUMBERS ∪ this-session saved sets (full
- *    w×r). Session sets show `Set n — {w}kg × {r}`; pre-session ones `Set n ✓`.
- *  - Auto set # = max(completed-sets ∪ session) + 1 (never a naive counter).
- *  - Two pre-filled <Stepper>s, priority: (1) same-session last set for this
- *    exercise; (2) the carried recent last working set (or PR fallback); (3)
- *    empty + --hint, Save disabled until valid.
+ *  - One read: `GET /analytics/log-context` (GYM-71) → completed set numbers +
+ *    the last prior session's sets + the PR, in a single round-trip.
+ *  - Today recap = log-context completed set NUMBERS ∪ this-session saved sets
+ *    (full w×r). Session sets show `Set n — {w}kg × {r}`; pre-session ones
+ *    `Set n ✓`.
+ *  - Auto set # = max(completed ∪ session) + 1 (never a naive counter).
+ *  - Two pre-filled <Stepper>s, priority (§12.3): (1) this session's previous
+ *    set for this exercise; (2) `last_session_sets` set N (what you did for that
+ *    set last session); (3) empty + --hint, Save disabled until valid. PR is NOT
+ *    a pre-fill source anymore — it's only the target chip.
  *  - In-sheet sticky <SheetSaveButton> → `POST /training`. On success: success
  *    haptic, append to recap (optimistic), re-arm in place (nextSet+1, same
  *    pre-fill) → +1 tap/set. PR-beat: a single accent pulse when the weight
@@ -22,11 +26,7 @@ import { Chip } from "@/components/ui/Chip";
 import { Stepper, parseNumeric } from "@/components/ui/Stepper";
 import { SheetSaveButton } from "@/components/ui/SheetSaveButton";
 import { hapticNotification } from "@/telegram/webapp";
-import {
-    useCompletedSets,
-    usePersonalRecord,
-    useCreateTraining,
-} from "@/hooks/useRecord";
+import { useLogContext, useCreateTraining } from "@/hooks/useRecord";
 import type { ChosenExercise } from "./types";
 
 /** A set logged in THIS session (full weight/reps, always exact). */
@@ -38,7 +38,7 @@ interface SessionSet {
 
 interface SetLoggerProps {
     chosen: ChosenExercise;
-    /** Today's date (YYYY-MM-DD) — the completed-sets / invalidation key. */
+    /** Today's date (YYYY-MM-DD) — the log-context / invalidation key. */
     today: string;
     onSwitch: () => void;
     onDone: () => void;
@@ -47,8 +47,7 @@ interface SetLoggerProps {
 export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
     const { muscleName, exerciseName } = chosen;
 
-    const completed = useCompletedSets(muscleName, exerciseName, today);
-    const pr = usePersonalRecord(muscleName, exerciseName);
+    const ctx = useLogContext(muscleName, exerciseName, today);
     const create = useCreateTraining(today);
 
     // Sets logged this session for THIS exercise (optimistic recap source).
@@ -65,10 +64,12 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
     const weight = parseNumeric(weightText, false);
     const reps = parseNumeric(repsText, true);
 
+    const pr = ctx.data?.pr ?? null;
+
     // Server PR resolves once → seed the local anchor (don't clobber a session PR).
     useEffect(() => {
-        if (pr.data && prAnchor === null) setPrAnchor(pr.data.weight);
-    }, [pr.data, prAnchor]);
+        if (pr && prAnchor === null) setPrAnchor(pr.weight);
+    }, [pr, prAnchor]);
 
     // Reset everything when the chosen exercise changes (sheet re-used).
     useEffect(() => {
@@ -80,14 +81,23 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
         setRepsText("");
     }, [muscleName, exerciseName]);
 
-    // Pre-fill priority (§12.3): (1) same-session last set; (2) carried recent
-    // last working set, else PR; (3) leave empty. Only fills empty fields so we
-    // never fight the user mid-edit. Runs as the inputs resolve.
+    // Auto set # = max(completed ∪ session) + 1 (§12.3, never a counter).
+    const nextSet = useMemo(() => {
+        const serverSets = ctx.data?.completed_sets ?? [];
+        const sessionNums = sessionSets.map((s) => s.set);
+        const all = [...serverSets, ...sessionNums];
+        return (all.length ? Math.max(...all) : 0) + 1;
+    }, [ctx.data, sessionSets]);
+
+    // Pre-fill priority (§12.3): (1) this session's previous set for this
+    // exercise; (2) last_session_sets for the NEXT set #; (3) leave empty (Save
+    // disabled until valid). PR is NOT a pre-fill source. Only fills empty
+    // fields so we never fight the user mid-edit. Runs as log-context resolves
+    // and re-runs after each save (nextSet advances → next last-session set).
     const prefilledFor = useRef<string>("");
     useEffect(() => {
-        const key = `${muscleName}/${exerciseName}`;
-        // Wait for the per-exercise reads so a slow PR doesn't lose to empty.
-        if (completed.isLoading || pr.isLoading) return;
+        const key = `${muscleName}/${exerciseName}/${nextSet}`;
+        if (ctx.isLoading) return; // wait so the pre-fill isn't lost to empty.
         if (prefilledFor.current === key && (weightText || repsText)) return;
 
         const lastSession = sessionSets[sessionSets.length - 1];
@@ -96,12 +106,14 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
         if (lastSession) {
             w = lastSession.weight;
             r = lastSession.reps;
-        } else if (chosen.lastWeight != null && chosen.lastReps != null) {
-            w = chosen.lastWeight;
-            r = chosen.lastReps;
-        } else if (pr.data) {
-            w = pr.data.weight;
-            r = pr.data.reps;
+        } else {
+            const lastForSet = ctx.data?.last_session_sets.find(
+                (s) => s.set === nextSet,
+            );
+            if (lastForSet) {
+                w = lastForSet.weight;
+                r = lastForSet.reps;
+            }
         }
         prefilledFor.current = key;
         if (w != null && !weightText) setWeightText(String(w));
@@ -110,31 +122,23 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
     }, [
         muscleName,
         exerciseName,
-        completed.isLoading,
-        pr.isLoading,
-        pr.data,
+        nextSet,
+        ctx.isLoading,
+        ctx.data,
         sessionSets.length,
     ]);
 
-    // Auto set # = max(completed-sets ∪ session) + 1 (§12.3, never a counter).
-    const nextSet = useMemo(() => {
-        const serverSets = completed.data?.sets ?? [];
-        const sessionNums = sessionSets.map((s) => s.set);
-        const all = [...serverSets, ...sessionNums];
-        return (all.length ? Math.max(...all) : 0) + 1;
-    }, [completed.data, sessionSets]);
-
-    // Recap: server set numbers (✓ only) ∪ this-session sets (full w×r).
+    // Recap: log-context set numbers (✓ only) ∪ this-session sets (full w×r).
     const recap = useMemo(() => {
         const sessionByNum = new Map(sessionSets.map((s) => [s.set, s]));
         const nums = new Set<number>([
-            ...(completed.data?.sets ?? []),
+            ...(ctx.data?.completed_sets ?? []),
             ...sessionSets.map((s) => s.set),
         ]);
         return [...nums]
             .sort((a, b) => a - b)
             .map((n) => ({ set: n, session: sessionByNum.get(n) ?? null }));
-    }, [completed.data, sessionSets]);
+    }, [ctx.data, sessionSets]);
 
     const valid =
         weight !== null && weight >= 0 && reps !== null && reps >= 0;
@@ -167,7 +171,10 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
         );
     }
 
-    const loadingNumbers = completed.isLoading || pr.isLoading;
+    // The PR reps for the chip — held alongside the anchor weight so the chip
+    // reads "PR {w}kg × {r}". Session PRs have no reps source, so the chip drops
+    // the × part once the local anchor diverges from the server PR.
+    const prReps = pr && prAnchor === pr.weight ? pr.reps : null;
 
     return (
         <div className="pb-2">
@@ -188,7 +195,7 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
                 <Chip>{muscleName}</Chip>
             </div>
 
-            {/* Today recap — completed-sets numbers ∪ this-session w×r (§12.3). */}
+            {/* Today recap — log-context numbers ∪ this-session w×r (§12.3). */}
             <section className="mt-5">
                 <div className="text-label uppercase tracking-wide text-hint">
                     Today
@@ -222,7 +229,7 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
                 )}
             </section>
 
-            {/* SET heading + PR target chip (§12.3). */}
+            {/* SET heading + PR target chip (§12.3) — "PR {w}kg × {r}". */}
             <div className="mt-6 flex items-center justify-between">
                 <h3 className="font-display text-title text-text">
                     SET {nextSet}
@@ -234,11 +241,12 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
                         }`}
                     >
                         PR {prAnchor}kg
+                        {prReps !== null ? ` × ${prReps}` : ""}
                     </span>
                 ) : null}
             </div>
 
-            {loadingNumbers ? (
+            {ctx.isLoading ? (
                 <p className="mt-2 text-label text-hint">loading your numbers…</p>
             ) : null}
 
