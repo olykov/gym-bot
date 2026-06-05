@@ -27,6 +27,25 @@ client).
 
 Validation below is performed on the **normalized** value.
 
+### Create vs lookup
+
+Length and allowed-character limits apply **only to a name being created/stored**, never to a
+name used to **look up an existing record**:
+
+- **Create-name** field — the field that *names the thing being created* (a new muscle or a new
+  exercise). Full rules: `minLength`, `maxLength`, and the allowed-character `pattern`. Example:
+  `MuscleCreate.name`, `ExerciseCreate.name`, `AdminExerciseCreate.name`.
+- **Lookup-reference** field — the field that *references an existing muscle/exercise by name*
+  (e.g. the owning muscle when adding an exercise, or the muscle/exercise when logging a set).
+  **Normalized only** (trim + collapse), with `minLength: 1` to reject empty/whitespace-only. No
+  `maxLength`, no `pattern` — otherwise you could never reference data that predates the rules
+  (e.g. a muscle whose name is longer than 30 chars). Lookups go through parameterized SQL and a
+  non-matching value 404s at the DB, so they need no char-whitelist. Example:
+  `ExerciseCreate.muscle_name`, `TrainingCreate.muscle_name`, `TrainingCreate.exercise_name`.
+
+The rules in this section (max length, allowed characters) describe **create-name** fields.
+Lookup-reference fields take only normalization + `minLength: 1`.
+
 ### Rules
 
 | Rule | Muscle name | Exercise name |
@@ -71,13 +90,15 @@ Python and TypeScript clients build without a Unicode-escape compromise.
 
 `packages/api-contract/openapi.yaml` request schemas carrying a muscle/exercise name:
 
-| Schema | Field | Kind | maxLength |
-|--------|-------|------|-----------|
-| `MuscleCreate` | `name` | muscle | 30 |
-| `ExerciseCreate` | `name` | exercise | 40 |
-| `ExerciseCreate` | `muscle_name` | muscle | 30 |
-| `AdminExerciseCreate` | `name` | exercise | 40 |
-| `TrainingCreate` | `muscle_name` | muscle | 30 |
-| `TrainingCreate` | `exercise_name` | exercise | 40 |
+| Schema | Field | Kind | Role | minLength | maxLength | pattern |
+|--------|-------|------|------|-----------|-----------|---------|
+| `MuscleCreate` | `name` | muscle | create | 1 | 30 | yes |
+| `ExerciseCreate` | `name` | exercise | create | 1 | 40 | yes |
+| `ExerciseCreate` | `muscle_name` | muscle | lookup | 1 | — | — |
+| `AdminExerciseCreate` | `name` | exercise | create | 1 | 40 | yes |
+| `TrainingCreate` | `muscle_name` | muscle | lookup | 1 | — | — |
+| `TrainingCreate` | `exercise_name` | exercise | lookup | 1 | — | — |
 
-Each field also has `minLength: 1` and the canonical `pattern` above.
+**Create** fields carry `minLength: 1`, `maxLength`, and the canonical `pattern` above.
+**Lookup** fields carry only `minLength: 1` (normalized server-side; no `maxLength`, no
+`pattern`) — see "Create vs lookup" above.
