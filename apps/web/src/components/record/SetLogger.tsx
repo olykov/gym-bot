@@ -27,6 +27,7 @@ import { Stepper, parseNumeric } from "@/components/ui/Stepper";
 import { SheetSaveButton } from "@/components/ui/SheetSaveButton";
 import { hapticNotification } from "@/telegram/webapp";
 import { useLogContext, useCreateTraining } from "@/hooks/useRecord";
+import type { TrainingSet } from "@/api/training";
 import type { ChosenExercise } from "./types";
 
 /** A set logged in THIS session (full weight/reps, always exact). */
@@ -40,11 +41,18 @@ interface SetLoggerProps {
     chosen: ChosenExercise;
     /** Today's date (YYYY-MM-DD) — the log-context / invalidation key. */
     today: string;
+    /**
+     * Today's already-logged sets for this exercise sourced from
+     * `GET /training/day/{today}` — carries {set, weight, reps} so the recap
+     * can show real values after reopen/Continue, not just ✓ (GYM-74).
+     * The sheet may pass an empty array when the day hasn't loaded yet.
+     */
+    serverSets: TrainingSet[];
     onSwitch: () => void;
     onDone: () => void;
 }
 
-export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
+export function SetLogger({ chosen, today, serverSets, onSwitch, onDone }: SetLoggerProps) {
     const { muscleName, exerciseName } = chosen;
 
     const ctx = useLogContext(muscleName, exerciseName, today);
@@ -128,17 +136,34 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
         sessionSets.length,
     ]);
 
-    // Recap: log-context set numbers (✓ only) ∪ this-session sets (full w×r).
+    // Recap: union of all set numbers known today, with w×r sourced in priority:
+    //  1. This-session set (always exact, was just logged).
+    //  2. serverSets from GET /training/day/{today} (carries weight+reps from
+    //     the server) — fixes the reopen/Continue ✓-only display (GYM-74).
+    //  3. completed_sets from log-context (set numbers only, no w×r → shows ✓).
     const recap = useMemo(() => {
         const sessionByNum = new Map(sessionSets.map((s) => [s.set, s]));
+        const serverByNum = new Map(serverSets.map((s) => [s.set, s]));
         const nums = new Set<number>([
             ...(ctx.data?.completed_sets ?? []),
+            ...serverSets.map((s) => s.set),
             ...sessionSets.map((s) => s.set),
         ]);
         return [...nums]
             .sort((a, b) => a - b)
-            .map((n) => ({ set: n, session: sessionByNum.get(n) ?? null }));
-    }, [ctx.data, sessionSets]);
+            .map((n) => {
+                const session = sessionByNum.get(n) ?? null;
+                // Server set provides w×r for pre-session sets (reopen / Continue).
+                const srv = serverByNum.get(n);
+                const weight = session?.weight ?? srv?.weight ?? null;
+                const reps = session?.reps ?? srv?.reps ?? null;
+                return {
+                    set: n,
+                    weight,
+                    reps,
+                };
+            });
+    }, [ctx.data, sessionSets, serverSets]);
 
     const valid =
         weight !== null && weight >= 0 && reps !== null && reps >= 0;
@@ -216,9 +241,9 @@ export function SetLogger({ chosen, today, onSwitch, onDone }: SetLoggerProps) {
                                 <span className="text-label uppercase tracking-wide text-hint">
                                     Set {row.set}
                                 </span>
-                                {row.session ? (
+                                {row.weight !== null && row.reps !== null ? (
                                     <span className="tabular font-display text-title leading-none text-text">
-                                        {row.session.weight}kg × {row.session.reps}
+                                        {row.weight}kg × {row.reps}
                                     </span>
                                 ) : (
                                     <span className="text-base text-hint">✓</span>

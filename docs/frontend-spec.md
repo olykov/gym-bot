@@ -598,9 +598,14 @@ tabs left, a publish `+` dead-center, profile far-right):
 
 ### 12.2 Record flow — structure (one `<BottomSheet>`, two phases)
 Tapping `+` opens **one `<BottomSheet>`** (reuse the §11.4/§11.5 primitive — bottom-anchored,
-grab-handle, scrim, safe-area-bottom, internal scroll so it never clips, BackButton-closes-sheet-first,
-240ms slide behind `prefers-reduced-motion`). The sheet is a small **two-phase** machine, NOT a wizard
-with many screens:
+grab-handle, scrim, safe-area-bottom, BackButton-closes-sheet-first, 240ms slide behind
+`prefers-reduced-motion`). The sheet is a small **two-phase** machine, NOT a wizard with many screens.
+
+**GYM-74: The sheet is `fixedHeight` (never jumps between Phase A steps).**
+The panel height is fixed at `calc(100dvh − max(safe-area-top, --tg-content-top) − var(--header-h) − 24px)`,
+ensuring the sheet's top edge always sits at least `--header-h + 24px` below the device/Telegram top
+inset — it **never overlaps the AppShell fixed header**. Both Phase A steps (muscles / exercises) and
+Phase B all occupy this same fixed height; only the body scrolls internally per step.
 
 ```
   +  ──▶  [ Phase A: PICK EXERCISE ]  ──pick──▶  [ Phase B: LOG SETS ]  ──"Done"──▶  close
@@ -608,9 +613,12 @@ with many screens:
                   └──────── "Switch exercise" ──────────┘
 ```
 
-- **Phase A — exercise picker** (`<RecordPicker>`, v2 — restructured per operator feedback, GYM-72).
+- **Phase A — exercise picker** (`<RecordPicker>`, v3 — GYM-72 restructure + GYM-74 slide-nav).
   Header "RECORD" (Bebas). The old 8-item "Recent" fast lane is **removed** — just-logged exercises
-  aren't what you want next. Body, top to bottom:
+  aren't what you want next. The picker has **two in-sheet steps as a horizontal PUSH** (no sheet
+  open/close, no height jump):
+
+  **Step 1 — muscle step (default):**
   1. **Continue tile (the hot path).** A single full-width tile = the **last exercise trained TODAY**,
      derived client-side from `GET /training/day/{today}` (the exercise group whose set has the highest
      `training_id`, i.e. the most recently logged). It reuses the tile language (rounded-lg, hairline,
@@ -623,22 +631,30 @@ with many screens:
      ~2/3, centered). It is deliberately softer than the canonical `<Divider>` hard cut: a whisper of
      separation per the operator ("совсем лёгкий, ненавязчивый"). **Only rendered when the Continue tile
      is present** (token-only, no magic colour; the §9.5 "dissolve" idea at micro scale).
-  3. **Muscle tiles → exercise tiles (the browse path).** Below the divider, the muscles
-     (`top-muscles` frequency order first, then any remaining from `/muscles`) as a **wrapping tile
-     grid** in the same tile format (the old Recent-chip style: ≥52px rounded-lg `--secondary-bg`
-     hairline buttons; active = `--accent-weak`/`--accent` pill). Picking a muscle reveals its exercises
-     (`top-exercises?muscle&limit=200`, frequency-sorted, §12.9) as **exercise tiles in the SAME
-     format** — **top ~6 + a "Show all" tile** that expands the rest client-side. Picking an exercise →
-     **Phase B**. Browse cold path costs 2 taps (muscle, exercise).
+  3. **Muscle tile grid.** Muscles (`top-muscles` frequency order first, then any remaining from
+     `/muscles`) as an **auto-fit responsive grid** (`repeat(auto-fill, minmax(100px, 1fr))`) — NOT a
+     hardcoded 3-column layout. This handles variable-length labels and custom muscles without breaking.
+     Tile min height ≥ 64px. Picking a muscle **slides LEFT** to Step 2.
+
+  **Step 2 — exercise step (slide-in from right):**
+  Tapping a muscle tile triggers a **horizontal push** — the muscle panel translates out to the left
+  and the exercise panel translates in from the right. Animation: `translateX(-50%)` on a 200%-wide
+  flex track, `200ms ease-out-soft`, **`prefers-reduced-motion` → instant** (no transition). A **"←
+  {Muscle name}"** back control at the top of Step 2 slides back; the **Telegram BackButton** (wired
+  via `onBackOverride` on `<BottomSheet>`) also steps back (Step 2 → Step 1 → close). Exercise tiles
+  in the same tile language (≥64px, auto-fit grid) — top ~6 + "Show all" (§12.9). **`+ Muscle`** in
+  the muscle grid and **`+ Exercise`** under the exercise tiles open inline add fields.
+
   4. **Add inline.** A `+ Muscle` tile in the muscle grid and a `+ Exercise` affordance under the
      exercise tiles open a tiny inline text field (in-sheet, not a new screen) → on submit
      `POST /muscles` / `POST /exercises {name, muscle_name}`, optimistically insert + **auto-select into
      Phase B**. (`POST /exercises` creates the muscle if needed, per contract.) Brand-new users with no
      training today and an empty catalog land on the "ADD YOUR FIRST EXERCISE" prompt (§12.6).
+
 - **Phase B — set-logging panel** (`<SetLogger>`, §12.3): the heart. The same sheet *swaps its body*
   to the logger (no nav, no new route, no re-open). A back-affordance ("← Switch exercise", small, top-
-  left of the panel) returns to Phase A while keeping the sheet open. "Done" / scrim / BackButton
-  closes the whole sheet.
+  left of the panel) returns to Phase A (muscle step) while keeping the sheet open. "Done" / scrim /
+  BackButton closes the whole sheet.
 
 > **Why one sheet with a body-swap, not multi-screen:** keeps the user in a single thumb-zone surface,
 > preserves the §11.4 "in-sheet sticky Save, never the Telegram MainButton" decision (clip-proof on
@@ -671,12 +687,18 @@ For the chosen `{muscle_name, exercise_name}`, the panel is built to make **each
   (GYM-71) returns `{completed_sets:int[], last_session_sets:[{set,weight,reps}], pr:{weight,reps,date}
   |null}` in **one round-trip** — it replaces the old three reads (`completed-sets` + `personal-record`
   + the recent pre-fill).
-- **"Today" recap:** a compact, tabular row/grid of sets already logged today for this exercise, using
-  `<SetRow>`-style figures (`Set n — {w}kg × {r}`). Source: this session's just-saved sets (optimistic,
-  always correct) **unioned with** `log-context.completed_sets` (the set *numbers* already recorded
-  today; numbers only, no weight/reps — so the recap shows full `w×r` for sets logged *this session*
-  and a plain `Set n ✓` marker for sets the server already had before this session). This recap makes
-  "where am I" obvious and removes the bot's "pick set number" step entirely.
+- **"Today" recap (GYM-74 fix):** a compact, tabular row/grid of sets already logged today for this
+  exercise, using `<SetRow>`-style figures (`Set n — {w}kg × {r}`). Source — three tiers, in priority:
+  1. **This-session sets** (optimistic, exact weight/reps just logged).
+  2. **`GET /training/day/{today}` `TrainingDayExercise.sets`** (the server's already-recorded sets for
+     this exercise, carrying `{set, weight, reps}`). This data is already fetched/prefetched for the
+     Continue tile; filtering to the chosen exercise and passing it to `<SetLogger>` as `serverSets`
+     means the recap shows real `w×r` **even after reopen or Continue** — not just `Set n ✓`.
+  3. **`log-context.completed_sets`** (set numbers only, no w×r — fallback `Set n ✓` when neither tier
+     1 nor tier 2 provides weight+reps for a set number).
+  Session set wins over server set for the same set number (it's always more recent). This approach
+  requires NO API change. The recap makes "where am I" obvious and removes the bot's "pick set number"
+  step entirely.
 - **Auto set-number:** `nextSet = max(log-context.completed_sets ∪ this-session sets) + 1` (so it's
   correct even mid-session and after the §11 history edits). Shown as the panel's "SET {n}" heading —
   the user **never picks a set number** (the bot's step 3 is gone).

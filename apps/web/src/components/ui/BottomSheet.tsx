@@ -32,6 +32,19 @@ interface BottomSheetProps {
     /** Accessible title id wiring; rendered by the caller inside `children`. */
     titleId?: string;
     /**
+     * When true the sheet is given a FIXED height (not just a max-height) so
+     * the panel never jumps between content states. The height is computed to
+     * sit below the fixed AppShell header and above the safe-area bottom so
+     * it never overlaps either chrome bar (spec §12.2 GYM-74).
+     */
+    fixedHeight?: boolean;
+    /**
+     * Override the default Back behaviour so the caller can intercept the
+     * Telegram BackButton before it closes the sheet (e.g. step nav inside
+     * the picker). Return `true` to consume the event (prevent close).
+     */
+    onBackOverride?: () => boolean;
+    /**
      * Sheet body. Scrolls internally when the sheet hits its max-height; the
      * caller may pin its own sticky footer (the SAVE) with
      * `position:sticky; bottom:0` so it stays at the panel bottom (§11.4).
@@ -39,19 +52,34 @@ interface BottomSheetProps {
     children: React.ReactNode;
 }
 
-export function BottomSheet({ open, onClose, titleId, children }: BottomSheetProps) {
+export function BottomSheet({
+    open,
+    onClose,
+    titleId,
+    fixedHeight = false,
+    onBackOverride,
+    children,
+}: BottomSheetProps) {
     const panelRef = useRef<HTMLDivElement>(null);
 
-    // BackButton ownership (§11.7): while open, Back closes the sheet first.
+    // BackButton ownership (§11.7): while open, Back closes the sheet first,
+    // unless the caller intercepts it (e.g. for step navigation in the picker).
     useEffect(() => {
         if (!open) return;
         showBackButton();
-        const teardown = wireBackButton(onClose);
+        const handler = () => {
+            if (onBackOverride) {
+                const consumed = onBackOverride();
+                if (consumed) return;
+            }
+            onClose();
+        };
+        const teardown = wireBackButton(handler);
         return () => {
             teardown();
             hideBackButton();
         };
-    }, [open, onClose]);
+    }, [open, onClose, onBackOverride]);
 
     // Esc closes (desktop); move focus into the panel on open.
     useEffect(() => {
@@ -79,7 +107,10 @@ export function BottomSheet({ open, onClose, titleId, children }: BottomSheetPro
             {/* Panel: bottom-anchored, container-width. A flex column capped at
                 ~viewport − top-safe-inset − margin so it never grows past the
                 screen; the body region scrolls internally so nothing is ever
-                clipped, and a caller's sticky footer stays pinned (GYM-54). */}
+                clipped, and a caller's sticky footer stays pinned (GYM-54).
+                When fixedHeight=true the height is fixed (not max) so the panel
+                never jumps between content states — it sits strictly below the
+                AppShell header (GYM-74). */}
             <div className="absolute inset-x-0 bottom-0 flex justify-center">
                 <div
                     ref={panelRef}
@@ -88,14 +119,19 @@ export function BottomSheet({ open, onClose, titleId, children }: BottomSheetPro
                     aria-labelledby={titleId}
                     tabIndex={-1}
                     className="sheet-panel flex w-full max-w-container flex-col rounded-t-lg border-t border-hairline bg-bg pt-3 outline-none"
-                    style={{
-                        // Leave the top-safe inset (Telegram fullscreen controls
-                        // / notch, Bot API 8.0) plus a 24px breathing margin
-                        // above the sheet so a tall sheet never reaches the
-                        // overlaid Telegram chrome.
-                        maxHeight:
-                            "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - 24px)",
-                    }}
+                    style={
+                        fixedHeight
+                            ? {
+                                  // Fixed height: sits strictly below the AppShell header.
+                                  // = viewport − (safe-area/Telegram content top) − header-h − 24px margin.
+                                  // The header-h clearance ensures the picker never overlaps the fixed header.
+                                  height: "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - var(--header-h) - 24px)",
+                              }
+                            : {
+                                  maxHeight:
+                                      "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - 24px)",
+                              }
+                    }
                 >
                     {/* Grab handle (spec §9.5) — fixed at the top of the panel. */}
                     <div
@@ -103,10 +139,13 @@ export function BottomSheet({ open, onClose, titleId, children }: BottomSheetPro
                         className="mx-auto mb-4 h-1 w-12 shrink-0 rounded-full bg-hairline"
                     />
 
-                    {/* Scrollable body. Bottom padding clears the device /
-                        Telegram bottom inset so a sticky footer rests above it. */}
+                    {/* Body region: scrolls internally so the sheet NEVER clips a
+                        tall editor, and a caller's sticky footer stays pinned
+                        (§11.4, GYM-54). When the sheet is fixedHeight the body
+                        is also flex-col so flex children (e.g. RecordPicker) can
+                        fill the available space with their own overflow handling. */}
                     <div
-                        className="min-h-0 flex-1 overflow-y-auto px-4"
+                        className={`min-h-0 flex-1 overflow-y-auto px-4 ${fixedHeight ? "flex flex-col" : ""}`}
                         style={{
                             paddingBottom:
                                 "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",

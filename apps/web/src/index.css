@@ -63,6 +63,16 @@
             transparent
         );
     }
+
+    /* Picker tile grid (GYM-74) — auto-fit so long custom muscle/exercise names
+     * lay out correctly without a hardcoded column count. minmax(100px, 1fr)
+     * yields 3 columns at 360px usable width (3×120px) and naturally drops to 2
+     * or 1 columns for long names. No magic numbers — only the spacing scale gap. */
+    .picker-tile-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px; /* spacing scale: 8px = var spacing-2 */
+    }
 }
 
 /* ---------------------------------------------------------------------------
@@ -251,6 +261,10 @@
     .pr-pulse,
     .pr-flare {
         animation: none;
+    }
+    /* Picker slide-nav (GYM-74): instant step swap, no translateX transition. */
+    .picker-slide-track {
+        transition: none !important;
     }
     * {
         scroll-behavior: auto !important;

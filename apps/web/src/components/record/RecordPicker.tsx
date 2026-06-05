@@ -1,5 +1,6 @@
 /**
- * Phase A of the record flow — the exercise picker (spec §12.2, GYM-72 v2).
+ * Phase A of the record flow — the exercise picker (spec §12.2, GYM-72 v2,
+ * GYM-74 slide-nav).
  *
  * Layout, top to bottom:
  *  1. Continue tile — the LAST exercise trained TODAY (derived from
@@ -9,11 +10,21 @@
  *  2. A very light, fading hairline divider below the Continue tile (only shown
  *     with the tile) — a whisper of separation, not a hard cut.
  *  3. Muscle TILES (frequency-sorted top-muscles, then the rest of /muscles) →
- *     on pick, exercise TILES in the SAME tile format (top ~6 + "Show all"
- *     client-side expand, §12.9). Keep the add-inline + Muscle / + Exercise.
+ *     tapping a muscle SLIDES the view LEFT and the exercise list SLIDES IN
+ *     from the right (GYM-74 horizontal push, ~200ms ease-out-soft). The Back
+ *     affordance (and the Telegram BackButton, wired in RecordSheet) slides back.
+ *     Exercise tiles appear on the right panel in the same tile format. Keep
+ *     the add-inline + Muscle / + Exercise. Top ~6 + "Show all" (§12.9).
  *
- * The old 8-item "Recent" fast lane is removed (operator feedback): just-logged
- * exercises aren't what you want next.
+ * The slide track is a horizontal flex of two panels (muscles + exercises),
+ * each 100% wide, inside an `overflow:hidden` wrapper. A CSS `translate` on the
+ * track animates between the two steps. Reduced-motion → instant swap (no
+ * transition). Non-flickering: both panels stay mounted, only translate changes.
+ *
+ * Muscle tiles use an auto-fit grid (minmax(100px, 1fr)) so long names and
+ * custom muscles lay out correctly without hardcoded column counts. Tile minimum
+ * height is 64px (bigger than the old 52px, per GYM-74). Exercise tiles share
+ * the same tile language.
  *
  * Prefetch (§12.5 perf): on mount (sheet open) warm top-muscles + day/today and
  * the Continue exercise's log-context; on muscle pick prefetch its exercises —
@@ -38,6 +49,7 @@ import {
     prefetchMuscleExercises,
     prefetchLogContext,
 } from "@/hooks/useRecord";
+import type { PickerStep } from "./RecordSheet";
 import type { ChosenExercise } from "./types";
 
 /** Browse: exercises shown before the "Show all" expand (spec §12.9). */
@@ -46,6 +58,10 @@ const BROWSE_VISIBLE = 6;
 interface RecordPickerProps {
     /** Today's date (YYYY-MM-DD) — the day/log-context key for the Continue tile. */
     today: string;
+    /** Current picker step — controlled by RecordSheet so BackButton can go back. */
+    step: PickerStep;
+    /** Called when the picker step changes (controlled). */
+    onStepChange: (step: PickerStep) => void;
     /** Hand the chosen exercise to the controller → swaps to Phase B. */
     onPick: (chosen: ChosenExercise) => void;
 }
@@ -56,7 +72,7 @@ interface ContinueExercise {
     exerciseName: string;
 }
 
-export function RecordPicker({ today, onPick }: RecordPickerProps) {
+export function RecordPicker({ today, step, onStepChange, onPick }: RecordPickerProps) {
     const qc = useQueryClient();
     const topMuscles = useTopMuscles();
     const muscles = useMuscles();
@@ -153,9 +169,16 @@ export function RecordPicker({ today, onPick }: RecordPickerProps) {
     function pickMuscle(name: string): void {
         setShowAllExercises(false);
         setAdding(null);
-        const next = name === selectedMuscle ? null : name;
-        setSelectedMuscle(next);
-        if (next) prefetchMuscleExercises(qc, next);
+        setSelectedMuscle(name);
+        onStepChange("exercises");
+        prefetchMuscleExercises(qc, name);
+    }
+
+    function goBack(): void {
+        setSelectedMuscle(null);
+        setShowAllExercises(false);
+        setAdding(null);
+        onStepChange("muscles");
     }
 
     function submitMuscle(name: string): void {
@@ -163,9 +186,8 @@ export function RecordPicker({ today, onPick }: RecordPickerProps) {
             { name },
             {
                 onSuccess: () => {
-                    setSelectedMuscle(name);
                     setAdding(null);
-                    setShowAllExercises(false);
+                    pickMuscle(name);
                 },
             },
         );
@@ -230,197 +252,233 @@ export function RecordPicker({ today, onPick }: RecordPickerProps) {
         );
     }
 
+    // Translate the track: muscles step = translateX(0), exercise step = translateX(-50%).
+    // The track is 200% wide; each panel is 50% of the track = 100% of the sheet width.
+    const isExerciseStep = step === "exercises";
+    const trackStyle: React.CSSProperties = {
+        transform: isExerciseStep ? "translateX(-50%)" : "translateX(0)",
+        transition: "transform 200ms var(--ease-out-soft)",
+        width: "200%",
+        display: "flex",
+    };
+
     return (
-        <div className="space-y-6 pb-2">
-            <h2 className="font-display text-title text-text">RECORD</h2>
+        // The outer div clips the slide track — overflow:hidden masks the off-screen panel.
+        // flex-1 + min-h-0 lets it fill the fixed-height sheet body. overflow-hidden is
+        // critical: without it the off-screen panel would be scrollable/visible.
+        <div style={{ flex: "1", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            {/* Slide track: two side-by-side panels, each 50% of the track (= 100% of sheet).
+                picker-slide-track class → transition:none under prefers-reduced-motion.
+                The track height matches the outer container so each panel can scroll
+                independently (overflow-y:auto) without the outer sheet scrolling. */}
+            <div className="picker-slide-track" style={{ ...trackStyle, flex: "1", minHeight: 0 }} aria-live="polite">
+                {/* ── PANEL 1: Muscle step ─────────────────────────────────── */}
+                <div
+                    className="space-y-4"
+                    aria-hidden={isExerciseStep}
+                    style={{ width: "50%", minWidth: 0, overflowY: "auto", height: "100%", paddingBottom: "8px", paddingRight: "4px" }}
+                >
+                    <h2 className="font-display text-title text-text">RECORD</h2>
 
-            {/* Continue today — the last exercise trained today (§12.2 v2). */}
-            {day.isLoading ? (
-                <Skeleton className="h-[60px] w-full rounded-lg" />
-            ) : continueExercise ? (
-                <>
-                    <button
-                        type="button"
-                        onClick={() =>
-                            onPick({
-                                muscleName: continueExercise.muscleName,
-                                exerciseName: continueExercise.exerciseName,
-                            })
-                        }
-                        className="press-95 flex min-h-[60px] w-full items-center justify-between gap-3 rounded-lg border border-hairline bg-secondary-bg px-4 py-3 text-left"
-                    >
-                        <span className="min-w-0">
-                            <span className="block text-label uppercase tracking-wide text-hint">
-                                Continue today
-                            </span>
-                            <span className="mt-0.5 block truncate text-base font-semibold text-text">
-                                {continueExercise.exerciseName}
-                            </span>
-                            <span className="block truncate text-label text-hint">
-                                {continueExercise.muscleName}
-                            </span>
-                        </span>
-                        <span aria-hidden className="shrink-0 text-hint">
-                            ›
-                        </span>
-                    </button>
-
-                    {/* Very light, fading hairline — a whisper, not a hard cut
-                        (operator: "совсем лёгкий, ненавязчивый"). Inset + masked
-                        to transparent at both ends; only shown with Continue. */}
-                    <div
-                        aria-hidden
-                        className="record-divider-faint mx-auto h-px w-2/3"
-                    />
-                </>
-            ) : null}
-
-            {/* Muscle tiles → exercise tiles (§12.2 v2 / §12.9). */}
-            <section className="space-y-4">
-                <div className="text-label uppercase tracking-wide text-hint">
-                    Muscle
-                </div>
-
-                {topMuscles.isError && muscles.isError ? (
-                    <ErrorState
-                        message="Couldn't load muscles."
-                        onRetry={() => {
-                            void topMuscles.refetch();
-                            void muscles.refetch();
-                        }}
-                    />
-                ) : topMuscles.isLoading && muscles.isLoading ? (
-                    <div className="flex flex-wrap gap-2">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                            <Skeleton
-                                key={i}
-                                className="h-[52px] w-28 rounded-lg"
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <div className="-mx-1 flex flex-wrap gap-2 px-1">
-                        {muscleOptions.map((name) => {
-                            const active = name === selectedMuscle;
-                            return (
-                                <button
-                                    key={name}
-                                    type="button"
-                                    onClick={() => pickMuscle(name)}
-                                    aria-pressed={active}
-                                    className={`press-95 flex min-h-[52px] items-center rounded-lg px-4 text-base transition-colors ${
-                                        active
-                                            ? "border border-transparent bg-accent-weak font-semibold text-accent"
-                                            : "border border-hairline bg-secondary-bg text-text"
-                                    }`}
-                                >
-                                    {name}
-                                </button>
-                            );
-                        })}
-                        {/* Add a muscle inline (§12.2). */}
-                        {adding === "muscle" ? null : (
+                    {/* Continue today tile (§12.2 v2). */}
+                    {day.isLoading ? (
+                        <Skeleton className="h-[60px] w-full rounded-lg" />
+                    ) : continueExercise ? (
+                        <>
                             <button
                                 type="button"
-                                onClick={() => setAdding("muscle")}
-                                className="press-95 flex min-h-[52px] items-center rounded-lg border border-dashed border-hairline px-4 text-base text-hint"
+                                tabIndex={isExerciseStep ? -1 : 0}
+                                onClick={() =>
+                                    onPick({
+                                        muscleName: continueExercise.muscleName,
+                                        exerciseName: continueExercise.exerciseName,
+                                    })
+                                }
+                                className="press-95 flex min-h-[60px] w-full items-center justify-between gap-3 rounded-lg border border-hairline bg-secondary-bg px-4 py-3 text-left"
                             >
-                                + Muscle
+                                <span className="min-w-0">
+                                    <span className="block text-label uppercase tracking-wide text-hint">
+                                        Continue today
+                                    </span>
+                                    <span className="mt-0.5 block truncate text-base font-semibold text-text">
+                                        {continueExercise.exerciseName}
+                                    </span>
+                                    <span className="block truncate text-label text-hint">
+                                        {continueExercise.muscleName}
+                                    </span>
+                                </span>
+                                <span aria-hidden className="shrink-0 text-hint">
+                                    ›
+                                </span>
                             </button>
-                        )}
-                    </div>
-                )}
 
-                {adding === "muscle" ? (
-                    <AddInlineField
-                        placeholder="New muscle name"
-                        actionLabel="Add"
-                        pending={createMuscle.isPending}
-                        error={
-                            createMuscle.isError
-                                ? "Couldn't add that — try again."
-                                : null
-                        }
-                        onSubmit={submitMuscle}
-                        onCancel={() => setAdding(null)}
-                    />
-                ) : null}
+                            {/* Very light, fading hairline — a whisper, not a hard cut. */}
+                            <div
+                                aria-hidden
+                                className="record-divider-faint mx-auto h-px w-2/3"
+                            />
+                        </>
+                    ) : null}
 
-                {/* Exercises of the selected muscle: top ~6 + "Show all" (§12.9). */}
-                {selectedMuscle ? (
-                    <div className="space-y-3">
+                    {/* Muscle tiles — auto-fit grid so custom/long names don't break. */}
+                    <section className="space-y-3">
                         <div className="text-label uppercase tracking-wide text-hint">
-                            {selectedMuscle}
+                            Muscle
                         </div>
-                        {exercises.isLoading ? (
-                            <div className="flex flex-wrap gap-2">
-                                {Array.from({ length: 4 }).map((_, i) => (
+
+                        {topMuscles.isError && muscles.isError ? (
+                            <ErrorState
+                                message="Couldn't load muscles."
+                                onRetry={() => {
+                                    void topMuscles.refetch();
+                                    void muscles.refetch();
+                                }}
+                            />
+                        ) : topMuscles.isLoading && muscles.isLoading ? (
+                            <div className="picker-tile-grid">
+                                {Array.from({ length: 6 }).map((_, i) => (
                                     <Skeleton
                                         key={i}
-                                        className="h-[52px] w-28 rounded-lg"
+                                        className="h-[64px] w-full rounded-lg"
                                     />
                                 ))}
                             </div>
-                        ) : exercises.isError ? (
-                            <ErrorState
-                                message="Couldn't load exercises."
-                                onRetry={() => void exercises.refetch()}
-                            />
                         ) : (
-                            <div className="-mx-1 flex flex-wrap gap-2 px-1">
-                                {visibleExercises.map((ex) => (
+                            <div className="picker-tile-grid">
+                                {muscleOptions.map((name) => (
                                     <button
-                                        key={ex.name}
+                                        key={name}
                                         type="button"
-                                        onClick={() =>
-                                            onPick({
-                                                muscleName: selectedMuscle,
-                                                exerciseName: ex.name,
-                                            })
-                                        }
-                                        className="press-95 flex min-h-[52px] items-center rounded-lg border border-hairline bg-secondary-bg px-4 text-base text-text"
+                                        tabIndex={isExerciseStep ? -1 : 0}
+                                        onClick={() => pickMuscle(name)}
+                                        className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
                                     >
-                                        {ex.name}
+                                        {name}
                                     </button>
                                 ))}
-                                {hiddenCount > 0 ? (
+                                {/* Add a muscle inline (§12.2). */}
+                                {adding !== "muscle" ? (
                                     <button
                                         type="button"
-                                        onClick={() => setShowAllExercises(true)}
-                                        className="press-95 flex min-h-[52px] items-center rounded-lg bg-accent-weak px-4 text-base font-semibold text-accent"
+                                        tabIndex={isExerciseStep ? -1 : 0}
+                                        onClick={() => setAdding("muscle")}
+                                        className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg border border-dashed border-hairline px-3 text-center text-base text-hint"
                                     >
-                                        Show all ({hiddenCount})
+                                        + Muscle
                                     </button>
                                 ) : null}
                             </div>
                         )}
 
-                        {/* Add an exercise inline (§12.2). */}
-                        {adding === "exercise" ? (
+                        {adding === "muscle" ? (
                             <AddInlineField
-                                placeholder={`New exercise in ${selectedMuscle}`}
+                                placeholder="New muscle name"
                                 actionLabel="Add"
-                                pending={createExercise.isPending}
+                                pending={createMuscle.isPending}
                                 error={
-                                    createExercise.isError
+                                    createMuscle.isError
                                         ? "Couldn't add that — try again."
                                         : null
                                 }
-                                onSubmit={submitExercise}
+                                onSubmit={submitMuscle}
                                 onCancel={() => setAdding(null)}
                             />
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={() => setAdding("exercise")}
-                                className="press-95 min-h-[44px] rounded-full border border-dashed border-hairline px-4 text-base text-hint"
-                            >
-                                + Exercise
-                            </button>
-                        )}
-                    </div>
-                ) : null}
-            </section>
+                        ) : null}
+                    </section>
+                </div>
+
+                {/* ── PANEL 2: Exercise step ───────────────────────────────── */}
+                <div
+                    className="space-y-4"
+                    aria-hidden={!isExerciseStep}
+                    style={{ width: "50%", minWidth: 0, overflowY: "auto", height: "100%", paddingBottom: "8px", paddingRight: "4px" }}
+                >
+                    {/* Back to muscles control (in-body; mirrors Phase B's "← Switch exercise"). */}
+                    <button
+                        type="button"
+                        tabIndex={isExerciseStep ? 0 : -1}
+                        onClick={goBack}
+                        className="press-95 -ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
+                    >
+                        ← {selectedMuscle ?? "Muscles"}
+                    </button>
+
+                    <h2 className="font-display text-title text-text">
+                        {selectedMuscle ?? ""}
+                    </h2>
+
+                    {/* Exercise tiles — same tile language as muscles. */}
+                    {exercises.isLoading ? (
+                        <div className="picker-tile-grid">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <Skeleton
+                                    key={i}
+                                    className="h-[64px] w-full rounded-lg"
+                                />
+                            ))}
+                        </div>
+                    ) : exercises.isError ? (
+                        <ErrorState
+                            message="Couldn't load exercises."
+                            onRetry={() => void exercises.refetch()}
+                        />
+                    ) : (
+                        <div className="picker-tile-grid">
+                            {visibleExercises.map((ex) => (
+                                <button
+                                    key={ex.name}
+                                    type="button"
+                                    tabIndex={isExerciseStep ? 0 : -1}
+                                    onClick={() =>
+                                        onPick({
+                                            muscleName: selectedMuscle!,
+                                            exerciseName: ex.name,
+                                        })
+                                    }
+                                    className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
+                                >
+                                    {ex.name}
+                                </button>
+                            ))}
+                            {hiddenCount > 0 ? (
+                                <button
+                                    type="button"
+                                    tabIndex={isExerciseStep ? 0 : -1}
+                                    onClick={() => setShowAllExercises(true)}
+                                    className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg bg-accent-weak px-3 text-center text-base font-semibold text-accent"
+                                >
+                                    Show all ({hiddenCount})
+                                </button>
+                            ) : null}
+                        </div>
+                    )}
+
+                    {/* Add an exercise inline (§12.2). */}
+                    {adding === "exercise" ? (
+                        <AddInlineField
+                            placeholder={`New exercise in ${selectedMuscle ?? ""}`}
+                            actionLabel="Add"
+                            pending={createExercise.isPending}
+                            error={
+                                createExercise.isError
+                                    ? "Couldn't add that — try again."
+                                    : null
+                            }
+                            onSubmit={submitExercise}
+                            onCancel={() => setAdding(null)}
+                        />
+                    ) : (
+                        <button
+                            type="button"
+                            tabIndex={isExerciseStep ? 0 : -1}
+                            onClick={() => setAdding("exercise")}
+                            className="press-95 min-h-[44px] rounded-full border border-dashed border-hairline px-4 text-base text-hint"
+                        >
+                            + Exercise
+                        </button>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
