@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-78
 title: "Fix: lookup-reference name fields must not enforce length/char limits (can't add exercise to pre-existing long-named muscle)"
 slug: gym-78-lookup-name-validation-fix
-status: in_progress
+status: review
 priority: critical
 type: bug-fix
 labels: [phase-5, api, api-contract, validation, bug]
@@ -12,14 +12,14 @@ model: null
 reporter: oleksii
 created: 2026-06-05T13:30:00Z
 start_date: 2026-06-05T13:30:00Z
-finish_date: null
-updated: 2026-06-05T13:30:00Z
+finish_date: 2026-06-05T00:00:00Z
+updated: 2026-06-05T00:00:00Z
 epic: phase-5
 depends_on: [GYM-75, GYM-76]
 blocks: []
 related: [GYM-77]
-commits: [ef0c5df]
-tests: []
+commits: [ef0c5df, cd51a06]
+tests: [apps/api/tests/test_gym78_lookup_name.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -74,6 +74,36 @@ only to **LOOK UP** an existing record — otherwise you can never reference dat
 
 ### 2026-06-05T13:30:00Z — task created
 Live regression caught via prod logs (repeated `POST /exercises` 422 against a long-named muscle).
+
+### 2026-06-05 — API half done (commit cd51a06)
+Added `validate_lookup_name(s: str) -> str` to `apps/api/app/schemas/validators.py`.
+The function normalizes (trim + collapse) and rejects empty/whitespace-only input only —
+no max-length cap, no `_NAME_RE` char-whitelist.  A 40-line docstring explains the
+create-vs-lookup distinction (why it is safe without char/length caps: parameterized SQL,
+non-matching names 404 at the DB layer).
+
+Fields changed from `validate_name` to `validate_lookup_name`:
+- `ExerciseCreateByName.muscle_name` — THE bug; was `validate_name(max_len=30)`.
+- `TrainingCreate.muscle_name` + `TrainingCreate.exercise_name` — refactored the
+  inline `_normalize_and_check_chars` validator to delegate to `validate_lookup_name`
+  (dropped redundant inline char-check; DRY); validator renamed `_normalize_lookup_name`.
+
+`schemas.py` imports cleaned: `_NAME_RE` and `normalize_name` removed (no longer used
+directly), `validate_lookup_name` added.
+
+CREATE-name caps kept unchanged: `MuscleCreate.name` (max 30), `ExerciseCreate.name`
+(max 40, admin), `ExerciseCreateByName.name` (max 40 — the NEW exercise name).
+
+Tests:
+- `test_gym76_name_validation.py`: four tests that asserted the now-removed over-strict
+  behaviour were updated to document the correct lookup behaviour (long/odd muscle names
+  accepted in `ExerciseCreateByName.muscle_name` and `TrainingCreate` lookup fields).
+- `apps/api/tests/test_gym78_lookup_name.py` added: `validate_lookup_name` unit tests,
+  the exact GYM-78 regression (31-char muscle_name in `ExerciseCreateByName` → passes),
+  41-char exercise name still rejected, empty lookup rejected, TrainingCreate long-name
+  lookups pass, CREATE-name caps confirmed unchanged.
+
+Full suite result: **243 passed, 0 failed**.
 
 ### 2026-06-05 — contract half done (commit ef0c5df)
 Relaxed the three LOOKUP-reference name fields in `packages/api-contract/openapi.yaml` — removed
