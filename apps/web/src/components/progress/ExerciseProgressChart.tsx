@@ -115,7 +115,9 @@ export function ExerciseProgressChart({
 
     return (
         <Card>
-            <div className="mb-3 font-display text-title text-text">{title}</div>
+            {/* GYM-77 #2: truncate long exercise names in the chart title.
+                Full name available on hover via title attr. */}
+            <div className="mb-3 truncate font-display text-title text-text" title={title}>{title}</div>
             <ReactECharts
                 // Key on theme + mode so ECharts re-inits cleanly on a flip/switch.
                 key={`${themeVersion}-${mode}`}

@@ -229,6 +229,27 @@ Every component below is **token-only** (spacing 4/8/12/16/24/32; color via the 
 mobile-first at 360px, and lives inside the one `<AppShell>`. Shared primitives are built **once** and
 reused — no per-page borders/cards/spacings (§2).
 
+### 10.0 Name display / truncation contract (GYM-77 — binding rule)
+Every muscle name and exercise name rendered in the UI follows ONE consistent truncation treatment:
+
+- **Tiles (picker grids):** fixed height `88px` (3 body-line-height lines + 24px padding), names clamped
+  to ≤3 lines + ellipsis via `.tile-name` CSS class (`-webkit-line-clamp: 3; overflow: hidden`). A tile
+  NEVER grows its row due to a long name.
+- **Inline labels** (record header exercise name, muscle pill, history exercise/muscle rows, dashboard,
+  top lists): single-line ellipsis truncation. The flex text child has `min-w-0 flex-1 truncate`; the
+  chip/chevron sibling has `shrink-0` + a `max-width` wrapper (`8–10rem`) so it never pushes the text
+  off-screen. Every inline label gets `title={name}` for the full text on hover.
+- **ECharts chart title:** `truncate` on the heading div + `title={name}`.
+- **`<Chip>` muscle tag:** already `max-w-full truncate`; callers wrap it in a `max-width` container
+  (`8–10rem`) when it sits in a flex row with other content.
+- **Add-name inputs (`AddInlineField`):** `maxLength` enforced at the input — MUSCLE `30`, EXERCISE `40`
+  (constants `MUSCLE_NAME_MAX` / `EXERCISE_NAME_MAX` in `src/validation.ts`, sourced from API contract
+  `docs/validation.md`). Trim on submit; submit disabled when empty after trim. Server is authoritative;
+  a 422 surfaces as the `error` prop message.
+
+Rationale: long names without truncation blow up the layout on a 360px phone. Every render site must
+clip, not overflow. New muscles/exercises added via the inline field are bounded at creation time.
+
 ### 10.1 AppShell parts
 - **`<AppShell>`** — fixed header + fixed bottom-nav + one scrollable container (~480px max-width,
   one horizontal padding = 16, one vertical rhythm). Owns the scroll model and safe-area padding
@@ -632,9 +653,10 @@ Phase B all occupy this same fixed height; only the body scrolls internally per 
      separation per the operator ("совсем лёгкий, ненавязчивый"). **Only rendered when the Continue tile
      is present** (token-only, no magic colour; the §9.5 "dissolve" idea at micro scale).
   3. **Muscle tile grid.** Muscles (`top-muscles` frequency order first, then any remaining from
-     `/muscles`) as an **auto-fit responsive grid** (`repeat(auto-fill, minmax(100px, 1fr))`) — NOT a
-     hardcoded 3-column layout. This handles variable-length labels and custom muscles without breaking.
-     Tile min height ≥ 64px. Picking a muscle **slides LEFT** to Step 2.
+     `/muscles`) in a **fixed 3-column grid** (`.picker-tile-grid-muscle`: `repeat(3, 1fr)`) — GYM-77:
+     tiles have a **fixed height of 88px** (fits 3 text lines at body line-height + 24px padding);
+     long names clamp at 3 lines + ellipsis (`.tile-name` CSS class) so NO tile ever grows its row.
+     Picking a muscle **slides LEFT** to Step 2.
 
   **Step 2 — exercise step (slide-in from right):**
   Tapping a muscle tile triggers a **horizontal push** — the muscle panel translates out to the left
@@ -642,8 +664,9 @@ Phase B all occupy this same fixed height; only the body scrolls internally per 
   flex track, `200ms ease-out-soft`, **`prefers-reduced-motion` → instant** (no transition). A **"←
   {Muscle name}"** back control at the top of Step 2 slides back; the **Telegram BackButton** (wired
   via `onBackOverride` on `<BottomSheet>`) also steps back (Step 2 → Step 1 → close). Exercise tiles
-  in the same tile language (≥64px, auto-fit grid) — top ~6 + "Show all" (§12.9). **`+ Muscle`** in
-  the muscle grid and **`+ Exercise`** under the exercise tiles open inline add fields.
+  in a **fixed 2-column grid** (`.picker-tile-grid-exercise`: `repeat(2, 1fr)`) at the **same fixed
+  height (88px)** with the same line-clamp-3 treatment — top ~6 + "Show all" (§12.9). **`+ Muscle`**
+  in the muscle grid and **`+ Exercise`** under the exercise tiles open inline add fields.
 
   4. **Add inline.** A `+ Muscle` tile in the muscle grid and a `+ Exercise` affordance under the
      exercise tiles open a tiny inline text field (in-sheet, not a new screen) → on submit

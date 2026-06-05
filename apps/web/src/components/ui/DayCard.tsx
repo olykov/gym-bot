@@ -50,9 +50,13 @@ export function DayCard({ day }: { day: TrainingDay }) {
                 </h2>
 
                 {day.muscles.length > 0 ? (
+                    /* GYM-77 #2: each chip wrapper has a max-width so a very
+                       long muscle name clips with ellipsis, not unbounded. */
                     <div className="mt-2 flex flex-wrap gap-2">
                         {shown.map((m) => (
-                            <Chip key={m}>{m}</Chip>
+                            <span key={m} style={{ maxWidth: "10rem" }}>
+                                <Chip title={m}>{m}</Chip>
+                            </span>
                         ))}
                         {overflow > 0 ? <Chip>{`+${overflow}`}</Chip> : null}
                     </div>

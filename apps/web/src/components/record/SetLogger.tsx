@@ -212,12 +212,17 @@ export function SetLogger({ chosen, today, serverSets, onSwitch, onDone }: SetLo
                 ← Switch exercise
             </button>
 
-            {/* Exercise identity (read-only). */}
+            {/* Exercise identity (read-only, GYM-77 #2).
+                The exercise name truncates at min-w-0 (the flex child clips).
+                The muscle chip is shrink-0 with a max-width so it never
+                overflows the row and still clips cleanly with an ellipsis. */}
             <div className="flex items-center gap-3">
-                <h2 className="min-w-0 truncate font-display text-title text-text">
+                <h2 className="min-w-0 flex-1 truncate font-display text-title text-text" title={exerciseName}>
                     {exerciseName}
                 </h2>
-                <Chip>{muscleName}</Chip>
+                <span className="shrink-0" style={{ maxWidth: "8rem" }}>
+                    <Chip title={muscleName}>{muscleName}</Chip>
+                </span>
             </div>
 
             {/* Today recap — log-context numbers ∪ this-session w×r (§12.3). */}

@@ -36,6 +36,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { MUSCLE_NAME_MAX, EXERCISE_NAME_MAX } from "@/validation";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -62,6 +63,16 @@ interface RecordPickerProps {
     step: PickerStep;
     /** Called when the picker step changes (controlled). */
     onStepChange: (step: PickerStep) => void;
+    /**
+     * The currently selected muscle — controlled by RecordSheet (GYM-77 #4).
+     * Lifting this up means selectedMuscle survives the Phase B round-trip
+     * (RecordPicker unmounts/remounts when swapping phases; without this lift,
+     * pressing "← Switch exercise" would land on an empty exercise panel because
+     * local state would have reset to null).
+     */
+    selectedMuscle: string | null;
+    /** Called when the selected muscle changes (controlled). */
+    onMuscleChange: (name: string | null) => void;
     /** Hand the chosen exercise to the controller → swaps to Phase B. */
     onPick: (chosen: ChosenExercise) => void;
 }
@@ -72,13 +83,12 @@ interface ContinueExercise {
     exerciseName: string;
 }
 
-export function RecordPicker({ today, step, onStepChange, onPick }: RecordPickerProps) {
+export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMuscleChange, onPick }: RecordPickerProps) {
     const qc = useQueryClient();
     const topMuscles = useTopMuscles();
     const muscles = useMuscles();
     const day = useTrainingDay(today);
 
-    const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
     const [showAllExercises, setShowAllExercises] = useState(false);
     const exercises = useTopExercises(selectedMuscle);
 
@@ -169,13 +179,13 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
     function pickMuscle(name: string): void {
         setShowAllExercises(false);
         setAdding(null);
-        setSelectedMuscle(name);
+        onMuscleChange(name);
         onStepChange("exercises");
         prefetchMuscleExercises(qc, name);
     }
 
     function goBack(): void {
-        setSelectedMuscle(null);
+        onMuscleChange(null);
         setShowAllExercises(false);
         setAdding(null);
         onStepChange("muscles");
@@ -203,6 +213,8 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                     setAdding(null);
                     // Auto-select the new exercise into Phase B (§12.2). No
                     // history yet → cold pre-fill stays empty until valid.
+                    // selectedMuscle is preserved in RecordSheet (GYM-77 #4)
+                    // so Back from Phase B will land on the exercise list.
                     onPick({ muscleName, exerciseName: name });
                 },
             },
@@ -224,6 +236,7 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                             <AddInlineField
                                 placeholder="Muscle (e.g. Chest)"
                                 actionLabel="Add"
+                                maxLength={MUSCLE_NAME_MAX}
                                 pending={createMuscle.isPending}
                                 error={
                                     createMuscle.isError
@@ -236,6 +249,7 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                             <AddInlineField
                                 placeholder={`Exercise in ${selectedMuscle}`}
                                 actionLabel="Add"
+                                maxLength={EXERCISE_NAME_MAX}
                                 pending={createExercise.isPending}
                                 error={
                                     createExercise.isError
@@ -243,7 +257,7 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                                         : null
                                 }
                                 onSubmit={submitExercise}
-                                onCancel={() => setSelectedMuscle(null)}
+                                onCancel={() => onMuscleChange(null)}
                             />
                         )}
                     </div>
@@ -335,25 +349,28 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                                 }}
                             />
                         ) : topMuscles.isLoading && muscles.isLoading ? (
-                            <div className="picker-tile-grid">
+                            <div className="picker-tile-grid-muscle">
                                 {Array.from({ length: 6 }).map((_, i) => (
                                     <Skeleton
                                         key={i}
-                                        className="h-[64px] w-full rounded-lg"
+                                        className="w-full rounded-lg"
+                                        style={{ height: "88px" }}
                                     />
                                 ))}
                             </div>
                         ) : (
-                            <div className="picker-tile-grid">
+                            <div className="picker-tile-grid-muscle">
                                 {muscleOptions.map((name) => (
                                     <button
                                         key={name}
                                         type="button"
                                         tabIndex={isExerciseStep ? -1 : 0}
                                         onClick={() => pickMuscle(name)}
-                                        className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
+                                        title={name}
+                                        className="press-95 flex w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
+                                        style={{ height: "88px" }}
                                     >
-                                        {name}
+                                        <span className="tile-name">{name}</span>
                                     </button>
                                 ))}
                                 {/* Add a muscle inline (§12.2). */}
@@ -362,7 +379,8 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                                         type="button"
                                         tabIndex={isExerciseStep ? -1 : 0}
                                         onClick={() => setAdding("muscle")}
-                                        className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg border border-dashed border-hairline px-3 text-center text-base text-hint"
+                                        className="press-95 flex w-full items-center justify-center rounded-lg border border-dashed border-hairline px-3 text-center text-base text-hint"
+                                        style={{ height: "88px" }}
                                     >
                                         + Muscle
                                     </button>
@@ -374,6 +392,7 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                             <AddInlineField
                                 placeholder="New muscle name"
                                 actionLabel="Add"
+                                maxLength={MUSCLE_NAME_MAX}
                                 pending={createMuscle.isPending}
                                 error={
                                     createMuscle.isError
@@ -407,13 +426,14 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                         {selectedMuscle ?? ""}
                     </h2>
 
-                    {/* Exercise tiles — same tile language as muscles. */}
+                    {/* Exercise tiles — 2-column grid, fixed height, line-clamp (GYM-77 #1/#3). */}
                     {exercises.isLoading ? (
-                        <div className="picker-tile-grid">
+                        <div className="picker-tile-grid-exercise">
                             {Array.from({ length: 4 }).map((_, i) => (
                                 <Skeleton
                                     key={i}
-                                    className="h-[64px] w-full rounded-lg"
+                                    className="w-full rounded-lg"
+                                    style={{ height: "88px" }}
                                 />
                             ))}
                         </div>
@@ -423,7 +443,7 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                             onRetry={() => void exercises.refetch()}
                         />
                     ) : (
-                        <div className="picker-tile-grid">
+                        <div className="picker-tile-grid-exercise">
                             {visibleExercises.map((ex) => (
                                 <button
                                     key={ex.name}
@@ -435,9 +455,11 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                                             exerciseName: ex.name,
                                         })
                                     }
-                                    className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
+                                    title={ex.name}
+                                    className="press-95 flex w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
+                                    style={{ height: "88px" }}
                                 >
-                                    {ex.name}
+                                    <span className="tile-name">{ex.name}</span>
                                 </button>
                             ))}
                             {hiddenCount > 0 ? (
@@ -445,7 +467,8 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                                     type="button"
                                     tabIndex={isExerciseStep ? 0 : -1}
                                     onClick={() => setShowAllExercises(true)}
-                                    className="press-95 flex min-h-[64px] w-full items-center justify-center rounded-lg bg-accent-weak px-3 text-center text-base font-semibold text-accent"
+                                    className="press-95 flex w-full items-center justify-center rounded-lg bg-accent-weak px-3 text-center text-base font-semibold text-accent"
+                                    style={{ height: "88px" }}
                                 >
                                     Show all ({hiddenCount})
                                 </button>
@@ -458,6 +481,7 @@ export function RecordPicker({ today, step, onStepChange, onPick }: RecordPicker
                         <AddInlineField
                             placeholder={`New exercise in ${selectedMuscle ?? ""}`}
                             actionLabel="Add"
+                            maxLength={EXERCISE_NAME_MAX}
                             pending={createExercise.isPending}
                             error={
                                 createExercise.isError

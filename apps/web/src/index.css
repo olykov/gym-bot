@@ -64,14 +64,46 @@
         );
     }
 
-    /* Picker tile grid (GYM-74) — auto-fit so long custom muscle/exercise names
-     * lay out correctly without a hardcoded column count. minmax(100px, 1fr)
-     * yields 3 columns at 360px usable width (3×120px) and naturally drops to 2
-     * or 1 columns for long names. No magic numbers — only the spacing scale gap. */
-    .picker-tile-grid {
+    /* Picker tile grids (GYM-74, GYM-77).
+     *
+     * Muscle = exactly 3 columns (operator confirmed, §12.2 spec).
+     * Exercise = exactly 2 columns (operator: "в 2 ряда", GYM-77 #3).
+     *
+     * Both grids use the same fixed-height tile so rows are ALWAYS uniform
+     * (GYM-77 #1): long names clamp at 3 lines + ellipsis; the tile never
+     * grows past --tile-h. Gap is from the spacing scale only.
+     *
+     * --tile-h: 3 text lines (body line-height 1.4 × 0.9375rem ≈ 1.3125rem each)
+     * + 24px top+bottom padding = ~63px + 24px = 87px → rounded to 88px. */
+    .picker-tile-grid-muscle {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 8px; /* spacing scale: 8px = var spacing-2 */
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    .picker-tile-grid-exercise {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+
+    /* Tile name: clamped to at most 3 lines with an ellipsis. Applied to the
+     * text node inside a fixed-height tile button (GYM-77 #1 / #2). */
+    .tile-name {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+        word-break: break-word;
+    }
+
+    /* Name truncation for inline labels — single-line ellipsis with min-w-0
+     * so the flex child actually clips (GYM-77 #2). The parent flex item must
+     * also have min-w-0 so the clip propagates up through nested flex. */
+    .name-truncate {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
     }
 }
 

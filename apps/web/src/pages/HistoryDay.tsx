@@ -103,11 +103,15 @@ export function HistoryDay() {
         <>
             {exercises.map((ex) => (
                 <Card key={ex.exercise_id}>
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                        <h2 className="min-w-0 truncate text-base font-semibold text-text">
+                    {/* GYM-77 #2: exercise name clips with ellipsis; muscle chip
+                        has a shrink-0 + max-width wrapper so it never overflows. */}
+                    <div className="mb-3 flex items-center gap-3">
+                        <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-text" title={ex.exercise_name}>
                             {ex.exercise_name}
                         </h2>
-                        <Chip>{ex.muscle_name}</Chip>
+                        <span className="shrink-0" style={{ maxWidth: "8rem" }}>
+                            <Chip title={ex.muscle_name}>{ex.muscle_name}</Chip>
+                        </span>
                     </div>
 
                     {ex.sets.map((set, i) => (

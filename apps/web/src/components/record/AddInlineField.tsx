@@ -1,13 +1,17 @@
 /**
- * In-sheet inline add field (spec §12.2) — a tiny text input + a confirm action
- * for the `+ Muscle` / `+ Exercise` add-inline flow and the new-user
- * "ADD YOUR FIRST EXERCISE" prompt. No new screen, no modal: it lives inside
- * the record sheet body. Token-only, ≥44px targets.
+ * In-sheet inline add field (spec §12.2, GYM-77 #2) — a tiny text input +
+ * a confirm action for the `+ Muscle` / `+ Exercise` add-inline flow and the
+ * new-user "ADD YOUR FIRST EXERCISE" prompt. No new screen, no modal: it lives
+ * inside the record sheet body. Token-only, ≥44px targets.
+ *
+ * GYM-77: accepts `maxLength` (from MUSCLE_NAME_MAX / EXERCISE_NAME_MAX in
+ * validation.ts) to enforce the API limits at the input level. The server is
+ * still authoritative — a 422 from the API surfaces as the `error` prop message.
  *
  * On submit it reports the trimmed name to the parent (which fires the create
  * mutation + optimistic insert). It stays controlled by the parent for `pending`
  * and `error` so a failed create keeps the typed name (spec §12.5). Submit is
- * disabled while empty or pending.
+ * disabled while empty after trim or pending.
  */
 import { useState } from "react";
 
@@ -15,6 +19,11 @@ interface AddInlineFieldProps {
     placeholder: string;
     /** Label for the submit button (e.g. "Add"). */
     actionLabel: string;
+    /**
+     * Maximum character count for the input (GYM-77 #2 — mirrors API limits).
+     * Use MUSCLE_NAME_MAX or EXERCISE_NAME_MAX from src/validation.ts.
+     */
+    maxLength?: number;
     pending?: boolean;
     error?: string | null;
     onSubmit: (name: string) => void;
@@ -24,6 +33,7 @@ interface AddInlineFieldProps {
 export function AddInlineField({
     placeholder,
     actionLabel,
+    maxLength,
     pending = false,
     error = null,
     onSubmit,
@@ -46,6 +56,7 @@ export function AddInlineField({
                     value={name}
                     autoFocus
                     placeholder={placeholder}
+                    maxLength={maxLength}
                     onChange={(e) => setName(e.target.value)}
                     onKeyDown={(e) => {
                         if (e.key === "Enter") {

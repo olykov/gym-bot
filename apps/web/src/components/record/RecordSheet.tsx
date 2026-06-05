@@ -40,6 +40,22 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
     // from exercises → muscles before allowing the sheet to close.
     const [pickerStep, setPickerStep] = useState<PickerStep>("muscles");
 
+    /**
+     * GYM-77 #4 — selectedMuscle is lifted OUT of RecordPicker so it survives
+     * the Phase A ↔ Phase B round-trip. Without this, when the user adds a new
+     * exercise (auto-selects into Phase B) and then presses "← Switch exercise"
+     * (onSwitch → setChosen(null)), RecordPicker remounts with its local
+     * selectedMuscle reset to null → the exercise step shows an empty panel.
+     *
+     * With the state lifted here:
+     *  - pickMuscle / goBack call onMuscleChange → this state updates.
+     *  - onSwitch (Phase B → A) → setChosen(null) but selectedMuscle stays.
+     *  - The Telegram BackButton on the exercise step → pickerStepRef "exercises"
+     *    → setPickerStep("muscles") + setSelectedMuscle(null) (full reset).
+     *  - On sheet close → full reset (muscles step + null muscle).
+     */
+    const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
+
     // Stable ref so the BackButton override closure doesn't go stale.
     const pickerStepRef = useRef<PickerStep>("muscles");
     pickerStepRef.current = pickerStep;
@@ -52,6 +68,7 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
         if (!open) {
             setChosen(null);
             setPickerStep("muscles");
+            setSelectedMuscle(null);
         }
     }, [open]);
 
@@ -60,6 +77,7 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
         // Only intercept when Phase A is on the exercise step.
         if (!chosen && pickerStepRef.current === "exercises") {
             setPickerStep("muscles");
+            setSelectedMuscle(null);
             return true; // consumed — do not close the sheet
         }
         return false; // let the sheet close
@@ -91,7 +109,13 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
                     chosen={chosen}
                     today={today}
                     serverSets={serverSets}
-                    onSwitch={() => setChosen(null)}
+                    onSwitch={() => {
+                        // GYM-77 #4: return to the exercise list for the same
+                        // muscle (selectedMuscle is preserved here in the
+                        // controller, so RecordPicker remounts with the right
+                        // muscle and the picker step stays on "exercises").
+                        setChosen(null);
+                    }}
                     onDone={onClose}
                 />
             ) : (
@@ -99,6 +123,8 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
                     today={today}
                     step={pickerStep}
                     onStepChange={setPickerStep}
+                    selectedMuscle={selectedMuscle}
+                    onMuscleChange={setSelectedMuscle}
                     onPick={setChosen}
                 />
             )}
