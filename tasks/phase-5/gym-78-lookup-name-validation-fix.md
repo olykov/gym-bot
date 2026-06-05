@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-78
 title: "Fix: lookup-reference name fields must not enforce length/char limits (can't add exercise to pre-existing long-named muscle)"
 slug: gym-78-lookup-name-validation-fix
-status: review
+status: done
 priority: critical
 type: bug-fix
 labels: [phase-5, api, api-contract, validation, bug]
