@@ -7,7 +7,15 @@ that existing endpoints keep working.
 from datetime import datetime, date
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from app.schemas.validators import (
+    EXERCISE_NAME_MAX,
+    MUSCLE_NAME_MAX,
+    _NAME_RE,
+    normalize_name,
+    validate_name,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -28,6 +36,12 @@ class MuscleBase(BaseModel):
 
 class MuscleCreate(MuscleBase):
     """Request body for creating/renaming a muscle (admin or user)."""
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _validate_name(cls, v: object) -> str:
+        """Normalize and validate the muscle name (max 30 chars)."""
+        return validate_name(str(v), max_len=MUSCLE_NAME_MAX)
 
 
 class Muscle(_ORM):
@@ -51,12 +65,30 @@ class ExerciseBase(BaseModel):
 class ExerciseCreate(ExerciseBase):
     """Admin exercise creation: references muscle by id."""
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def _validate_name(cls, v: object) -> str:
+        """Normalize and validate the exercise name (max 40 chars)."""
+        return validate_name(str(v), max_len=EXERCISE_NAME_MAX)
+
 
 class ExerciseCreateByName(BaseModel):
     """User-facing exercise creation: references muscle by name (mirrors bot)."""
 
     name: str
     muscle_name: str
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _validate_name(cls, v: object) -> str:
+        """Normalize and validate the exercise name (max 40 chars)."""
+        return validate_name(str(v), max_len=EXERCISE_NAME_MAX)
+
+    @field_validator("muscle_name", mode="before")
+    @classmethod
+    def _validate_muscle_name(cls, v: object) -> str:
+        """Normalize and validate the muscle name (max 30 chars)."""
+        return validate_name(str(v), max_len=MUSCLE_NAME_MAX)
 
 
 class Exercise(_ORM):
@@ -143,6 +175,14 @@ class TrainingCreate(BaseModel):
 
     Muscle and exercise are referenced by name so the request matches what the
     bot sends today.  id, date, and user_id are assigned by the server.
+
+    Name fields are normalized (trim + whitespace-collapse) and must pass the
+    allowed-character check, but length bounds are NOT enforced here: this path
+    only looks up existing rows by name, never creates new ones, so capping at
+    30/40 chars would reject lookups for names that were stored before this
+    validation was introduced.  Allowed-chars and empty rejection still apply
+    because those would always fail at the DB lookup anyway and give a cleaner
+    422 vs a 404.
     """
 
     muscle_name: str
@@ -150,6 +190,23 @@ class TrainingCreate(BaseModel):
     set: int
     weight: float
     reps: float
+
+    @field_validator("muscle_name", "exercise_name", mode="before")
+    @classmethod
+    def _normalize_and_check_chars(cls, v: object) -> str:
+        """Normalize and check allowed chars; do not enforce max_len.
+
+        See class docstring for rationale on skipping the length bound.
+        """
+        normalized = normalize_name(str(v))
+        if not normalized:
+            raise ValueError("name must not be empty or whitespace-only")
+        if not _NAME_RE.match(normalized):
+            raise ValueError(
+                "name contains disallowed characters; allowed: Latin letters, "
+                "Cyrillic letters, digits, space, and - ' . , ( ) / & + °"
+            )
+        return normalized
 
 
 class TrainingUpdate(BaseModel):
