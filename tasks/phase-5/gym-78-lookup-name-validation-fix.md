@@ -18,7 +18,7 @@ epic: phase-5
 depends_on: [GYM-75, GYM-76]
 blocks: []
 related: [GYM-77]
-commits: []
+commits: [ef0c5df]
 tests: []
 design_reports: []
 review_reports: []
@@ -74,3 +74,29 @@ only to **LOOK UP** an existing record — otherwise you can never reference dat
 
 ### 2026-06-05T13:30:00Z — task created
 Live regression caught via prod logs (repeated `POST /exercises` 422 against a long-named muscle).
+
+### 2026-06-05 — contract half done (commit ef0c5df)
+Relaxed the three LOOKUP-reference name fields in `packages/api-contract/openapi.yaml` — removed
+`maxLength` and `pattern`, kept `minLength: 1`, and updated each description to note "reference to
+an existing record — normalized only, not length/char-bound":
+- `ExerciseCreate.muscle_name`
+- `TrainingCreate.muscle_name`
+- `TrainingCreate.exercise_name`
+
+Kept FULL constraints (`minLength`/`maxLength`/`pattern`) on the CREATE-name fields, untouched:
+`MuscleCreate.name`, `ExerciseCreate.name`, `AdminExerciseCreate.name`.
+
+`docs/validation.md`: added a "Create vs lookup" subsection to the Name rules (created names get
+length+char limits; lookup-reference names are normalized only) and rewrote the per-schema
+enforcement table to show the create-vs-lookup role and which constraints each field carries.
+
+`make validate` passed (valid OpenAPI 3.1). Regenerated both clients (`make gen-python`,
+`make gen-typescript`); Python models compile and TS schema type-checks under `tsc --strict`.
+Python-client check: `ExerciseCreate(name=..., muscle_name=<52-char Cyrillic>)` now constructs
+with no pydantic pattern/maxLength rejection on `muscle_name`; `TrainingCreate` accepts a 60-char
+`exercise_name`; create-name still capped (41-char `name` → ValidationError); empty lookup name
+rejected by `minLength: 1`.
+
+Affected clients: bot (python `gym_api_client`) and web/admin/miniapp (TS `schema.ts`) — both
+regenerated in this change. Change is permissive (relaxes a constraint), so non-breaking for
+existing valid requests.
