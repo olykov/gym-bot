@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-79
 title: "apps/web: muscle Chip overflows its pill (no ellipsis) — fix flex truncation in Chip + all capped usages"
 slug: gym-79-chip-truncate-fix
-status: in_progress
+status: review
 priority: high
 type: bug-fix
 labels: [phase-5, frontend, design, ux, bug]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-05T14:10:00Z
 start_date: 2026-06-05T14:10:00Z
-finish_date: null
-updated: 2026-06-05T14:10:00Z
+finish_date: 2026-06-05T00:00:00Z
+updated: 2026-06-05T00:00:00Z
 epic: phase-5
 depends_on: [GYM-77]
 blocks: []
 related: [GYM-74]
-commits: []
+commits: [b6e322c]
 tests: []
 design_reports: []
 review_reports: []
@@ -67,3 +67,26 @@ The flex-truncation footgun. At each call site the chip is wrapped in `<span max
 ### 2026-06-05T14:10:00Z — task created
 Live follow-up to GYM-77 (the max-width wrappers lacked min-w-0 and Chip used inline-flex, so ellipsis
 never engaged). Caught in prod History view.
+
+### 2026-06-05 — implementation (b6e322c)
+
+**Chip.tsx**: Replaced `inline-flex … truncate` with an `inline-block` outer pill wrapping a
+`block overflow-hidden text-ellipsis whitespace-nowrap` inner span. `text-overflow: ellipsis`
+requires a block-level box; it silently does nothing on an `inline-flex` box, which is why
+ellipsis never fired before. The outer pill keeps `inline-block max-w-full` so it still
+sizes by content and respects any width cap the parent imposes. Added optional `className`
+prop for callers to set extra constraints directly on the chip.
+
+**Three call-site fixes** — added `min-w-0` to each flex-wrapper `<span>` so the flex item
+can shrink below its content size and the `maxWidth` actually binds:
+- `pages/HistoryDay.tsx` ~line 112: muscle chip, 8rem wrapper.
+- `components/record/SetLogger.tsx` ~line 223: record-header muscle chip, 8rem wrapper;
+  the exercise-name h2 already had `min-w-0 flex-1 truncate`.
+- `components/ui/DayCard.tsx` ~line 57: muscle chips, 10rem wrapper; `+N` overflow chip
+  untouched.
+
+**Build result**: `tsc && vite build` — green, no TypeScript errors.
+
+**Needs live-device pass**: verify on a real Telegram Mini App session at ~360px that a very
+long muscle name (e.g. "Еще более длинное имя мышцы пусть будет добавлено вот так") shows a
+clean ellipsis inside the pill in both light and dark themes.
