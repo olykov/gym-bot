@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-76
 title: "API: enforce name validation (reusable validator) on all muscle/exercise create paths + tests"
 slug: gym-76-name-validation-api
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [phase-5, api, validation]
@@ -12,14 +12,14 @@ model: null
 reporter: oleksii
 created: 2026-06-05T12:00:00Z
 start_date: 2026-06-05T12:40:00Z
-finish_date: null
-updated: 2026-06-05T12:00:00Z
+finish_date: 2026-06-05T00:00:00Z
+updated: 2026-06-05T13:00:00Z
 epic: phase-5
 depends_on: [GYM-75]
 blocks: []
 related: [GYM-74]
-commits: []
-tests: []
+commits: [a57eb1d]
+tests: [apps/api/tests/test_gym76_name_validation.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -58,3 +58,42 @@ the authoritative enforcement point. Reject bad names with 422 before they reach
 
 ### 2026-06-05T12:00:00Z — task created
 Depends on GYM-75 (canonical rules + contract). Runs after the contract lands.
+
+## Comments
+
+### 2026-06-05T13:00:00Z — implementation (core-api-engineer)
+
+**Validator design**
+
+Added `apps/api/app/schemas/validators.py` with:
+- `MUSCLE_NAME_MAX = 30`, `EXERCISE_NAME_MAX = 40` — constants sourced from docs/validation.md.
+- `normalize_name(s)` — trims leading/trailing whitespace, collapses internal runs to one space.
+- `validate_name(s, *, max_len)` — normalizes, then enforces: non-empty, max_len, and the
+  explicit character class `^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \-'.,()/&+°]+$` (identical to the
+  contract pattern — plain Python `re`, no extra dependency). Raises `ValueError` on failure so
+  Pydantic surfaces a 422 with the field name.
+
+**Schemas covered**
+
+- `MuscleCreate.name` — `validate_name(max_len=30)` via `@field_validator("name", mode="before")`.
+- `ExerciseCreate.name` — `validate_name(max_len=40)`. Admin path; `muscle` field is an int id,
+  so no muscle_name to validate here.
+- `ExerciseCreateByName.name` — `validate_name(max_len=40)`.
+- `ExerciseCreateByName.muscle_name` — `validate_name(max_len=30)`.
+- `TrainingCreate.muscle_name` + `TrainingCreate.exercise_name` — normalize + char-check only
+  (see TrainingCreate decision below).
+
+Note: `AdminExerciseCreate` is not present in this codebase — the admin router uses
+`ExerciseCreate` (covered above). No other create/input schemas carrying a muscle or exercise
+name were found via rg.
+
+**TrainingCreate decision**
+
+`TrainingCreate` is a lookup-only path: `POST /training` resolves muscle and exercise by name
+and returns 404 if not found — it does not create new muscles or exercises. Enforcing the 40/30
+char max here would reject valid lookups for names stored before this validation was introduced
+(e.g., a "Global Bench Press" added by an admin before GYM-76). Therefore, max_len is NOT
+enforced on TrainingCreate. Normalization (trim + collapse) and allowed-char rejection are still
+applied: empty names would 404 anyway, and disallowed chars will never match a stored row.
+
+**Pytest result**: 217 passed, 0 failed.
