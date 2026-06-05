@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-79
 title: "apps/web: muscle Chip overflows its pill (no ellipsis) — fix flex truncation in Chip + all capped usages"
 slug: gym-79-chip-truncate-fix
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [phase-5, frontend, design, ux, bug]
@@ -12,7 +12,7 @@ model: null
 reporter: oleksii
 created: 2026-06-05T14:10:00Z
 start_date: 2026-06-05T14:10:00Z
-finish_date: 2026-06-05T00:00:00Z
+finish_date: 2026-06-05T14:25:00Z
 updated: 2026-06-05T00:00:00Z
 epic: phase-5
 depends_on: [GYM-77]
