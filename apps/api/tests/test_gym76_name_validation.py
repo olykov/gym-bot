@@ -289,11 +289,16 @@ class TestExerciseCreateByNameSchema:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("name",) for e in errors)
 
-    def test_muscle_name_over_max_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            ExerciseCreateByName(name="Bench Press", muscle_name="A" * (MUSCLE_NAME_MAX + 1))
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("muscle_name",) for e in errors)
+    def test_muscle_name_over_max_accepted_lookup(self):
+        """A >30-char muscle_name must be accepted (GYM-78 regression fix).
+
+        ``muscle_name`` is a LOOKUP reference — it must be able to reference a
+        muscle whose name predates the 30-char creation cap.  Enforcing max_len
+        here caused the live 422 bug (can't add exercise into a long-named muscle).
+        """
+        long_name = "A" * (MUSCLE_NAME_MAX + 1)  # 31 chars — over the creation cap
+        e = ExerciseCreateByName(name="Bench Press", muscle_name=long_name)
+        assert e.muscle_name == long_name
 
     def test_exercise_name_exactly_max_accepted(self):
         e = ExerciseCreateByName(name="A" * EXERCISE_NAME_MAX, muscle_name="Chest")
@@ -309,11 +314,15 @@ class TestExerciseCreateByNameSchema:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("name",) for e in errors)
 
-    def test_disallowed_char_in_muscle_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            ExerciseCreateByName(name="Bench Press", muscle_name="Ch<est")
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("muscle_name",) for e in errors)
+    def test_disallowed_char_in_muscle_accepted_lookup(self):
+        """Disallowed chars in muscle_name must NOT raise 422 (GYM-78 lookup rule).
+
+        ``muscle_name`` is a lookup reference — char-whitelisting is not applied
+        (only empty rejection).  A non-existent or oddly-named lookup simply 404s
+        at the DB layer rather than being rejected at schema validation.
+        """
+        e = ExerciseCreateByName(name="Bench Press", muscle_name="Ch<est")
+        assert e.muscle_name == "Ch<est"
 
     def test_emoji_in_exercise_rejected(self):
         with pytest.raises(ValidationError) as exc_info:
@@ -370,23 +379,30 @@ class TestTrainingCreateSchema:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("exercise_name",) for e in errors)
 
-    def test_disallowed_char_in_muscle_name_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            TrainingCreate(
-                muscle_name="Chest<>", exercise_name="Bench Press",
-                set=1, weight=100.0, reps=10.0,
-            )
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("muscle_name",) for e in errors)
+    def test_disallowed_char_in_muscle_name_accepted_lookup(self):
+        """Disallowed chars in TrainingCreate.muscle_name are accepted (lookup rule).
 
-    def test_emoji_in_exercise_name_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            TrainingCreate(
-                muscle_name="Chest", exercise_name="Bench 💪",
-                set=1, weight=100.0, reps=10.0,
-            )
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("exercise_name",) for e in errors)
+        ``muscle_name`` and ``exercise_name`` are LOOKUP references — the char
+        whitelist is not applied.  Only empty/whitespace-only is rejected.
+        A name with disallowed chars simply 404s at the DB layer.
+        """
+        t = TrainingCreate(
+            muscle_name="Chest<>", exercise_name="Bench Press",
+            set=1, weight=100.0, reps=10.0,
+        )
+        assert t.muscle_name == "Chest<>"
+
+    def test_emoji_in_exercise_name_accepted_lookup(self):
+        """Emoji in TrainingCreate.exercise_name is accepted (lookup rule).
+
+        ``exercise_name`` is a LOOKUP reference — the char whitelist is not
+        applied (GYM-78).  Only empty/whitespace-only is rejected.
+        """
+        t = TrainingCreate(
+            muscle_name="Chest", exercise_name="Bench 💪",
+            set=1, weight=100.0, reps=10.0,
+        )
+        assert t.exercise_name == "Bench 💪"
 
     def test_long_name_over_40_accepted_for_lookup(self):
         """Names exceeding the exercise max are allowed here (lookup-only path).

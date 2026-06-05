@@ -12,9 +12,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from app.schemas.validators import (
     EXERCISE_NAME_MAX,
     MUSCLE_NAME_MAX,
-    _NAME_RE,
-    normalize_name,
     validate_name,
+    validate_lookup_name,
 )
 
 
@@ -87,8 +86,12 @@ class ExerciseCreateByName(BaseModel):
     @field_validator("muscle_name", mode="before")
     @classmethod
     def _validate_muscle_name(cls, v: object) -> str:
-        """Normalize and validate the muscle name (max 30 chars)."""
-        return validate_name(str(v), max_len=MUSCLE_NAME_MAX)
+        """Normalize the muscle reference name; reject empty only (no length/char cap).
+
+        ``muscle_name`` is a LOOKUP reference, not a name being stored.  See
+        ``validate_lookup_name`` docstring for the create-vs-lookup rationale.
+        """
+        return validate_lookup_name(str(v))
 
 
 class Exercise(_ORM):
@@ -176,13 +179,13 @@ class TrainingCreate(BaseModel):
     Muscle and exercise are referenced by name so the request matches what the
     bot sends today.  id, date, and user_id are assigned by the server.
 
-    Name fields are normalized (trim + whitespace-collapse) and must pass the
-    allowed-character check, but length bounds are NOT enforced here: this path
-    only looks up existing rows by name, never creates new ones, so capping at
-    30/40 chars would reject lookups for names that were stored before this
-    validation was introduced.  Allowed-chars and empty rejection still apply
-    because those would always fail at the DB lookup anyway and give a cleaner
-    422 vs a 404.
+    Name fields use ``validate_lookup_name``: they are normalized (trim +
+    whitespace-collapse) and must not be empty, but NO max-length cap and NO
+    character-whitelist are applied.  This path only looks up existing rows by
+    name, never creates new ones, so capping at 30/40 chars or char-checking
+    would reject lookups for names that predate the current validation rules.
+    See ``apps/api/app/schemas/validators.validate_lookup_name`` for the full
+    create-vs-lookup rationale.
     """
 
     muscle_name: str
@@ -193,20 +196,13 @@ class TrainingCreate(BaseModel):
 
     @field_validator("muscle_name", "exercise_name", mode="before")
     @classmethod
-    def _normalize_and_check_chars(cls, v: object) -> str:
-        """Normalize and check allowed chars; do not enforce max_len.
+    def _normalize_lookup_name(cls, v: object) -> str:
+        """Normalize lookup reference; reject empty only (no length/char cap).
 
-        See class docstring for rationale on skipping the length bound.
+        Delegates to ``validate_lookup_name`` — see its docstring for the
+        create-vs-lookup rationale.
         """
-        normalized = normalize_name(str(v))
-        if not normalized:
-            raise ValueError("name must not be empty or whitespace-only")
-        if not _NAME_RE.match(normalized):
-            raise ValueError(
-                "name contains disallowed characters; allowed: Latin letters, "
-                "Cyrillic letters, digits, space, and - ' . , ( ) / & + °"
-            )
-        return normalized
+        return validate_lookup_name(str(v))
 
 
 class TrainingUpdate(BaseModel):

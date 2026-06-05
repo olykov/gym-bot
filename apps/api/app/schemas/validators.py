@@ -5,17 +5,41 @@ the single server-side enforcement point.  The regex character class is kept
 byte-for-byte identical to the ``pattern`` in packages/api-contract/openapi.yaml
 so the API and the contract never diverge.
 
+Two distinct validation strategies are provided:
+
+- ``validate_name``: full validation for a name being **CREATED/STORED** — enforces
+  normalization, max-length cap, and the allowed-character whitelist.
+- ``validate_lookup_name``: lightweight validation for a name used only to **LOOK UP**
+  an existing record — enforces normalization and rejects empty/whitespace-only input,
+  but imposes NO max-length cap and NO character-whitelist check.
+
+The create-vs-lookup distinction is fundamental: length and char limits only make sense
+for data being stored.  A lookup field must always be able to reference records that
+predate the current validation rules (e.g. a muscle whose name is 35 chars, created
+before the 30-char cap was introduced).  Lookups are safe without those caps because
+they use parameterised SQL and return 404 on no match rather than touching the DB.
+
 Usage::
 
-    from app.schemas.validators import validate_name, MUSCLE_NAME_MAX, EXERCISE_NAME_MAX
+    from app.schemas.validators import validate_name, validate_lookup_name, MUSCLE_NAME_MAX
 
-    class MySchema(BaseModel):
+    # For a field being stored (CREATE path):
+    class MuscleCreate(BaseModel):
         name: str
 
         @field_validator("name", mode="before")
         @classmethod
         def _validate_name(cls, v: object) -> str:
             return validate_name(str(v), max_len=MUSCLE_NAME_MAX)
+
+    # For a field referencing an existing record (LOOKUP path):
+    class ExerciseCreateByName(BaseModel):
+        muscle_name: str
+
+        @field_validator("muscle_name", mode="before")
+        @classmethod
+        def _validate_muscle_name(cls, v: object) -> str:
+            return validate_lookup_name(str(v))
 """
 import re
 
@@ -110,4 +134,37 @@ def validate_name(s: str, *, max_len: int) -> str:
             "Cyrillic letters, digits, space, and - ' . , ( ) / & + °"
         )
 
+    return normalized
+
+
+def validate_lookup_name(s: str) -> str:
+    """Normalize a name used only to look up an existing record.
+
+    This is the lightweight counterpart to ``validate_name`` and is intentionally
+    less strict.  It applies only normalization (trim + collapse) and rejects
+    empty/whitespace-only input.  It does **not** enforce a max-length cap or the
+    allowed-character whitelist.
+
+    Rationale (create-vs-lookup distinction):
+        Length and character constraints belong on data being **created/stored**.
+        A lookup field must always be able to reference records that predate the
+        current validation rules — for example a muscle whose name is 35 chars,
+        created before the 30-char cap was introduced.  Forbidding such a name at
+        the lookup layer would make those records permanently unreachable.
+        Lookups are safe without the extra caps because they use parameterised SQL
+        and return 404 on no match rather than writing anything to the DB.
+
+    Args:
+        s: Raw user-supplied string (will be normalized internally).
+
+    Returns:
+        The normalized name (leading/trailing whitespace stripped, internal
+        whitespace collapsed to a single space).
+
+    Raises:
+        ValueError: If the name is empty or whitespace-only after normalization.
+    """
+    normalized = normalize_name(s)
+    if not normalized:
+        raise ValueError("name must not be empty or whitespace-only")
     return normalized
