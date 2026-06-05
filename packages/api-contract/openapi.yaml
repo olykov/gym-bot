@@ -1277,6 +1277,13 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
+          maxLength: 30
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            Muscle group name. Normalized (trim + collapse internal whitespace) then validated.
+            Allowed: Unicode letters/digits, space, and - ' . , ( ) / & + ° (degree).
+            See docs/validation.md (Name rules).
 
     # ---- exercises
     Exercise:
@@ -1303,8 +1310,21 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
+          maxLength: 40
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            Exercise name. Normalized (trim + collapse internal whitespace) then validated.
+            Allowed: Unicode letters/digits, space, and - ' . , ( ) / & + ° (degree).
+            See docs/validation.md (Name rules).
         muscle_name:
           type: string
+          minLength: 1
+          maxLength: 30
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            Owning muscle group name (must match an existing muscle). Same Name rules as a
+            muscle name (max 30). See docs/validation.md (Name rules).
 
     AdminExerciseCreate:
       type: object
@@ -1313,6 +1333,13 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
+          maxLength: 40
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            Exercise name. Normalized (trim + collapse internal whitespace) then validated.
+            Allowed: Unicode letters/digits, space, and - ' . , ( ) / & + ° (degree).
+            See docs/validation.md (Name rules).
         muscle:
           type: integer
 
@@ -1350,8 +1377,20 @@ components:
       properties:
         muscle_name:
           type: string
+          minLength: 1
+          maxLength: 30
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            Muscle group name. Same Name rules as a muscle name (max 30).
+            See docs/validation.md (Name rules).
         exercise_name:
           type: string
+          minLength: 1
+          maxLength: 40
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            Exercise name. Same Name rules as an exercise name (max 40).
+            See docs/validation.md (Name rules).
         set:
           type: integer
         weight:
