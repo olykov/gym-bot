@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-76
 title: "API: enforce name validation (reusable validator) on all muscle/exercise create paths + tests"
 slug: gym-76-name-validation-api
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api, validation]

@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-75
 title: "Contract+docs: canonical name-validation rules (muscle/exercise) on all create schemas + validation.md"
 slug: gym-75-name-validation-contract
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api-contract, validation]

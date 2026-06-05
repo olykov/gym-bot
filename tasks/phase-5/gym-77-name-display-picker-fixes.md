@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-77
 title: "apps/web: name-display truncation everywhere + uniform tiles (3-col muscle/2-col exercise) + input maxLength + nav-back-empty fix"
 slug: gym-77-name-display-picker-fixes
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, frontend, design, validation, ux]
