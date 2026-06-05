@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-74
 title: "apps/web: picker slide-nav (muscle→exercise push) + fixed-height sheet + today recap w×r fix"
 slug: gym-74-record-picker-slide-nav
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, frontend, design, ux]
@@ -18,7 +18,7 @@ epic: phase-5
 depends_on: [GYM-72]
 blocks: []
 related: [GYM-64, GYM-69]
-commits: [bd9b607]
+commits: [bd9b607, c94ea78]
 tests: []
 design_reports: []
 review_reports: []
