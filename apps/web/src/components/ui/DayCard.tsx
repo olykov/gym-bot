@@ -54,7 +54,7 @@ export function DayCard({ day }: { day: TrainingDay }) {
                        long muscle name clips with ellipsis, not unbounded. */
                     <div className="mt-2 flex flex-wrap gap-2">
                         {shown.map((m) => (
-                            <span key={m} style={{ maxWidth: "10rem" }}>
+                            <span key={m} className="min-w-0" style={{ maxWidth: "10rem" }}>
                                 <Chip title={m}>{m}</Chip>
                             </span>
                         ))}

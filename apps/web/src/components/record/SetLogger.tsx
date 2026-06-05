@@ -220,7 +220,7 @@ export function SetLogger({ chosen, today, serverSets, onSwitch, onDone }: SetLo
                 <h2 className="min-w-0 flex-1 truncate font-display text-title text-text" title={exerciseName}>
                     {exerciseName}
                 </h2>
-                <span className="shrink-0" style={{ maxWidth: "8rem" }}>
+                <span className="min-w-0 shrink-0" style={{ maxWidth: "8rem" }}>
                     <Chip title={muscleName}>{muscleName}</Chip>
                 </span>
             </div>

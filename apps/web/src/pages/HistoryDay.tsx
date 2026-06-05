@@ -109,7 +109,7 @@ export function HistoryDay() {
                         <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-text" title={ex.exercise_name}>
                             {ex.exercise_name}
                         </h2>
-                        <span className="shrink-0" style={{ maxWidth: "8rem" }}>
+                        <span className="min-w-0 shrink-0" style={{ maxWidth: "8rem" }}>
                             <Chip title={ex.muscle_name}>{ex.muscle_name}</Chip>
                         </span>
                     </div>
