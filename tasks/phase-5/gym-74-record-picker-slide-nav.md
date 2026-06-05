@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-74
 title: "apps/web: picker slide-nav (muscle→exercise push) + fixed-height sheet + today recap w×r fix"
 slug: gym-74-record-picker-slide-nav
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [phase-5, frontend, design, ux]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-05T11:00:00Z
 start_date: 2026-06-05T11:00:00Z
-finish_date: null
-updated: 2026-06-05T11:00:00Z
+finish_date: 2026-06-05T00:00:00Z
+updated: 2026-06-05T00:00:00Z
 epic: phase-5
 depends_on: [GYM-72]
 blocks: []
 related: [GYM-64, GYM-69]
-commits: []
+commits: [bd9b607]
 tests: []
 design_reports: []
 review_reports: []
@@ -81,3 +81,27 @@ backlog_ref: ""
 
 ### 2026-06-05T11:00:00Z — task created
 Operator-reviewed iteration on GYM-72. Frontend-design plugin mandatory; orchestrator reviews the build.
+
+### 2026-06-05 — implemented (commit bd9b607)
+
+**Files changed:**
+- `apps/web/src/components/record/RecordPicker.tsx` — full rewrite: slide-nav track, auto-fit grid, step props
+- `apps/web/src/components/record/RecordSheet.tsx` — lifted pickerStep, fixedHeight, serverSets sourcing
+- `apps/web/src/components/record/SetLogger.tsx` — added serverSets prop, three-tier recap merge
+- `apps/web/src/components/ui/BottomSheet.tsx` — added fixedHeight + onBackOverride props
+- `apps/web/src/index.css` — picker-tile-grid utility, picker-slide-track reduced-motion rule
+- `docs/frontend-spec.md` — updated §12.2/§12.3
+
+**Layout/height decisions (frontend-design plugin, ultrathought):**
+
+Fixed sheet height formula: `calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - var(--header-h) - 24px)`. The subtracted terms are: the Telegram/device top inset (covers notch + fullscreen Telegram controls), the AppShell header height (52px, prevents sheet overlapping the fixed header), and a 24px breathing margin. This is stricter than the default `max-height` formula (which only subtracts the inset + 24px) but is the right trade-off: the picker has fixed content that doesn't need to grow taller, and both steps must occupy the same height so there is zero jump.
+
+Slide-nav: a 200%-wide flex row with two 50%-wide panels. The outer container is `overflow: hidden`; the track translates between `translateX(0)` (muscles) and `translateX(-50%)` (exercises) at 200ms with `--ease-out-soft` (the app's spring-ish easing). Both panels stay mounted (no remount flicker). Under `prefers-reduced-motion` the `.picker-slide-track` class removes the transition for an instant swap. `aria-hidden` on the off-screen panel, `tabIndex={-1}` on all its interactive elements to keep focus logical.
+
+Muscle tile grid: `repeat(auto-fill, minmax(100px, 1fr))` — at 360px usable (after 16px×2 padding) yields 3 equal columns (~110px each), but long names like "Rotator Cuff" or "Upper Back" reflow to 2 columns naturally. Min tile height raised from 52px to 64px per operator request.
+
+BackButton step-back: `BottomSheet` receives `onBackOverride?: () => boolean`; when it returns `true` the sheet's own close is suppressed. `RecordSheet` implements the override: while the picker is on the exercise step, Back steps to muscles; on the muscle step, Back closes the sheet. The current step is tracked via a `useRef` inside the override closure to avoid stale-closure bugs.
+
+Recap fix: `SetLogger` receives `serverSets: TrainingSet[]` from `RecordSheet`, which filters `day.data.exercises` to the chosen exercise. The recap now unites three sources: session (weight/reps, priority 1), server day sets (weight/reps from the API, priority 2), and completed_set numbers (set# only, ✓ fallback, priority 3). Session beats server for the same set#. No API change required.
+
+**Build result:** `tsc && vite build` — green, no TypeScript errors. Bundle size unchanged (no new dependencies).
