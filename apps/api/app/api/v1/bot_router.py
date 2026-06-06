@@ -23,6 +23,8 @@ from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import exists
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.cache import invalidate_user
@@ -130,7 +132,10 @@ def list_muscles(
         Ordered list of visible muscles.
     """
     uid = principal["user_id"]
-    return visible_muscles(db, uid)
+    muscles = visible_muscles(db, uid)
+    for m in muscles:
+        m.is_mine = bool(m.created_by == uid and not m.is_global)
+    return muscles
 
 
 @router.post("/muscles", response_model=schemas.Muscle, tags=["muscles"])
@@ -171,6 +176,73 @@ def create_muscle(
     db.add(muscle)
     db.commit()
     db.refresh(muscle)
+    return muscle
+
+
+@router.patch("/muscles/{muscle_id}", response_model=schemas.Muscle, tags=["muscles"])
+def rename_muscle(
+    muscle_id: int,
+    body: schemas.MuscleRename,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> schemas.Muscle:
+    """Rename a private muscle owned by the authenticated user.
+
+    Only the caller's own custom (non-global) muscle may be renamed.
+    Returns 403 when the target is a global item, 404 when not found.
+    Returns 409 when the new name duplicates another of the caller's muscles.
+
+    Args:
+        muscle_id: Id of the private muscle to rename.
+        body: New name (validated + normalized by MuscleRename).
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        The updated Muscle record.
+    """
+    uid = principal["user_id"]
+    new_name = body.name
+
+    # Resolve the row first to distinguish 403 from 404.
+    muscle = db.query(models.Muscle).filter(models.Muscle.id == muscle_id).first()
+    if muscle is None:
+        raise HTTPException(status_code=404, detail="Muscle not found")
+    if muscle.is_global or muscle.created_by != uid:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot rename a global or unowned muscle",
+        )
+
+    # Pre-check for duplicate name among this user's own muscles.
+    dup = (
+        db.query(models.Muscle)
+        .filter(
+            models.Muscle.name == new_name,
+            models.Muscle.created_by == uid,
+            models.Muscle.is_global.is_(False),
+            models.Muscle.id != muscle_id,
+        )
+        .first()
+    )
+    if dup:
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have a muscle named '{new_name}'",
+        )
+
+    muscle.name = new_name
+    try:
+        db.commit()
+        db.refresh(muscle)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have a muscle named '{new_name}'",
+        )
+
+    muscle.is_mine = True
     return muscle
 
 
@@ -258,6 +330,21 @@ def delete_private_muscle(
     )
     if muscle is None:
         raise HTTPException(status_code=404, detail="Private muscle not found")
+
+    # D2 delete-guard: block hard-delete when any exercise under this muscle
+    # has logged training history — history must never be silently destroyed.
+    history_exists = db.query(
+        exists().where(
+            models.Training.exercise_id == models.Exercise.id,
+            models.Exercise.muscle == muscle_id,
+        )
+    ).scalar()
+    if history_exists:
+        raise HTTPException(
+            status_code=409,
+            detail="muscle has logged history; hide it instead",
+        )
+
     db.delete(muscle)
     db.commit()
 

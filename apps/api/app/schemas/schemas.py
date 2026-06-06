@@ -43,6 +43,18 @@ class MuscleCreate(MuscleBase):
         return validate_name(str(v), max_len=MUSCLE_NAME_MAX)
 
 
+class MuscleRename(BaseModel):
+    """Request body for PATCH /muscles/{muscle_id} (own-custom rename)."""
+
+    name: str
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _validate_name(cls, v: object) -> str:
+        """Normalize and validate the new muscle name (max 30 chars)."""
+        return validate_name(str(v), max_len=MUSCLE_NAME_MAX)
+
+
 class Muscle(_ORM):
     """Full muscle representation as returned by the API."""
 
@@ -50,6 +62,7 @@ class Muscle(_ORM):
     name: str
     is_global: Optional[bool] = None
     created_by: Optional[int] = None
+    is_mine: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +107,18 @@ class ExerciseCreateByName(BaseModel):
         return validate_lookup_name(str(v))
 
 
+class ExerciseRename(BaseModel):
+    """Request body for PATCH /exercises/{exercise_id} (own-custom rename)."""
+
+    name: str
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _validate_name(cls, v: object) -> str:
+        """Normalize and validate the new exercise name (max 40 chars)."""
+        return validate_name(str(v), max_len=EXERCISE_NAME_MAX)
+
+
 class Exercise(_ORM):
     """Full exercise representation."""
 
@@ -102,6 +127,7 @@ class Exercise(_ORM):
     muscle: int  # owning muscle id
     is_global: Optional[bool] = None
     created_by: Optional[int] = None
+    is_mine: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,8 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import exists
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db_for_principal
@@ -50,7 +52,10 @@ def list_exercises_by_muscle(
     muscle = db.query(models.Muscle).filter(models.Muscle.id == muscle_id).first()
     if muscle is None:
         raise HTTPException(status_code=404, detail="Muscle not found")
-    return visible_exercises_for_muscle(db, uid, muscle_id)
+    exercises = visible_exercises_for_muscle(db, uid, muscle_id)
+    for ex in exercises:
+        ex.is_mine = bool(ex.created_by == uid and not ex.is_global)
+    return exercises
 
 
 @router.post("/exercises", response_model=schemas.Exercise, tags=["exercises"])
@@ -112,6 +117,79 @@ def create_exercise(
 
     db.commit()
     db.refresh(exercise)
+    return exercise
+
+
+@router.patch(
+    "/exercises/{exercise_id}",
+    response_model=schemas.Exercise,
+    tags=["exercises"],
+)
+def rename_exercise(
+    exercise_id: int,
+    body: schemas.ExerciseRename,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> schemas.Exercise:
+    """Rename a private exercise owned by the authenticated user.
+
+    Only the caller's own custom (non-global) exercise may be renamed.
+    Returns 403 when the target is a global item, 404 when not found.
+    Returns 409 when the new name duplicates another of the caller's exercises
+    under the same muscle.
+
+    Args:
+        exercise_id: Id of the private exercise to rename.
+        body: New name (validated + normalized by ExerciseRename).
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        The updated Exercise record.
+    """
+    uid = principal["user_id"]
+    new_name = body.name
+
+    # Resolve the row first to distinguish 403 from 404.
+    exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
+    if exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    if exercise.is_global or exercise.created_by != uid:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot rename a global or unowned exercise",
+        )
+
+    # Pre-check for duplicate name under the same muscle for this user.
+    dup = (
+        db.query(models.Exercise)
+        .filter(
+            models.Exercise.name == new_name,
+            models.Exercise.created_by == uid,
+            models.Exercise.is_global.is_(False),
+            models.Exercise.muscle == exercise.muscle,
+            models.Exercise.id != exercise_id,
+        )
+        .first()
+    )
+    if dup:
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have an exercise named '{new_name}' under that muscle",
+        )
+
+    exercise.name = new_name
+    try:
+        db.commit()
+        db.refresh(exercise)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have an exercise named '{new_name}' under that muscle",
+        )
+
+    exercise.is_mine = True
     return exercise
 
 
@@ -218,5 +296,17 @@ def delete_private_exercise(
     )
     if exercise is None:
         raise HTTPException(status_code=404, detail="Private exercise not found")
+
+    # D2 delete-guard: block hard-delete when training history references this
+    # exercise — history must never be silently destroyed.
+    history_exists = db.query(
+        exists().where(models.Training.exercise_id == exercise_id)
+    ).scalar()
+    if history_exists:
+        raise HTTPException(
+            status_code=409,
+            detail="exercise has logged history; hide it instead",
+        )
+
     db.delete(exercise)
     db.commit()

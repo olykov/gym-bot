@@ -392,6 +392,19 @@ class TestStreakWeeksUnit:
     All expected values computed by hand from the given inputs.
     """
 
+    @classmethod
+    def setup_class(cls) -> None:
+        """Ensure env vars are set before the analytics_router module is imported.
+
+        ``app.core.auth`` executes ``get_settings()`` at module level on first
+        import; all required Settings fields must be in the environment before
+        that happens.  ``APP_DB_PASSWORD`` is required by Settings but not set
+        by ``_ensure_env_defaults``; supply a dummy value for this pure unit
+        test (no DB connection is made).
+        """
+        os.environ.setdefault("APP_DB_PASSWORD", "unit_test_dummy_no_db")
+        _ensure_env_defaults()
+
     @staticmethod
     def _monday(d: date) -> date:
         """Return the Monday of the week containing d."""
