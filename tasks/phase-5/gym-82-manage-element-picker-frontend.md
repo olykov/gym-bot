@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-82
 title: "apps/web: keyboard-overlap fix + no text-select on tiles + long-press manage sheet (rename/delete own, hide global) + confirm"
 slug: gym-82-manage-element-picker-frontend
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [phase-5, frontend, design, ux]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-06T08:10:00Z
 start_date: 2026-06-06T17:10:00Z
-finish_date: null
-updated: 2026-06-06T08:10:00Z
+finish_date: 2026-06-06T19:00:00Z
+updated: 2026-06-06T19:00:00Z
 epic: phase-5
 depends_on: [GYM-80, GYM-81]
 blocks: []
 related: [GYM-74, GYM-77]
-commits: []
+commits: [343d70b]
 tests: []
 design_reports: []
 review_reports: []
@@ -77,3 +77,64 @@ backlog_ref: ""
 ### 2026-06-06T08:10:00Z — task created
 Depends on GYM-80 (contract) + GYM-81 (rename/delete-guard endpoints + is_mine). Frontend-design plugin
 mandatory — the operator wants this strictly in the app's style, all our elements/prohibitions/canons.
+
+### 2026-06-06T19:00:00Z — implementation complete (343d70b)
+
+**Keyboard-inset approach:**
+Used `window.visualViewport` `resize` event to compute keyboard height as
+`max(0, window.innerHeight − visualViewport.height)` while the `<BottomSheet>` is open. The sheet
+body's `paddingBottom` switches from the safe-area formula to `keyboardPad + 12px` when the keyboard
+is present. `AddInlineField` additionally calls `scrollIntoView({ behavior:'smooth', block:'center' })`
+on focus so the input and its submit button always land above the keyboard. No Telegram SDK interaction
+needed — `visualViewport` is reliable in all target WebViews. Resets to 0 on sheet close.
+
+**Tap vs long-press:**
+`useTilePressHandlers` hook in `RecordPicker.tsx` (~40 lines): `pointerdown` → 480ms timer; cancel
+on `pointermove` > 6px or on `pointerup` before timer fires (= normal tap). Timer fires → long-press:
+`hapticImpact('medium')` + open manage sheet. `onContextMenu` prevents the iOS native popup after a
+long-press. No library; fully compatible with the existing `.press-95` / 0.98-scale micro-interaction.
+Reduced-motion: haptic stays, `BottomSheet` slide already gated by `prefers-reduced-motion`.
+
+**Manage-sheet design + ownership gating:**
+`ManageSheet.tsx` reuses `<BottomSheet>` (auto-height). Bebas Neue item-name headline + Sora kind
+label. Four internal views (state machine in the component): `actions` → `rename` / `confirm-delete`
+/ `offer-hide`. All Chalk & Iron tokens only.
+- Own items: Rename (AddInlineField pre-filled, same maxLength) + Delete (confirm step, --accent fill
+  button). 409 on rename → "That name is already in use."; 422 → server message.
+- Delete 409 (has history) → offer-hide view: "has logged history and can't be deleted. Hide it
+  from your picker instead?" with Cancel + Hide.
+- Global items: "Hide from my list" only → PUT /muscles/{id}/hidden or PUT /exercises/{id}/hidden.
+
+**409-history → hide flow:**
+On `deleteExercise`/`deleteMuscle` returning a 409, the `onError` callback in `ManageSheet`
+switches the view from `confirm-delete` to `offer-hide` (does NOT close or show a raw error). The
+Hide button then calls the appropriate hide hook. This covers the spec requirement exactly.
+
+**Hooks + invalidation (useRecord.ts):**
+Added: `useRenameMuscle`, `useRenameExercise`, `useDeleteMuscle`, `useDeleteExercise`,
+`useHideMuscle`, `useHideExercise`. All invalidate `["muscles"]`, `["analytics","top-muscles"]`,
+`["analytics","top-exercises"]` on success. `useRenameExercise` additionally invalidates
+`["analytics","exercise-progress"]` and `["analytics","top-exercises",muscleName]` so progress
+charts keyed by the exercise name pick up the new name.
+
+**Exercise id lookup:**
+`useTopExercises` returns only `{name, frequency}` (no `id`/`is_mine`). Added `useExercises` import
+in `RecordPicker`; when a muscle is selected, derives its numeric id from `muscleByName` (from
+`useMuscles()`), then uses `useExercises(selectedMuscleId)` to build `exerciseByName` Map for
+id/is_mine lookup. The query is already cached (5-min staleTime) and prefetched via the existing
+muscle-pick flow; no extra network round-trip on the happy path.
+
+**Build result:** `tsc && vite build` green (0 type errors, 0 warnings beyond the pre-existing chunk
+size note). 726 modules, 1.4 MB bundle, 462 KB gzip.
+
+**Needs live-device pass:**
+1. Keyboard inset: verify on an actual Telegram iOS/Android open — ensure the add-input field is
+   fully above the keyboard and the sheet does not clip on a 360px device.
+2. Long-press timer feel: 480ms feels right in emulation; may need ±40ms tuning on real hardware
+   (Android tends to be more sensitive to the delay than iOS).
+3. Manage-sheet for a global exercise: confirm that the `useExercises(selectedMuscleId)` call
+   correctly returns `is_mine: false` for catalog items (depends on GYM-81 API implementation).
+4. Dark-mode: the manage-sheet action rows use `--secondary-bg`/`--text`/`--accent` — verify
+   contrast of the destructive "Delete" row (`--accent` text on `--secondary-bg`) in Telegram dark.
+5. Tile text-select suppression: verify `-webkit-touch-callout: none` fully suppresses the iOS
+   "Copy / Look Up / Share" popup that appears on a 500ms press.
