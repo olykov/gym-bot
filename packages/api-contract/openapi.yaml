@@ -263,6 +263,44 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   /muscles/{muscle_id}:
+    patch:
+      tags: [muscles]
+      summary: Rename a private muscle owned by the authenticated user
+      description: >
+        Renames the caller's own private muscle. Only a muscle the caller owns
+        (`is_mine == true`) can be renamed; global catalog muscles are read-only
+        and return 403. A name already used by another of the caller's muscles
+        returns 409. The new name is validated like creation (see MuscleCreate).
+      operationId: renameMuscle
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MuscleId'
+        - $ref: '#/components/parameters/ActAsUser'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MuscleRename'
+      responses:
+        '200':
+          description: The renamed muscle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Muscle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
     delete:
       tags: [muscles]
       summary: Delete a private muscle owned by the authenticated user
@@ -381,6 +419,45 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   /exercises/{exercise_id}:
+    patch:
+      tags: [exercises]
+      summary: Rename a private exercise owned by the authenticated user
+      description: >
+        Renames the caller's own private exercise. Only an exercise the caller
+        owns (`is_mine == true`) can be renamed; global catalog exercises are
+        read-only and return 403. A name already used by another of the caller's
+        exercises under the same muscle returns 409. The new name is validated
+        like creation (see ExerciseCreate).
+      operationId: renameExercise
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ExerciseId'
+        - $ref: '#/components/parameters/ActAsUser'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseRename'
+      responses:
+        '200':
+          description: The renamed exercise.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
     delete:
       tags: [exercises]
       summary: Delete a private exercise owned by the authenticated user
@@ -1148,6 +1225,28 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: >
+        The caller is authenticated but not allowed to perform this operation
+        (e.g. renaming a global catalog item the caller does not own).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: >
+        The request conflicts with existing state (e.g. the new name is already
+        used by another of the caller's records).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Request body failed validation (e.g. invalid name).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 
   schemas:
     Error:
@@ -1270,6 +1369,11 @@ components:
           type: ['integer', 'null']
           format: int64
           description: Owning user id for a private muscle; null for global.
+        is_mine:
+          type: boolean
+          description: >
+            True when this is the caller's own custom record (rename/delete
+            allowed); false for global catalog items (hide only).
 
     MuscleCreate:
       type: object
@@ -1282,6 +1386,21 @@ components:
           pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
           description: >
             Muscle group name. Normalized (trim + collapse internal whitespace) then validated.
+            Allowed: Unicode letters/digits, space, and - ' . , ( ) / & + ° (degree).
+            See docs/validation.md (Name rules).
+
+    MuscleRename:
+      type: object
+      description: New name for an existing private muscle. Same rules as MuscleCreate.name.
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 30
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            New muscle group name. Normalized (trim + collapse internal whitespace) then validated.
             Allowed: Unicode letters/digits, space, and - ' . , ( ) / & + ° (degree).
             See docs/validation.md (Name rules).
 
@@ -1302,6 +1421,11 @@ components:
         created_by:
           type: ['integer', 'null']
           format: int64
+        is_mine:
+          type: boolean
+          description: >
+            True when this is the caller's own custom record (rename/delete
+            allowed); false for global catalog items (hide only).
 
     ExerciseCreate:
       type: object
@@ -1325,6 +1449,21 @@ components:
             (trim + collapse internal whitespace), not length/char-bound. Must match an
             existing muscle; non-matching values 404 at the DB. See docs/validation.md
             (Name rules — Create vs lookup).
+
+    ExerciseRename:
+      type: object
+      description: New name for an existing private exercise. Same rules as ExerciseCreate.name.
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: "^[A-Za-z0-9À-ÖØ-öø-ÿА-яЁё \\-'.,()/&+°]+$"
+          description: >
+            New exercise name. Normalized (trim + collapse internal whitespace) then validated.
+            Allowed: Unicode letters/digits, space, and - ' . , ( ) / & + ° (degree).
+            See docs/validation.md (Name rules).
 
     AdminExerciseCreate:
       type: object
