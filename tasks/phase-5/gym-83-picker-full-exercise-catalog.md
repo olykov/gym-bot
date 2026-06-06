@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-83
 title: "apps/web: picker exercise tiles miss never-logged exercises (uses history-only top-exercises) — render full catalog sorted by frequency"
 slug: gym-83-picker-full-exercise-catalog
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [phase-5, frontend, bug]
