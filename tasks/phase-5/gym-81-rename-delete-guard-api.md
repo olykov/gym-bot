@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-81
 title: "API: rename muscle/exercise (own-only) + block hard-delete when training history exists + is_mine + tests"
 slug: gym-81-rename-delete-guard-api
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [phase-5, api]
@@ -12,14 +12,14 @@ model: null
 reporter: oleksii
 created: 2026-06-06T08:10:00Z
 start_date: 2026-06-06T16:15:00Z
-finish_date: null
-updated: 2026-06-06T08:10:00Z
+finish_date: 2026-06-06T17:00:00Z
+updated: 2026-06-06T17:00:00Z
 epic: phase-5
 depends_on: [GYM-80]
 blocks: [GYM-82]
 related: [GYM-76]
-commits: []
-tests: []
+commits: [ccecb02]
+tests: [apps/api/tests/test_gym81_rename_delete.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -60,3 +60,30 @@ never silently destroyed. Also populate the `is_mine` read field (GYM-80).
 
 ### 2026-06-06T08:10:00Z — task created
 Depends on GYM-80 (contract). Reuses existing hide + private-delete endpoints; adds rename + delete-guard.
+
+### 2026-06-06T17:00:00Z — implementation complete (ccecb02)
+
+**Rename endpoints (PATCH /muscles/{id}, PATCH /exercises/{id})**
+
+Error-code conventions:
+- 403: row exists but is global OR belongs to another user (`is_global=True` or `created_by != uid`).
+- 404: row not found at all.
+- 409: new name duplicates another of the caller's own items (pre-check query; IntegrityError catch as backstop).
+- 422: name fails Pydantic validation via `validate_name` (empty / too long / bad char).
+
+**Delete-guard (D2) — existing DELETE endpoints**
+
+History-check approach: SQLAlchemy `exists()` subquery.
+- Exercise: `EXISTS(SELECT 1 FROM training WHERE exercise_id = {exercise_id})` — single query, no JOIN needed.
+- Muscle: `EXISTS(SELECT 1 FROM training JOIN exercises ON training.exercise_id = exercises.id WHERE exercises.muscle = {muscle_id})` — one EXISTS across two tables; written as `exists().where(Training.exercise_id == Exercise.id, Exercise.muscle == muscle_id)`.
+
+When history exists → 409 with detail `"exercise has logged history; hide it instead"` / `"muscle has logged history; hide it instead"`.
+When no history → DELETE proceeds, 204.
+
+**is_mine wiring**
+
+`is_mine = (created_by == uid) and not is_global` — computed per-row in the list endpoint body after `visible_muscles()` / `visible_exercises_for_muscle()` returns. Set directly on the ORM object before return (SQLAlchemy transient attribute). Also set to `True` on rename response. Schema field: `Optional[bool] = None` on both `Muscle` and `Exercise` read schemas.
+
+**Full suite result: 95 passed, 0 failed** (173 skipped — Docker/DB tests skip gracefully when no container available).
+
+Also fixed pre-existing `TestStreakWeeksUnit` failures: added `setup_class` that sets `APP_DB_PASSWORD` and calls `_ensure_env_defaults()` before `analytics_router` is imported for the first time (module-level `get_settings()` call in `auth.py` required env to be set first).
