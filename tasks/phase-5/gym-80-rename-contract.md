@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-80
 title: "Contract: PATCH rename muscle/exercise + is_mine on read schemas + regen"
 slug: gym-80-rename-contract
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api-contract]

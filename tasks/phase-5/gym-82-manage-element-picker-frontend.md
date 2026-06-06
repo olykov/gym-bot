@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-82
 title: "apps/web: keyboard-overlap fix + no text-select on tiles + long-press manage sheet (rename/delete own, hide global) + confirm"
 slug: gym-82-manage-element-picker-frontend
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, frontend, design, ux]

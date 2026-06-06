@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-81
 title: "API: rename muscle/exercise (own-only) + block hard-delete when training history exists + is_mine + tests"
 slug: gym-81-rename-delete-guard-api
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, api]
