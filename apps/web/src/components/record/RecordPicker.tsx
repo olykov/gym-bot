@@ -192,7 +192,8 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
     const day = useTrainingDay(today);
 
     const [showAllExercises, setShowAllExercises] = useState(false);
-    const exercises = useTopExercises(selectedMuscle);
+    // GYM-83: frequency data (top-exercises) is kept for ordering only.
+    const topExercises = useTopExercises(selectedMuscle);
 
     const createMuscle = useCreateMuscle();
     const createExercise = useCreateExercise();
@@ -218,16 +219,30 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         return muscleByName.get(selectedMuscle)?.id ?? null;
     }, [selectedMuscle, muscleByName]);
 
-    // Full exercises for the selected muscle (Exercise[] with id + is_mine).
-    // Used for manage-sheet lookup only; the tile list still uses useTopExercises.
+    // GYM-83: full catalog for the selected muscle (Exercise[] with id + is_mine).
+    // This is now the tile source. top-exercises provides frequency for ordering only.
     const fullExercises = useExercises(selectedMuscleId);
-    const exerciseByName = useMemo((): Map<string, Exercise> => {
-        const map = new Map<string, Exercise>();
-        for (const ex of fullExercises.data ?? []) {
-            map.set(ex.name, ex);
+
+    // GYM-83: frequency map (exercise name → frequency) built from top-exercises.
+    const frequencyMap = useMemo((): Map<string, number> => {
+        const map = new Map<string, number>();
+        for (const ex of topExercises.data ?? []) {
+            map.set(ex.name, ex.frequency);
         }
         return map;
-    }, [fullExercises.data]);
+    }, [topExercises.data]);
+
+    // GYM-83: sorted exercise list — full catalog ordered by frequency desc, then alpha.
+    // Never-logged exercises get frequency 0 and sort after trained ones.
+    const exerciseList = useMemo((): Exercise[] => {
+        const catalog = fullExercises.data ?? [];
+        return [...catalog].sort((a, b) => {
+            const fa = frequencyMap.get(a.name) ?? 0;
+            const fb = frequencyMap.get(b.name) ?? 0;
+            if (fb !== fa) return fb - fa;
+            return a.name.localeCompare(b.name);
+        });
+    }, [fullExercises.data, frequencyMap]);
 
     // Warm the picker reads + the Continue exercise's log-context on open (§12.5).
     useEffect(() => {
@@ -295,7 +310,6 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         return out;
     }, [topMuscles.data, muscles.data]);
 
-    const exerciseList = exercises.data ?? [];
     const visibleExercises = showAllExercises
         ? exerciseList
         : exerciseList.slice(0, BROWSE_VISIBLE);
@@ -312,7 +326,9 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         setAdding(null);
         onMuscleChange(name);
         onStepChange("exercises");
-        prefetchMuscleExercises(qc, name);
+        // GYM-83: warm both top-exercises (for frequency sort) and full catalog.
+        const mid = muscleByName.get(name)?.id ?? null;
+        prefetchMuscleExercises(qc, name, mid);
     }
 
     function goBack(): void {
@@ -364,10 +380,9 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         });
     }
 
-    // GYM-82: open manage sheet for an exercise tile.
-    function openExerciseManage(name: string): void {
-        const ex = exerciseByName.get(name);
-        if (!ex) return;
+    // GYM-82/GYM-83: open manage sheet for an exercise tile.
+    // Tile source is now Exercise[] (full catalog), so id + is_mine are always present.
+    function openExerciseManage(ex: Exercise): void {
         setManageItem({
             id: ex.id,
             name: ex.name,
@@ -584,8 +599,9 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                         {selectedMuscle ?? ""}
                     </h2>
 
-                    {/* Exercise tiles — 2-column grid, fixed height, line-clamp (GYM-77 #1/#3). */}
-                    {exercises.isLoading ? (
+                    {/* Exercise tiles — 2-column grid, fixed height, line-clamp (GYM-77 #1/#3).
+                        GYM-83: source is fullExercises (full catalog), ordered by frequency. */}
+                    {fullExercises.isLoading ? (
                         <div className="picker-tile-grid-exercise">
                             {Array.from({ length: 4 }).map((_, i) => (
                                 <Skeleton
@@ -595,16 +611,16 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                 />
                             ))}
                         </div>
-                    ) : exercises.isError ? (
+                    ) : fullExercises.isError ? (
                         <ErrorState
                             message="Couldn't load exercises."
-                            onRetry={() => void exercises.refetch()}
+                            onRetry={() => void fullExercises.refetch()}
                         />
                     ) : (
                         <div className="picker-tile-grid-exercise">
                             {visibleExercises.map((ex) => (
                                 <ExerciseTile
-                                    key={ex.name}
+                                    key={ex.id}
                                     name={ex.name}
                                     tabIndex={isExerciseStep ? 0 : -1}
                                     onTap={() =>
@@ -613,7 +629,7 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                             exerciseName: ex.name,
                                         })
                                     }
-                                    onLongPress={() => openExerciseManage(ex.name)}
+                                    onLongPress={() => openExerciseManage(ex)}
                                 />
                             ))}
                             {hiddenCount > 0 ? (

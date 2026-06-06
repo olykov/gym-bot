@@ -25,6 +25,7 @@ import {
     createMuscle,
     deleteExercise,
     deleteMuscle,
+    fetchExercises,
     fetchLogContext,
     fetchTopExercises,
     fetchTopMuscles,
@@ -179,9 +180,18 @@ export function prefetchPickerReads(qc: QueryClient, today: string): void {
 
 /**
  * Prefetch a muscle's exercises on muscle pick (spec §12.5 perf) so the exercise
- * tiles appear instantly. Same key/shape as useTopExercises.
+ * tiles appear instantly. Warms both:
+ * - top-exercises (for the frequency-sort map used to order the full catalog)
+ * - /muscles/{id}/exercises (the full catalog that is now the tile source, GYM-83)
+ *
+ * @param muscle - muscle name (for the top-exercises key).
+ * @param muscleId - numeric muscle id; if null, full-exercises prefetch is skipped.
  */
-export function prefetchMuscleExercises(qc: QueryClient, muscle: string): void {
+export function prefetchMuscleExercises(
+    qc: QueryClient,
+    muscle: string,
+    muscleId: number | null,
+): void {
     void qc.prefetchQuery({
         queryKey: ["analytics", "top-exercises", muscle, TOP_EXERCISES_LIMIT],
         queryFn: ({ signal }) =>
@@ -189,6 +199,14 @@ export function prefetchMuscleExercises(qc: QueryClient, muscle: string): void {
         staleTime: SESSION_STALE,
         gcTime: SESSION_GC,
     });
+    if (muscleId != null) {
+        void qc.prefetchQuery({
+            queryKey: ["muscles", muscleId, "exercises"],
+            queryFn: ({ signal }) => fetchExercises(muscleId, signal),
+            staleTime: SESSION_STALE,
+            gcTime: SESSION_GC,
+        });
+    }
 }
 
 /**
