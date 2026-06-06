@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-64
 title: "Record a training IN the Mini App (5-item nav + center + button + log flow)"
 slug: gym-64-record-training-miniapp
-status: review
+status: done
 priority: high
 type: feature
 labels: [phase-5, frontend, design]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-05T04:00:00Z
 start_date: 2026-06-05T04:00:00Z
-finish_date: null
-updated: 2026-06-05T07:30:00Z
+finish_date: 2026-06-06T08:00:00Z
+updated: 2026-06-06T08:00:00Z
 epic: phase-5
 depends_on: [GYM-41, GYM-49]
 blocks: []
 related: [GYM-12, GYM-65]
-commits: []
+commits: [d9171c9, 2f4baef, bd9b607, dfa1dd2]
 tests: []
 design_reports: []
 review_reports: []
@@ -55,3 +55,9 @@ cross-muscle "recent exercises" / last-set pre-fill endpoint (candidate addition
 ### 2026-06-05T04:00:00Z — task created
 Bot flow = muscle→exercise→set#→weight→reps (5 picks/set). Mini App target: exercise (1 tap from
 recents) → Save (pre-filled) → repeat. The bot stays; the Mini App becomes a first-class logger.
+
+### 2026-06-06T08:00:00Z — closed (operator confirmed "всё отлично")
+Umbrella epic for record-training in the Mini App. Delivered + live across GYM-65..GYM-79:
+build (GYM-69), picker v2 (GYM-72), slide-nav + recap (GYM-74), name validation
+(GYM-75/76/78), display truncation + Chip ellipsis (GYM-77/79). Representative commits linked.
+Follow-ups (keyboard overlap, long-press rename/delete) tracked as new tasks.
