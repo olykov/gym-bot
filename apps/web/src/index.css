@@ -262,6 +262,16 @@
     transform: scale(0.98);
 }
 
+/* GYM-82: tile no-select — long-press on muscle/exercise tiles must not trigger
+ * native text selection. Applied to the picker tile buttons via .tile-no-select
+ * so long-press fires our haptic manage-sheet, not the browser copy menu.
+ * -webkit-touch-callout: none suppresses the iOS long-press popup. */
+.tile-no-select {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
 /* ---------------------------------------------------------------------------
  * Reduced motion (spec §9.4, mandatory) — kill all motion, keep instant state.
  * ------------------------------------------------------------------------- */

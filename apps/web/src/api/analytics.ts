@@ -22,6 +22,8 @@ export type LogSet = Schemas["LogSet"];
 export type MaxReps = Schemas["MaxReps"];
 export type MuscleCreate = Schemas["MuscleCreate"];
 export type ExerciseCreate = Schemas["ExerciseCreate"];
+export type MuscleRename = Schemas["MuscleRename"];
+export type ExerciseRename = Schemas["ExerciseRename"];
 
 /** GET /analytics/summary — the four dashboard numbers (scoped to the caller). */
 export function fetchSummary(signal?: AbortSignal): Promise<AnalyticsSummary> {
@@ -140,4 +142,54 @@ export function createMuscle(body: MuscleCreate): Promise<Muscle> {
  */
 export function createExercise(body: ExerciseCreate): Promise<Exercise> {
     return apiRequest<Exercise>("/exercises", { method: "POST", body });
+}
+
+/**
+ * PATCH /muscles/{muscle_id} — rename the caller's own private muscle (GYM-80).
+ * Returns 403 on a global/not-owned muscle, 409 on a duplicate name, 422 on
+ * an invalid name.
+ */
+export function renameMuscle(muscleId: number, body: MuscleRename): Promise<Muscle> {
+    return apiRequest<Muscle>(`/muscles/${muscleId}`, { method: "PATCH", body });
+}
+
+/**
+ * DELETE /muscles/{muscle_id} — delete the caller's own private muscle (GYM-80).
+ * Returns 204 on success, 409 when the muscle has logged training history
+ * (caller should offer Hide instead).
+ */
+export function deleteMuscle(muscleId: number): Promise<void> {
+    return apiRequest<void>(`/muscles/${muscleId}`, { method: "DELETE" });
+}
+
+/**
+ * PUT /muscles/{muscle_id}/hidden — hide a global catalog muscle from the
+ * caller's picker (GYM-80). Returns 204.
+ */
+export function hideMuscle(muscleId: number): Promise<void> {
+    return apiRequest<void>(`/muscles/${muscleId}/hidden`, { method: "PUT" });
+}
+
+/**
+ * PATCH /exercises/{exercise_id} — rename the caller's own private exercise
+ * (GYM-80). Returns 403/409/422 under the same rules as renameMuscle.
+ */
+export function renameExercise(exerciseId: number, body: ExerciseRename): Promise<Exercise> {
+    return apiRequest<Exercise>(`/exercises/${exerciseId}`, { method: "PATCH", body });
+}
+
+/**
+ * DELETE /exercises/{exercise_id} — delete the caller's own private exercise
+ * (GYM-80). Returns 204 on success, 409 when it has logged history.
+ */
+export function deleteExercise(exerciseId: number): Promise<void> {
+    return apiRequest<void>(`/exercises/${exerciseId}`, { method: "DELETE" });
+}
+
+/**
+ * PUT /exercises/{exercise_id}/hidden — hide a global catalog exercise from
+ * the caller's picker (GYM-80). Returns 204.
+ */
+export function hideExercise(exerciseId: number): Promise<void> {
+    return apiRequest<void>(`/exercises/${exerciseId}/hidden`, { method: "PUT" });
 }

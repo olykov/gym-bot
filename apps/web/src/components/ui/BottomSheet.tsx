@@ -19,7 +19,7 @@
  * WebApp viewport bottom and clipped the sheet's lowest field on real devices
  * (§11.4). The body's bottom padding clears the device/Telegram bottom inset.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     hideBackButton,
     showBackButton,
@@ -61,6 +61,29 @@ export function BottomSheet({
     children,
 }: BottomSheetProps) {
     const panelRef = useRef<HTMLDivElement>(null);
+
+    // GYM-82: track the software keyboard height via visualViewport so the
+    // sheet's scroll container can pad its bottom and keep the focused add-input
+    // above the keyboard. When the keyboard opens, visualViewport.height shrinks
+    // relative to window.innerHeight; the difference is the keyboard height.
+    // We write it as extra bottom padding on the sheet body so the input stays
+    // reachable. Reset to 0 on close.
+    const [keyboardPad, setKeyboardPad] = useState(0);
+    useEffect(() => {
+        if (!open) {
+            setKeyboardPad(0);
+            return;
+        }
+        const vv = window.visualViewport;
+        if (!vv) return;
+        function update(): void {
+            const kbHeight = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
+            setKeyboardPad(kbHeight);
+        }
+        vv.addEventListener("resize", update);
+        update();
+        return () => vv.removeEventListener("resize", update);
+    }, [open]);
 
     // BackButton ownership (§11.7): while open, Back closes the sheet first,
     // unless the caller intercepts it (e.g. for step navigation in the picker).
@@ -147,8 +170,12 @@ export function BottomSheet({
                     <div
                         className={`min-h-0 flex-1 overflow-y-auto px-4 ${fixedHeight ? "flex flex-col" : ""}`}
                         style={{
-                            paddingBottom:
-                                "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",
+                            // GYM-82: when the keyboard is visible, add its height to the
+                            // bottom padding so the focused add-input scrolls above it.
+                            // The base padding accounts for safe-area + a small gap.
+                            paddingBottom: keyboardPad > 0
+                                ? `${keyboardPad + 12}px`
+                                : "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",
                         }}
                     >
                         {children}

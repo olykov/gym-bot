@@ -23,14 +23,22 @@ import {
 import {
     createExercise,
     createMuscle,
+    deleteExercise,
+    deleteMuscle,
     fetchLogContext,
     fetchTopExercises,
     fetchTopMuscles,
+    hideExercise,
+    hideMuscle,
+    renameExercise,
+    renameMuscle,
     type Exercise,
     type ExerciseCreate,
+    type ExerciseRename,
     type LogContext,
     type Muscle,
     type MuscleCreate,
+    type MuscleRename,
 } from "@/api/analytics";
 import { fetchTrainingDay } from "@/api/training";
 import {
@@ -198,5 +206,137 @@ export function prefetchLogContext(
         queryFn: ({ signal }) => fetchLogContext(muscle, exercise, date, signal),
         staleTime: SESSION_STALE,
         gcTime: SESSION_GC,
+    });
+}
+
+/** Shared invalidation after any manage-element action (rename/delete/hide). */
+function invalidateElementLists(qc: QueryClient): void {
+    void qc.invalidateQueries({ queryKey: ["muscles"] });
+    void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
+    void qc.invalidateQueries({ queryKey: ["analytics", "top-exercises"] });
+}
+
+interface RenameMuscleVars {
+    muscleId: number;
+    body: MuscleRename;
+}
+
+/**
+ * PATCH /muscles/{id} — rename the caller's own private muscle (GYM-82).
+ * On success invalidates the muscle + exercise lists and top lists so tiles
+ * reflect the new name immediately.
+ */
+export function useRenameMuscle() {
+    const qc = useQueryClient();
+    return useMutation<Muscle, Error, RenameMuscleVars>({
+        mutationFn: ({ muscleId, body }) => renameMuscle(muscleId, body),
+        onSuccess: () => {
+            invalidateElementLists(qc);
+        },
+    });
+}
+
+interface DeleteMuscleVars {
+    muscleId: number;
+}
+
+/**
+ * DELETE /muscles/{id} — delete the caller's own private muscle (GYM-82).
+ * On success invalidates lists. A 409 (has history) is surfaced to the caller
+ * to offer the Hide action instead.
+ */
+export function useDeleteMuscle() {
+    const qc = useQueryClient();
+    return useMutation<void, Error, DeleteMuscleVars>({
+        mutationFn: ({ muscleId }) => deleteMuscle(muscleId),
+        onSuccess: () => {
+            invalidateElementLists(qc);
+        },
+    });
+}
+
+interface HideMuscleVars {
+    muscleId: number;
+}
+
+/**
+ * PUT /muscles/{id}/hidden — hide a global catalog muscle from the caller's
+ * picker (GYM-82). On success invalidates the muscle + exercise lists.
+ */
+export function useHideMuscle() {
+    const qc = useQueryClient();
+    return useMutation<void, Error, HideMuscleVars>({
+        mutationFn: ({ muscleId }) => hideMuscle(muscleId),
+        onSuccess: () => {
+            invalidateElementLists(qc);
+        },
+    });
+}
+
+interface RenameExerciseVars {
+    exerciseId: number;
+    muscleName: string;
+    body: ExerciseRename;
+}
+
+/**
+ * PATCH /exercises/{id} — rename the caller's own private exercise (GYM-82).
+ * On success invalidates the exercise lists for the muscle plus top-exercises
+ * so tiles + progress charts that key on the name pick up the new value.
+ */
+export function useRenameExercise() {
+    const qc = useQueryClient();
+    return useMutation<Exercise, Error, RenameExerciseVars>({
+        mutationFn: ({ exerciseId, body }) => renameExercise(exerciseId, body),
+        onSuccess: (_data, vars) => {
+            invalidateElementLists(qc);
+            // Also invalidate the exercise-progress series (keyed by exercise name)
+            // so any Progress chart for the old name refreshes.
+            void qc.invalidateQueries({
+                queryKey: ["analytics", "exercise-progress"],
+            });
+            void qc.invalidateQueries({
+                queryKey: ["analytics", "top-exercises", vars.muscleName],
+            });
+        },
+    });
+}
+
+interface DeleteExerciseVars {
+    exerciseId: number;
+}
+
+/**
+ * DELETE /exercises/{id} — delete the caller's own private exercise (GYM-82).
+ * A 409 (has history) is surfaced to the caller to offer Hide instead.
+ */
+export function useDeleteExercise() {
+    const qc = useQueryClient();
+    return useMutation<void, Error, DeleteExerciseVars>({
+        mutationFn: ({ exerciseId }) => deleteExercise(exerciseId),
+        onSuccess: () => {
+            invalidateElementLists(qc);
+            void qc.invalidateQueries({
+                queryKey: ["analytics", "exercise-progress"],
+            });
+        },
+    });
+}
+
+interface HideExerciseVars {
+    exerciseId: number;
+}
+
+/**
+ * PUT /exercises/{id}/hidden — hide a global catalog exercise from the caller's
+ * picker (GYM-82). On success invalidates the exercise lists.
+ */
+export function useHideExercise() {
+    const qc = useQueryClient();
+    return useMutation<void, Error, HideExerciseVars>({
+        mutationFn: ({ exerciseId }) => hideExercise(exerciseId),
+        onSuccess: () => {
+            invalidateElementLists(qc);
+        },
     });
 }

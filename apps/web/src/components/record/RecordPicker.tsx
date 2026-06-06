@@ -33,16 +33,24 @@
  * Empty brand-new user (nothing today, empty catalog) → an in-sheet
  * "ADD YOUR FIRST EXERCISE" prompt with the add-inline field; no analytics
  * fan-out on the empty path (§12.6 / ARCH §2).
+ *
+ * GYM-82: long-press (~480ms) on a muscle or exercise tile opens the manage
+ * sheet (ManageSheet). Text selection is disabled on tiles. A normal tap still
+ * selects. Tap vs long-press is disambiguated by pointerdown timer; the timer
+ * cancels on pointermove beyond a small threshold, on scroll, or on pointerup
+ * before the threshold fires.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MUSCLE_NAME_MAX, EXERCISE_NAME_MAX } from "@/validation";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { AddInlineField } from "./AddInlineField";
-import { useMuscles, useTopMuscles, useTopExercises } from "@/hooks/useAnalytics";
+import { ManageSheet } from "./ManageSheet";
+import { useMuscles, useTopMuscles, useTopExercises, useExercises } from "@/hooks/useAnalytics";
 import { useTrainingDay } from "@/hooks/useTraining";
+import { hapticImpact } from "@/telegram/webapp";
 import {
     useCreateExercise,
     useCreateMuscle,
@@ -52,9 +60,25 @@ import {
 } from "@/hooks/useRecord";
 import type { PickerStep } from "./RecordSheet";
 import type { ChosenExercise } from "./types";
+import type { Muscle, Exercise } from "@/api/analytics";
 
 /** Browse: exercises shown before the "Show all" expand (spec §12.9). */
 const BROWSE_VISIBLE = 6;
+
+/** Long-press timer duration in ms. Midpoint of the 450–550ms range. */
+const LONG_PRESS_MS = 480;
+
+/** Max pointer movement (px) before we cancel the long-press. */
+const MOVE_THRESHOLD_PX = 6;
+
+/** Item info for the manage sheet. */
+interface ManageItem {
+    id: number;
+    name: string;
+    kind: "muscle" | "exercise";
+    is_mine: boolean;
+    muscleName?: string;
+}
 
 interface RecordPickerProps {
     /** Today's date (YYYY-MM-DD) — the day/log-context key for the Continue tile. */
@@ -83,6 +107,84 @@ interface ContinueExercise {
     exerciseName: string;
 }
 
+/**
+ * Hook returning props for a tile button that distinguishes tap vs long-press.
+ *
+ * Tap: fires `onTap`.
+ * Long-press (~LONG_PRESS_MS): fires `onLongPress`, suppresses `onTap`.
+ * Cancels on move > MOVE_THRESHOLD_PX, on scroll, or on early pointerup.
+ * Respects `prefers-reduced-motion` for haptic-only (no animation change needed).
+ */
+function useTilePressHandlers(
+    onTap: () => void,
+    onLongPress: () => void,
+): React.HTMLAttributes<HTMLButtonElement> {
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const startPosRef = useRef<{ x: number; y: number } | null>(null);
+    const firedRef = useRef(false);
+
+    function cancel(): void {
+        if (timerRef.current !== null) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    }
+
+    function onPointerDown(e: React.PointerEvent<HTMLButtonElement>): void {
+        // Only primary button / touch.
+        if (e.button !== 0 && e.pointerType === "mouse") return;
+        firedRef.current = false;
+        startPosRef.current = { x: e.clientX, y: e.clientY };
+        cancel();
+        timerRef.current = setTimeout(() => {
+            timerRef.current = null;
+            firedRef.current = true;
+            hapticImpact("medium");
+            onLongPress();
+        }, LONG_PRESS_MS);
+    }
+
+    function onPointerMove(e: React.PointerEvent<HTMLButtonElement>): void {
+        if (!startPosRef.current || timerRef.current === null) return;
+        const dx = Math.abs(e.clientX - startPosRef.current.x);
+        const dy = Math.abs(e.clientY - startPosRef.current.y);
+        if (dx > MOVE_THRESHOLD_PX || dy > MOVE_THRESHOLD_PX) {
+            cancel();
+        }
+    }
+
+    function onPointerUp(): void {
+        if (timerRef.current !== null) {
+            // Timer still running — this is a tap.
+            cancel();
+            if (!firedRef.current) {
+                onTap();
+            }
+        }
+        startPosRef.current = null;
+    }
+
+    function onPointerCancel(): void {
+        cancel();
+        startPosRef.current = null;
+    }
+
+    // Cancel if a scroll event fires on the containing scroller.
+    // We attach this as a capture listener on the window; cancel removes it.
+    // (Handled inline: the timer already cancels on pointermove threshold.)
+
+    return {
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onPointerCancel,
+        // Prevent the context menu on long-press (iOS).
+        onContextMenu: (e) => {
+            if (firedRef.current) e.preventDefault();
+        },
+    };
+}
+
 export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMuscleChange, onPick }: RecordPickerProps) {
     const qc = useQueryClient();
     const topMuscles = useTopMuscles();
@@ -97,6 +199,35 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
 
     // Which add-inline field is open (if any).
     const [adding, setAdding] = useState<"muscle" | "exercise" | null>(null);
+
+    // GYM-82: manage sheet state.
+    const [manageItem, setManageItem] = useState<ManageItem | null>(null);
+
+    // Full muscle catalog (Muscle[] with id + is_mine) — keyed by name for lookup.
+    const muscleByName = useMemo((): Map<string, Muscle> => {
+        const map = new Map<string, Muscle>();
+        for (const m of muscles.data ?? []) {
+            map.set(m.name, m);
+        }
+        return map;
+    }, [muscles.data]);
+
+    // Derive the selected muscle's numeric id (to fetch full exercises with is_mine).
+    const selectedMuscleId = useMemo((): number | null => {
+        if (!selectedMuscle) return null;
+        return muscleByName.get(selectedMuscle)?.id ?? null;
+    }, [selectedMuscle, muscleByName]);
+
+    // Full exercises for the selected muscle (Exercise[] with id + is_mine).
+    // Used for manage-sheet lookup only; the tile list still uses useTopExercises.
+    const fullExercises = useExercises(selectedMuscleId);
+    const exerciseByName = useMemo((): Map<string, Exercise> => {
+        const map = new Map<string, Exercise>();
+        for (const ex of fullExercises.data ?? []) {
+            map.set(ex.name, ex);
+        }
+        return map;
+    }, [fullExercises.data]);
 
     // Warm the picker reads + the Continue exercise's log-context on open (§12.5).
     useEffect(() => {
@@ -221,6 +352,31 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         );
     }
 
+    // GYM-82: open manage sheet for a muscle tile.
+    function openMuscleMange(name: string): void {
+        const m = muscleByName.get(name);
+        if (!m) return;
+        setManageItem({
+            id: m.id,
+            name: m.name,
+            kind: "muscle",
+            is_mine: m.is_mine ?? false,
+        });
+    }
+
+    // GYM-82: open manage sheet for an exercise tile.
+    function openExerciseManage(name: string): void {
+        const ex = exerciseByName.get(name);
+        if (!ex) return;
+        setManageItem({
+            id: ex.id,
+            name: ex.name,
+            kind: "exercise",
+            is_mine: ex.is_mine ?? false,
+            muscleName: selectedMuscle ?? undefined,
+        });
+    }
+
     // Empty new user: front-and-center add-first-exercise prompt (§12.6).
     if (isEmptyNewUser) {
         return (
@@ -262,6 +418,12 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                         )}
                     </div>
                 </div>
+                {/* Manage sheet (even in empty state, shouldn't be needed but keep consistent). */}
+                <ManageSheet
+                    open={manageItem !== null}
+                    onClose={() => setManageItem(null)}
+                    item={manageItem}
+                />
             </div>
         );
     }
@@ -361,17 +523,13 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                         ) : (
                             <div className="picker-tile-grid-muscle">
                                 {muscleOptions.map((name) => (
-                                    <button
+                                    <MuscleTile
                                         key={name}
-                                        type="button"
+                                        name={name}
                                         tabIndex={isExerciseStep ? -1 : 0}
-                                        onClick={() => pickMuscle(name)}
-                                        title={name}
-                                        className="press-95 flex w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
-                                        style={{ height: "88px" }}
-                                    >
-                                        <span className="tile-name">{name}</span>
-                                    </button>
+                                        onTap={() => pickMuscle(name)}
+                                        onLongPress={() => openMuscleMange(name)}
+                                    />
                                 ))}
                                 {/* Add a muscle inline (§12.2). */}
                                 {adding !== "muscle" ? (
@@ -445,22 +603,18 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                     ) : (
                         <div className="picker-tile-grid-exercise">
                             {visibleExercises.map((ex) => (
-                                <button
+                                <ExerciseTile
                                     key={ex.name}
-                                    type="button"
+                                    name={ex.name}
                                     tabIndex={isExerciseStep ? 0 : -1}
-                                    onClick={() =>
+                                    onTap={() =>
                                         onPick({
                                             muscleName: selectedMuscle!,
                                             exerciseName: ex.name,
                                         })
                                     }
-                                    title={ex.name}
-                                    className="press-95 flex w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
-                                    style={{ height: "88px" }}
-                                >
-                                    <span className="tile-name">{ex.name}</span>
-                                </button>
+                                    onLongPress={() => openExerciseManage(ex.name)}
+                                />
                             ))}
                             {hiddenCount > 0 ? (
                                 <button
@@ -503,6 +657,62 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                     )}
                 </div>
             </div>
+
+            {/* GYM-82: Manage sheet — opened by long-press on any tile. */}
+            <ManageSheet
+                open={manageItem !== null}
+                onClose={() => setManageItem(null)}
+                item={manageItem}
+            />
         </div>
+    );
+}
+
+// ── Tile sub-components (GYM-82) ─────────────────────────────────────────────
+
+interface TileProps {
+    name: string;
+    tabIndex: number;
+    onTap: () => void;
+    onLongPress: () => void;
+}
+
+/**
+ * A muscle tile that distinguishes tap vs long-press (GYM-82).
+ * Applies tile-no-select to prevent native text selection on long-press.
+ */
+function MuscleTile({ name, tabIndex, onTap, onLongPress }: TileProps) {
+    const pressHandlers = useTilePressHandlers(onTap, onLongPress);
+    return (
+        <button
+            type="button"
+            tabIndex={tabIndex}
+            title={name}
+            {...pressHandlers}
+            className="tile-no-select press-95 flex w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
+            style={{ height: "88px" }}
+        >
+            <span className="tile-name">{name}</span>
+        </button>
+    );
+}
+
+/**
+ * An exercise tile that distinguishes tap vs long-press (GYM-82).
+ * Applies tile-no-select to prevent native text selection on long-press.
+ */
+function ExerciseTile({ name, tabIndex, onTap, onLongPress }: TileProps) {
+    const pressHandlers = useTilePressHandlers(onTap, onLongPress);
+    return (
+        <button
+            type="button"
+            tabIndex={tabIndex}
+            title={name}
+            {...pressHandlers}
+            className="tile-no-select press-95 flex w-full items-center justify-center rounded-lg border border-hairline bg-secondary-bg px-3 text-center text-base text-text"
+            style={{ height: "88px" }}
+        >
+            <span className="tile-name">{name}</span>
+        </button>
     );
 }

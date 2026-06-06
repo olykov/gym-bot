@@ -28,7 +28,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-    method?: "GET" | "POST" | "PUT" | "DELETE";
+    method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
     body?: unknown;
     /** Skip the Authorization header (used by the auth endpoints). */
     anonymous?: boolean;

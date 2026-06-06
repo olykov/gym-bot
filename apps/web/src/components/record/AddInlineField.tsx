@@ -12,8 +12,11 @@
  * mutation + optimistic insert). It stays controlled by the parent for `pending`
  * and `error` so a failed create keeps the typed name (spec §12.5). Submit is
  * disabled while empty after trim or pending.
+ *
+ * GYM-82: accepts `initialValue` to pre-fill the field for rename flows.
+ * On focus, scrolls the element into view so the keyboard does not cover it.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface AddInlineFieldProps {
     placeholder: string;
@@ -24,6 +27,11 @@ interface AddInlineFieldProps {
      * Use MUSCLE_NAME_MAX or EXERCISE_NAME_MAX from src/validation.ts.
      */
     maxLength?: number;
+    /**
+     * Pre-fill the field with this value (GYM-82 rename flow). The user can
+     * edit; the initial trimmed value is shown and selected on focus.
+     */
+    initialValue?: string;
     pending?: boolean;
     error?: string | null;
     onSubmit: (name: string) => void;
@@ -34,12 +42,14 @@ export function AddInlineField({
     placeholder,
     actionLabel,
     maxLength,
+    initialValue = "",
     pending = false,
     error = null,
     onSubmit,
     onCancel,
 }: AddInlineFieldProps) {
-    const [name, setName] = useState("");
+    const [name, setName] = useState(initialValue);
+    const inputRef = useRef<HTMLInputElement>(null);
     const trimmed = name.trim();
     const canSubmit = trimmed.length > 0 && !pending;
 
@@ -48,16 +58,25 @@ export function AddInlineField({
         onSubmit(trimmed);
     }
 
+    function handleFocus(): void {
+        // GYM-82: scroll the input into view so the on-screen keyboard does not
+        // cover it. 'center' keeps the field and its submit button visible above
+        // the keyboard on a ~360px device.
+        inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
     return (
         <div>
             <div className="flex items-stretch gap-2">
                 <input
+                    ref={inputRef}
                     type="text"
                     value={name}
                     autoFocus
                     placeholder={placeholder}
                     maxLength={maxLength}
                     onChange={(e) => setName(e.target.value)}
+                    onFocus={handleFocus}
                     onKeyDown={(e) => {
                         if (e.key === "Enter") {
                             e.preventDefault();

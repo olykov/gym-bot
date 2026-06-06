@@ -945,3 +945,75 @@ No new library is introduced (§1): all of the above are compositions of existin
    - Browse by muscle (fallback): the muscle's exercises **frequency-sorted**, render the **top ~6 + a
      "Show all" chip** that expands the rest **client-side** (one `top-exercises?muscle&limit=200`
      fetch; no extra endpoint). Same idea as the bot's "5 + load all", smoother (no round-trip).
+
+---
+
+## 12.10 Manage-element interaction — long-press sheet (GYM-82)
+
+> Implemented 2026-06-06. Extends §12.2 (record picker Phase A). These rules are BINDING for any
+> future iteration that touches the muscle/exercise tile management.
+
+### Keyboard-inset fix (Item 1)
+
+When the `+ Muscle` / `+ Exercise` add-inline input is focused inside the record sheet, the soft
+keyboard rises and can cover the field on iOS/Android. Fix:
+
+- `window.visualViewport` `resize` event is listened to while the `<BottomSheet>` is `open`. The
+  keyboard height is computed as `max(0, window.innerHeight - visualViewport.height)`.
+- The sheet body's `paddingBottom` is set to `keyboardPad + 12px` when the keyboard is present,
+  replacing the normal `safe-area + 12px` baseline. This pushes the content above the keyboard and
+  allows the scroll container to reach the focused input.
+- `AddInlineField` also calls `element.scrollIntoView({ behavior: 'smooth', block: 'center' })` on
+  `focus` so the input and its submit button always land in the visible area above the keyboard.
+- Reset: `keyboardPad` resets to 0 when the sheet closes. Works in Telegram WebView and Safari.
+- The fixed-height record sheet (GYM-74) + the AppShell header are never covered — the keyboard
+  shrinks the scroll area, it does not raise the sheet panel.
+
+### Long-press tile management (Item 2)
+
+**No text selection on tiles:** all muscle and exercise tiles in the picker carry the `.tile-no-select`
+CSS class, which sets `user-select: none`, `-webkit-user-select: none`, and
+`-webkit-touch-callout: none`. This suppresses native text-selection and the iOS copy/look-up popup.
+
+**Tap vs long-press disambiguation (pointer model):**
+- `pointerdown` → start a 480 ms timer (midpoint of 450–550 ms).
+- `pointermove` beyond 6 px in either axis → cancel (the user is scrolling or swiping).
+- `pointerup` before timer fires → normal tap (tile select action runs normally).
+- Timer fires → long-press: fire `hapticImpact('medium')`, open manage sheet, suppress the tap.
+- `onContextMenu` is prevented when the long-press already fired (guards iOS long-press popup).
+- All of this is in the `useTilePressHandlers` hook in `RecordPicker.tsx` — no library, ~40 lines.
+- Reduced-motion: haptic stays (not motion); the manage sheet itself uses the existing `<BottomSheet>`
+  which already gates its slide animation behind `prefers-reduced-motion`.
+
+**Manage sheet design:**
+
+Reuses `<BottomSheet>` (auto-height, not `fixedHeight`) for the same Chalk & Iron slide-up.
+Title: item name in Bebas Neue (truncated), kind label ("Muscle" / "Exercise") in Sora `--hint`.
+Action rows: full-width buttons, ≥52px, `--secondary-bg`, hairline divider between rows.
+
+Ownership gating (from `is_mine` field, GYM-80):
+- **Own custom item (`is_mine === true`):** Rename + Delete action rows.
+  - **Rename** → switches the sheet body to an inline `AddInlineField` (the same component used for
+    `+ Muscle` / `+ Exercise`, pre-filled with the current name, same `maxLength` from `validation.ts`).
+    409 (dup name) → "That name is already in use." inline message; 422 → server message. On success
+    the sheet closes and the tile lists invalidate and refresh.
+  - **Delete** → switches the sheet body to a confirm step: `"Delete '{name}'? This cannot be
+    undone."` with Cancel and Delete buttons. Delete uses `--accent` fill (the same primary-action
+    treatment as Save). On **409 (has history)** switches to the "offer-hide" sub-view:
+    `"'{name}' has logged history and can't be deleted. Hide it from your picker instead?"` with
+    Cancel and Hide buttons. On success → close + invalidate.
+- **Global catalog item (`is_mine === false`):** "Hide from my list" only. Calls
+  `PUT /muscles/{id}/hidden` or `PUT /exercises/{id}/hidden`. On success → close + invalidate.
+
+**hooks added to `useRecord.ts`:** `useRenameMuscle`, `useRenameExercise`, `useDeleteMuscle`,
+`useDeleteExercise`, `useHideMuscle`, `useHideExercise`. All invalidate `["muscles"]`,
+`["analytics","top-muscles"]`, `["analytics","top-exercises"]` on success. `useRenameExercise`
+additionally invalidates `["analytics","exercise-progress"]` and the specific muscle's
+`["analytics","top-exercises",muscleName]` so progress charts keyed by the old exercise name refresh.
+
+**Exercise id lookup:** `useTopExercises` returns only `{name, frequency}` (no `id`/`is_mine`). For
+manage actions, `RecordPicker` also loads the full `Exercise[]` via `useExercises(selectedMuscleId)`
+(the `/muscles/{id}/exercises` endpoint) and keeps a name→Exercise map. The `selectedMuscleId` is
+derived from `muscleByName` (from `useMuscles()`). This is a second query for the selected muscle's
+exercises — acceptable since it is already prefetched and cached (5-min staleTime), and it fires only
+when a muscle is selected (empty path safe).
