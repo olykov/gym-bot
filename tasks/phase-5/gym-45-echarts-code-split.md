@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-45
 title: "apps/web: lazy-load ECharts (code-split the Progress chart)"
 slug: gym-45-echarts-code-split
-status: review
+status: done
 priority: low
 type: refactor
 labels: [phase-5, frontend, perf]
