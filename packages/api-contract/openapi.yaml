@@ -477,6 +477,48 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /exercises/{exercise_id}/muscle:
+    patch:
+      tags: [exercises]
+      summary: Move a private exercise owned by the authenticated user to another muscle
+      description: >
+        Reassigns the caller's own private exercise to a different muscle (e.g. an
+        exercise misfiled under one muscle is moved to the correct one). Only an
+        exercise the caller owns (`is_mine == true`) can be moved; global catalog
+        exercises are read-only here and return 403 — moving a canonical placement
+        is a separate future decision (GYM-91). The target muscle must exist and be
+        visible to the caller; a missing exercise or target muscle returns 404. When
+        the caller already has an exercise with the same name under the target muscle
+        (unique `(name, muscle, created_by)` collision) the move returns 409.
+      operationId: moveExercise
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ExerciseId'
+        - $ref: '#/components/parameters/ActAsUser'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseMove'
+      responses:
+        '200':
+          description: The moved exercise.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
   # ---------------------------------------------------------------- training
   /training:
     get:
@@ -1464,6 +1506,17 @@ components:
             New exercise name. Normalized (trim + collapse internal whitespace) then validated.
             Allowed: Unicode letters/digits, space, and - ' . , ( ) / & + ° (degree).
             See docs/validation.md (Name rules).
+
+    ExerciseMove:
+      type: object
+      description: >
+        Target muscle for moving the caller's own private exercise. References an
+        existing muscle visible to the caller by id; a non-matching id returns 404.
+      required: [muscle_id]
+      properties:
+        muscle_id:
+          type: integer
+          description: Id of the muscle to move the exercise under.
 
     AdminExerciseCreate:
       type: object
