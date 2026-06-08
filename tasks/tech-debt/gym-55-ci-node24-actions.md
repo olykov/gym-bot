@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-55
 title: "CI: bump GitHub Actions for Node 24 (checkout, login-action) before the deadline"
 slug: gym-55-ci-node24-actions
-status: backlog
+status: in_progress
 priority: medium
 type: chore
 labels: [tech-debt, infra, ci]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-04T23:55:00Z
-start_date: null
+start_date: 2026-06-08T21:30:00Z
 finish_date: null
 updated: 2026-06-04T23:55:00Z
 epic: tech-debt

@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-106
 title: "API: centralize exercise/muscle name→id resolver (own→global by name_key) + fix lingering exact-name sites — deployable, NO migration"
 slug: gym-106-resolver-centralize
-status: todo
+status: in_progress
 priority: high
 type: refactor
 labels: [tax-foundation, api]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-08T21:00:00Z
-start_date: null
+start_date: 2026-06-08T21:30:00Z
 finish_date: null
 updated: 2026-06-08T21:00:00Z
 epic: tax-foundation
