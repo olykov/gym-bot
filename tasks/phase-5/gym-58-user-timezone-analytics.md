@@ -18,7 +18,7 @@ epic: phase-5
 depends_on: [GYM-56]
 blocks: []
 related: [GYM-12, GYM-39]
-commits: []
+commits: [54d4144]
 tests: []
 design_reports: []
 review_reports: []
@@ -48,3 +48,17 @@ Telegram) and apply it in the `DATE_TRUNC`/grouping of all analytics + history q
 ### 2026-06-05T00:00:00Z — task created
 Deferred from the iteration; operator chose UTC for now. Touches db (TIMESTAMPTZ or users.timezone) +
 all analytics grouping — sizable, so backlog.
+
+### 2026-06-08 — contract slice (54d4144)
+Contract-only slice landed. Added a reusable `TimezoneQuery` parameter component (`tz`: optional
+string, IANA timezone name e.g. "Asia/Tbilisi") and referenced it from the three day/week-grouping
+operations: `GET /analytics/activity` (daily grid), `GET /analytics/summary` (weekly streak),
+`GET /training/days` (day grouping). Optional and fully backward-compatible: when omitted, boundaries
+stay UTC (unchanged). Not added to non-grouping endpoints.
+
+`make validate` passes (OpenAPI 3.1, 36 paths). Both clients regenerated: TypeScript (`schema.ts`,
+gitignored) type-checks clean under `tsc --strict` and shows `tz?` on all three operations; Python
+`models.py` regenerated and compiles (only the regen timestamp changed — query params don't produce
+response-schema models; the `tz` arg is plumbed in the hand-maintained `client.py` wrapper when the
+API/clients consume it). status stays in_progress: the API impl + DB grouping (core-api-engineer /
+db-migration-steward) and client wiring remain.
