@@ -199,8 +199,13 @@ paths:
       tags: [muscles]
       summary: Add a muscle group for the authenticated user
       description: >
-        Maps to `add_muscle(name, user_id)`. Creates a private muscle owned by the
-        caller (or returns the existing global/private one with the same name).
+        Maps to `add_muscle(name, user_id)`. Find-or-create-or-unhide: the name is
+        normalized to its key, then matched against the caller's scope. If a row with
+        that key already exists in scope: if it is hidden, it is silently unhidden and
+        returned (`resolution = unhidden`, HTTP 200); if it is already visible, the
+        existing row is returned with no duplicate created (`resolution = existing`,
+        HTTP 200). Otherwise a new private muscle owned by the caller is created
+        (`resolution = created`, HTTP 201). The request body is unchanged.
       operationId: createMuscle
       security:
         - userJwt: []
@@ -215,7 +220,16 @@ paths:
               $ref: '#/components/schemas/MuscleCreate'
       responses:
         '200':
-          description: The existing or newly created muscle.
+          description: >
+            An existing muscle was resolved (no new row): `resolution = unhidden`
+            when a hidden item was silently unhidden, or `resolution = existing`
+            when the visible item already existed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Muscle'
+        '201':
+          description: A new muscle was created (`resolution = created`).
           content:
             application/json:
               schema:
@@ -356,9 +370,14 @@ paths:
       tags: [exercises]
       summary: Add an exercise for the authenticated user
       description: >
-        Maps to `add_exercise(name, muscle_name, user_id)`. Creates a private
-        exercise owned by the caller under the given muscle, creating the muscle
-        if needed. Returns the existing or newly created exercise.
+        Maps to `add_exercise(name, muscle_name, user_id)`. Find-or-create-or-unhide:
+        the name is normalized to its key, then matched against the caller's scope
+        under the given muscle (the muscle is created if needed). If a row with that
+        key already exists in scope: if it is hidden, it is silently unhidden and
+        returned (`resolution = unhidden`, HTTP 200); if it is already visible, the
+        existing row is returned with no duplicate created (`resolution = existing`,
+        HTTP 200). Otherwise a new private exercise owned by the caller is created
+        (`resolution = created`, HTTP 201). The request body is unchanged.
       operationId: createExercise
       security:
         - userJwt: []
@@ -373,7 +392,16 @@ paths:
               $ref: '#/components/schemas/ExerciseCreate'
       responses:
         '200':
-          description: The existing or newly created exercise.
+          description: >
+            An existing exercise was resolved (no new row): `resolution = unhidden`
+            when a hidden item was silently unhidden, or `resolution = existing`
+            when the visible item already existed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+        '201':
+          description: A new exercise was created (`resolution = created`).
           content:
             application/json:
               schema:
@@ -1416,6 +1444,14 @@ components:
           description: >
             True when this is the caller's own custom record (rename/delete
             allowed); false for global catalog items (hide only).
+        resolution:
+          type: ['string', 'null']
+          enum: [created, unhidden, existing]
+          description: >
+            Only set on create responses: 'created' = a new row; 'unhidden' = an
+            existing hidden item was silently unhidden; 'existing' = the item
+            already existed and visible (no duplicate created). Absent/null on
+            list and read responses.
 
     MuscleCreate:
       type: object
@@ -1468,6 +1504,14 @@ components:
           description: >
             True when this is the caller's own custom record (rename/delete
             allowed); false for global catalog items (hide only).
+        resolution:
+          type: ['string', 'null']
+          enum: [created, unhidden, existing]
+          description: >
+            Only set on create responses: 'created' = a new row; 'unhidden' = an
+            existing hidden item was silently unhidden; 'existing' = the item
+            already existed and visible (no duplicate created). Absent/null on
+            list and read responses.
 
     ExerciseCreate:
       type: object
