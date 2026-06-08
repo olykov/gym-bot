@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-51
 title: "History v2: add a set retroactively + move a set (date/exercise)"
 slug: gym-51-history-v2-add-move
-status: in_progress
+status: review
 priority: low
 type: feature
 labels: [phase-5, frontend, api]
@@ -12,14 +12,14 @@ model: null
 reporter: oleksii
 created: 2026-06-04T18:00:00Z
 start_date: 2026-06-09T00:00:00Z
-finish_date: null
-updated: 2026-06-04T18:00:00Z
+finish_date: 2026-06-09T00:00:00Z
+updated: 2026-06-09T00:00:00Z
 epic: phase-5
 depends_on: [GYM-49]
 blocks: []
 related: [GYM-12]
-commits: [fba7842]
-tests: []
+commits: [fba7842, 7c9ec86, 14f08e8]
+tests: [apps/api/tests/test_gym51_add_move.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -68,3 +68,36 @@ Contract-only slice of v2 landed in `packages/api-contract/`:
 Affected clients: bot (Python), web/admin/miniapp (TypeScript) — additive `date` is safe to
 adopt incrementally; `moveTrainingSet`/`TrainingMove` are new (no breaking change to existing
 operations). API implementation of the new op + create-with-date is a separate (core-api) slice.
+
+### 2026-06-09T00:00:00Z — API implementation slice (14f08e8)
+
+Core API implementation of GYM-51 landed in `apps/api/`:
+
+**Retroactive add (date storage — noon UTC)**
+`TrainingCreate` gained an optional `date: Optional[_Date]` field (Pydantic type alias used to
+avoid the `date` field-name / `datetime.date` type-name shadowing bug in Pydantic v2). When
+`body.date` is supplied, `create_training` stores the row at `datetime.combine(body.date,
+time(12, 0))` — noon UTC — which lands on the intended calendar day in every real-world timezone
+(±12h safe). When omitted, `datetime.utcnow()` is used unchanged (backward-compatible).
+
+**PATCH /training/{training_id}/move**
+Added to `training_history_router.py` (co-located with DELETE and history reads). Logic:
+1. Body validation: empty body → 422; only one of muscle_name/exercise_name → 422.
+2. Fetch own row by (id, user_id) — RLS-scoped; not found or not owned → 404.
+3. Resolve target date (noon UTC if `body.date` given) and target exercise
+   (`resolve_exercise_id` own-first-then-global, name_key, variant-case safe) → 422 if not found.
+4. Collision check (409): pre-query for another row with same (user_id, exercise_id, set, date
+   day range) excluding the moving row. Defensive even if no DB unique constraint exists.
+5. Apply `training.date`, `training.exercise_id`, `training.muscle_id`; commit; call
+   `invalidate_user(uid)` (covers both source and target day analytics cache); return updated row.
+
+**Tests** — `apps/api/tests/test_gym51_add_move.py` (15 tests):
+- Retroactive add: past date stored at noon UTC and groups under that date in history; no date → utcnow window.
+- Move date: stored at noon UTC of target day.
+- Move exercise: by exact name and by variant case (UPPER/lower); both date+exercise at once.
+- Validation: empty body → 422; only muscle_name → 422; only exercise_name → 422; nonexistent exercise → 422.
+- Collision: 409 when target day+exercise+set already occupied by a different row.
+- Ownership: nonexistent id → 404; cross-user → 404; unauthenticated → 401.
+- Cache: `invalidate_user` called once with correct uid on success.
+
+Full suite result: **385 passed, 0 failed**.
