@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-102
 title: "Contract+API: list hidden muscles/exercises for the user (powers Show Hidden) + confirm hide-own muscle"
 slug: gym-102-list-hidden-api
-status: todo
+status: in_progress
 priority: high
 type: feature
 labels: [tax-fixes, api, api-contract]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-08T16:30:00Z
-start_date: null
+start_date: 2026-06-08T17:00:00Z
 finish_date: null
 updated: 2026-06-08T16:30:00Z
 epic: tax-fixes
