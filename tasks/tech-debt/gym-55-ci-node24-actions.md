@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-55
 title: "CI: bump GitHub Actions for Node 24 (checkout, login-action) before the deadline"
 slug: gym-55-ci-node24-actions
-status: in_progress
+status: review
 priority: medium
 type: chore
 labels: [tech-debt, infra, ci]
