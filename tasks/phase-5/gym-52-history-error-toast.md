@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-52
 title: "apps/web: surface a 'couldn't save — restored' message on mutation error"
 slug: gym-52-history-error-toast
-status: backlog
+status: in_progress
 priority: low
 type: bug-fix
 labels: [phase-5, frontend]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-04T21:35:00Z
-start_date: null
+start_date: 2026-06-08T22:50:00Z
 finish_date: null
 updated: 2026-06-04T21:35:00Z
 epic: phase-5
