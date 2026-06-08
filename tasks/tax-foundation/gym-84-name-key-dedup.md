@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-84
 title: "DB: normalized name_key + UNIQUE(name_key, scope) on muscles & exercises + backfill"
 slug: gym-84-name-key-dedup
-status: backlog
+status: in_progress
 priority: high
 type: feature
 labels: [taxonomy, db, validation]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-08T08:00:00Z
-start_date: null
+start_date: 2026-06-08T12:30:00Z
 finish_date: null
 updated: 2026-06-08T08:00:00Z
 epic: tax-foundation
