@@ -21,6 +21,8 @@ packages/db/
       0002_rls.py                  # RLS helpers, policies on the 6 base tables, GRANTs to app_rw
       0003_training_frequency_indexes.py  # per-user (user_id, muscle_id/exercise_id) indexes
       0004_name_key.py             # app_name_key() fn + generated name_key + UNIQUE + collision-rename
+      0005_user_overrides.py       # per-user rename overrides: user_exercise_override + user_muscle_override (user RLS)
+      0006_canonical_alias.py      # exercises.canonical_id + exercise_alias catalog table (catalog RLS)
   requirements.txt                 # alembic + psycopg2-binary
 ```
 
