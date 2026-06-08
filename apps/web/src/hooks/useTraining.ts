@@ -61,6 +61,12 @@ export function useTrainingDay(date: string) {
  * Invalidate every key a set edit/delete can move (§11.4): the day, all day-list
  * windows, and the analytics surfaces (a weight edit can change a PR/streak/cell)
  * so Dashboard and Progress never show stale numbers after an edit.
+ *
+ * GYM-105: also invalidates log-context (all exercises, all dates) so that an
+ * already-open SetLogger — and the next open — reflects the deleted/edited set
+ * immediately. The broad prefix covers every muscle/exercise combination; the
+ * query is small, so the extra refetch cost is negligible. exercise-progress is
+ * also covered (already was) because an edit can change the per-exercise PR.
  */
 function invalidateAfterMutation(
     qc: ReturnType<typeof useQueryClient>,
@@ -71,6 +77,9 @@ function invalidateAfterMutation(
     void qc.invalidateQueries({ queryKey: ["analytics", "summary"] });
     void qc.invalidateQueries({ queryKey: ["analytics", "activity"] });
     void qc.invalidateQueries({ queryKey: ["analytics", "exercise-progress"] });
+    // GYM-105: invalidate ALL log-context entries (by broad prefix) so the
+    // SetLogger never shows deleted sets as ✓ and always shows the real PR.
+    void qc.invalidateQueries({ queryKey: ["analytics", "log-context"] });
 }
 
 interface EditVars {

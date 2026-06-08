@@ -78,8 +78,17 @@ export function logContextKey(
 /**
  * The single Phase-B read (§12.3): completed set numbers + last session's sets +
  * the PR, in one round-trip. Disabled until both names exist, so Phase A fires
- * nothing. A long staleTime keeps a re-entered exercise instant; a save
- * invalidates this key so the recap/auto-set stay correct.
+ * nothing.
+ *
+ * GYM-105: staleTime is intentionally 0 so React Query ALWAYS refetches on
+ * mount (i.e. every time the SetLogger opens for an exercise). This fixes the
+ * prod-verified bug where reopening within the 10-min SESSION_STALE window
+ * served a stale cache snapshot that still contained deleted sets as ✓ and
+ * showed no PR. gcTime is kept at SESSION_GC so the previous snapshot renders
+ * INSTANTLY as a placeholder while the fresh fetch runs in the background —
+ * the instant feel is preserved, but the server truth always arrives and
+ * replaces the stale data. The query is small and sargable (GYM-59), so the
+ * per-open refetch is cheap.
  */
 export function useLogContext(
     muscle: string | null,
@@ -91,8 +100,9 @@ export function useLogContext(
         queryFn: ({ signal }) =>
             fetchLogContext(muscle as string, exercise as string, date, signal),
         enabled: Boolean(muscle && exercise),
-        staleTime: SESSION_STALE,
+        staleTime: 0,
         gcTime: SESSION_GC,
+        refetchOnMount: "always",
     });
 }
 
