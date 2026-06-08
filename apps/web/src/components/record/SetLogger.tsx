@@ -6,7 +6,8 @@
  *    the last prior session's sets + the PR, in a single round-trip.
  *  - Today recap = log-context completed set NUMBERS ∪ this-session saved sets
  *    (full w×r). Session sets show `Set n — {w}kg × {r}`; pre-session ones
- *    `Set n ✓`.
+ *    `Set n ✓`. Sorted DESC (newest first) so older sets scroll away and the
+ *    most recent set is always at the top of the recap block (GYM-101).
  *  - Auto set # = max(completed ∪ session) + 1 (never a naive counter).
  *  - Two pre-filled <Stepper>s, priority (§12.3): (1) this session's previous
  *    set for this exercise; (2) `last_session_sets` set N (what you did for that
@@ -17,6 +18,14 @@
  *    pre-fill) → +1 tap/set. PR-beat: a single accent pulse when the weight
  *    strictly beats the known PR, behind prefers-reduced-motion.
  *  - "← Switch exercise" → Phase A; "Done" → close (controller invalidates).
+ *
+ * Layout (GYM-101): the root div is a flex column that fills the sheet body.
+ *   - Static top: switch button + createHint + exercise identity (shrink-0).
+ *   - Recap region: internally scrollable (flex-1 min-h-0 overflow-y-auto),
+ *     so older sets scroll away without pushing the controls down.
+ *   - Controls region: always-visible (shrink-0) — SET heading + PR chip +
+ *     loading hint + steppers + error + SheetSaveButton + Done.
+ * The page/sheet itself never scrolls; only the recap block scrolls internally.
  *
  * Write error (§12.5): keep the sheet open, surface an inline message, do NOT
  * advance the set number or append the recap (the recap never lies).
@@ -160,8 +169,10 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
             ...serverSets.map((s) => s.set),
             ...sessionSets.map((s) => s.set),
         ]);
+        // GYM-101: DESC order so the newest set is at the top of the recap.
+        // Older sets scroll away below; the last-logged set is always visible.
         return [...nums]
-            .sort((a, b) => a - b)
+            .sort((a, b) => b - a)
             .map((n) => {
                 const session = sessionByNum.get(n) ?? null;
                 // Server set provides w×r for pre-session sets (reopen / Continue).
@@ -213,54 +224,69 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
     const prReps = pr && prAnchor === pr.weight ? pr.reps : null;
 
     return (
-        <div className="pb-2">
-            {/* Switch-exercise (in-body, NOT the Telegram Back — §12.8). */}
-            <button
-                type="button"
-                onClick={onSwitch}
-                className="press-95 -ml-1 mb-3 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
-            >
-                ← Switch exercise
-            </button>
+        // GYM-101: root is a flex column that fills the sheet body (the sheet
+        // body is already flex-col + overflow-y:auto from BottomSheet fixedHeight
+        // mode). By making this element flex-col flex-1 min-h-0, the three
+        // regions below can distribute the available height correctly:
+        //   1. Static top  — shrink-0, always at the top
+        //   2. Recap       — flex-1 min-h-0 overflow-y-auto, consumes remaining space
+        //   3. Controls    — shrink-0, always at the bottom (never pushed off-screen)
+        <div className="flex min-h-0 flex-1 flex-col">
+            {/* ── Static top: switch + createHint + exercise identity ──────── */}
+            <div className="shrink-0">
+                {/* Switch-exercise (in-body, NOT the Telegram Back — §12.8). */}
+                <button
+                    type="button"
+                    onClick={onSwitch}
+                    className="press-95 -ml-1 mb-3 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
+                >
+                    ← Switch exercise
+                </button>
 
-            {/* GYM-85: non-blocking hint when resolution=existing on the previous
-                add-inline action. Shown only once; dismissed by the × or naturally
-                when the user switches exercises. Tokens only — text-hint (muted). */}
-            {createHint ? (
-                <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-hairline bg-secondary-bg px-3 py-2">
-                    <p
-                        aria-live="polite"
-                        className="text-label text-hint"
-                    >
-                        {createHint}
-                    </p>
-                    <button
-                        type="button"
-                        aria-label="Dismiss"
-                        onClick={onClearCreateHint}
-                        className="press-95 shrink-0 min-h-[32px] min-w-[32px] flex items-center justify-center text-base text-hint"
-                    >
-                        ×
-                    </button>
+                {/* GYM-85: non-blocking hint when resolution=existing on the previous
+                    add-inline action. Shown only once; dismissed by the × or naturally
+                    when the user switches exercises. Tokens only — text-hint (muted). */}
+                {createHint ? (
+                    <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-hairline bg-secondary-bg px-3 py-2">
+                        <p
+                            aria-live="polite"
+                            className="text-label text-hint"
+                        >
+                            {createHint}
+                        </p>
+                        <button
+                            type="button"
+                            aria-label="Dismiss"
+                            onClick={onClearCreateHint}
+                            className="press-95 flex shrink-0 min-h-[32px] min-w-[32px] items-center justify-center text-base text-hint"
+                        >
+                            ×
+                        </button>
+                    </div>
+                ) : null}
+
+                {/* Exercise identity (read-only, GYM-77 #2).
+                    The exercise name truncates at min-w-0 (the flex child clips).
+                    The muscle chip is shrink-0 with a max-width so it never
+                    overflows the row and still clips cleanly with an ellipsis. */}
+                <div className="flex items-center gap-3">
+                    <h2 className="min-w-0 flex-1 truncate font-display text-title text-text" title={exerciseName}>
+                        {exerciseName}
+                    </h2>
+                    <span className="min-w-0 shrink-0" style={{ maxWidth: "8rem" }}>
+                        <Chip title={muscleName}>{muscleName}</Chip>
+                    </span>
                 </div>
-            ) : null}
-
-            {/* Exercise identity (read-only, GYM-77 #2).
-                The exercise name truncates at min-w-0 (the flex child clips).
-                The muscle chip is shrink-0 with a max-width so it never
-                overflows the row and still clips cleanly with an ellipsis. */}
-            <div className="flex items-center gap-3">
-                <h2 className="min-w-0 flex-1 truncate font-display text-title text-text" title={exerciseName}>
-                    {exerciseName}
-                </h2>
-                <span className="min-w-0 shrink-0" style={{ maxWidth: "8rem" }}>
-                    <Chip title={muscleName}>{muscleName}</Chip>
-                </span>
             </div>
 
-            {/* Today recap — log-context numbers ∪ this-session w×r (§12.3). */}
-            <section className="mt-5">
-                <div className="text-label uppercase tracking-wide text-hint">
+            {/* ── Recap region: internally scrollable, bounded by remaining height ── */}
+            {/* GYM-101: flex-1 min-h-0 overflow-y-auto means this region expands
+                to fill whatever space is left between the static top and controls
+                region, and scrolls INTERNALLY when sets overflow. Sorted DESC so
+                the newest set is always at the top (most recently logged is
+                immediately visible; older sets scroll away below). */}
+            <section className="mt-5 min-h-0 flex-1 overflow-y-auto">
+                <div className="shrink-0 text-label uppercase tracking-wide text-hint">
                     Today
                 </div>
                 {recap.length === 0 ? (
@@ -292,74 +318,82 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                 )}
             </section>
 
-            {/* SET heading + PR target chip (§12.3) — "PR {w}kg × {r}". */}
-            <div className="mt-6 flex items-center justify-between">
-                <h3 className="font-display text-title text-text">
-                    SET {nextSet}
-                </h3>
-                {prAnchor !== null ? (
-                    <span
-                        className={`tabular rounded-full px-3 py-1 text-label font-semibold text-accent ${
-                            pulse ? "pr-pulse motion-reduce:animate-none" : ""
-                        }`}
-                    >
-                        PR {prAnchor}kg
-                        {prReps !== null ? ` × ${prReps}` : ""}
-                    </span>
+            {/* ── Controls region: always visible, never scrolled off-screen ─── */}
+            {/* GYM-101: shrink-0 keeps this region pinned at the bottom of the
+                flex column regardless of how tall the recap grows. The PR chip
+                lives here so it is always visible on reopen. */}
+            <div className="shrink-0 pb-2">
+                {/* SET heading + PR target chip (§12.3) — "PR {w}kg × {r}".
+                    Placed in the fixed controls region (GYM-101) so the PR is
+                    always visible regardless of how many sets are in the recap. */}
+                <div className="mt-4 flex items-center justify-between">
+                    <h3 className="font-display text-title text-text">
+                        SET {nextSet}
+                    </h3>
+                    {prAnchor !== null ? (
+                        <span
+                            className={`tabular rounded-full px-3 py-1 text-label font-semibold text-accent ${
+                                pulse ? "pr-pulse motion-reduce:animate-none" : ""
+                            }`}
+                        >
+                            PR {prAnchor}kg
+                            {prReps !== null ? ` × ${prReps}` : ""}
+                        </span>
+                    ) : null}
+                </div>
+
+                {ctx.isLoading ? (
+                    <p className="mt-2 text-label text-hint">loading your numbers…</p>
                 ) : null}
-            </div>
 
-            {ctx.isLoading ? (
-                <p className="mt-2 text-label text-hint">loading your numbers…</p>
-            ) : null}
+                {/* Two pre-filled steppers (§12.3). */}
+                <div className="mt-4 flex flex-col gap-6">
+                    <Stepper
+                        label="Weight"
+                        unit="kg"
+                        value={weight}
+                        text={weightText}
+                        onChange={({ text }) => setWeightText(text)}
+                        min={0}
+                        step={2.5}
+                        inputMode="decimal"
+                    />
+                    <Stepper
+                        label="Reps"
+                        value={reps}
+                        text={repsText}
+                        onChange={({ text }) => setRepsText(text)}
+                        min={0}
+                        step={1}
+                        integer
+                        inputMode="numeric"
+                    />
+                </div>
 
-            {/* Two pre-filled steppers (§12.3). */}
-            <div className="mt-4 flex flex-col gap-6">
-                <Stepper
-                    label="Weight"
-                    unit="kg"
-                    value={weight}
-                    text={weightText}
-                    onChange={({ text }) => setWeightText(text)}
-                    min={0}
-                    step={2.5}
-                    inputMode="decimal"
+                {/* Write error (§12.5) — sheet stays open, no recap was appended. */}
+                {create.isError ? (
+                    <p className="mt-3 text-label text-accent">
+                        Couldn't save that set — try again.
+                    </p>
+                ) : null}
+
+                {/* Sticky in-sheet SAVE — the shared <SheetSaveButton> (§11.4). */}
+                <SheetSaveButton
+                    label={`Save set ${nextSet}`}
+                    onClick={save}
+                    disabled={!canSave}
+                    pulse={pulse}
                 />
-                <Stepper
-                    label="Reps"
-                    value={reps}
-                    text={repsText}
-                    onChange={({ text }) => setRepsText(text)}
-                    min={0}
-                    step={1}
-                    integer
-                    inputMode="numeric"
-                />
+
+                {/* Quiet "finish" affordance — closes the sheet (§12.3). */}
+                <button
+                    type="button"
+                    onClick={onDone}
+                    className="press-95 mt-2 min-h-[44px] w-full text-base text-hint"
+                >
+                    Done
+                </button>
             </div>
-
-            {/* Write error (§12.5) — sheet stays open, no recap was appended. */}
-            {create.isError ? (
-                <p className="mt-3 text-label text-accent">
-                    Couldn't save that set — try again.
-                </p>
-            ) : null}
-
-            {/* Sticky in-sheet SAVE — the shared <SheetSaveButton> (§11.4). */}
-            <SheetSaveButton
-                label={`Save set ${nextSet}`}
-                onClick={save}
-                disabled={!canSave}
-                pulse={pulse}
-            />
-
-            {/* Quiet "finish" affordance — closes the sheet (§12.3). */}
-            <button
-                type="button"
-                onClick={onDone}
-                className="press-95 mt-2 min-h-[44px] w-full text-base text-hint"
-            >
-                Done
-            </button>
         </div>
     );
 }
