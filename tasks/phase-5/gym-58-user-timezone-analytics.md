@@ -13,12 +13,12 @@ reporter: oleksii
 created: 2026-06-05T00:00:00Z
 start_date: 2026-06-08T23:10:00Z
 finish_date: 2026-06-08T00:00:00Z
-updated: 2026-06-08T00:00:00Z
+updated: 2026-06-09T00:00:00Z
 epic: phase-5
 depends_on: [GYM-56]
 blocks: []
 related: [GYM-12, GYM-39]
-commits: [54d4144, a5db3f3]
+commits: [54d4144, a5db3f3, 54e2f87]
 tests: [apps/api/tests/test_gym58_timezone.py]
 design_reports: []
 review_reports: []
@@ -74,6 +74,26 @@ UTC behaviour.
 `activity` and `summary` so a UTC-result and a tz-result for the same user never collide.
 
 **Full test suite result**: 370 passed, 0 failed (`cd apps/api && python3 -m pytest tests/ -q`).
+
+### 2026-06-09 — frontend wiring (54e2f87)
+
+Added `apps/web/src/lib/timezone.ts` exporting `DEVICE_TZ: string | undefined`
+resolved once at module load via `Intl.DateTimeFormat().resolvedOptions().timeZone`.
+Guards the empty/undefined edge case: if the runtime returns "" the export is
+`undefined` and callers omit `tz` so the server falls back to UTC.
+
+Three API fns updated to accept an optional `tz` param:
+- `fetchSummary(signal?, tz?)` — appends `?tz=` when truthy
+- `fetchActivity(from, to, signal?, tz?)` — appends `&tz=` when truthy
+- `fetchTrainingDays(from, to, signal?, tz?)` — appends `&tz=` when truthy
+
+Three hooks/keys updated to pass `DEVICE_TZ` and include it in their React
+Query cache keys (so a timezone change across reloads produces a cache miss):
+- `useSummary` — queryKey: `["analytics","summary", DEVICE_TZ ?? "UTC"]`
+- `useActivity` — queryKey: `["analytics","activity", from, to, DEVICE_TZ ?? "UTC"]`
+- `daysKey` / `useTrainingDays` — key now `["training","days", from, to, DEVICE_TZ ?? "UTC"]`
+
+Build result: `tsc && vite build` — 728 modules, 0 errors, 0 warnings (clean).
 
 ### 2026-06-08 — contract slice (54d4144)
 Contract-only slice landed. Added a reusable `TimezoneQuery` parameter component (`tz`: optional
