@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-87
 title: "DB: canonical catalog formalization + alias/synonym table + merge-support columns"
 slug: gym-87-canonical-catalog-alias-schema
-status: backlog
+status: in_progress
 priority: high
 type: feature
 labels: [taxonomy, db]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-08T08:00:00Z
-start_date: null
+start_date: 2026-06-08T20:30:00Z
 finish_date: null
 updated: 2026-06-08T08:00:00Z
 epic: tax-linking
