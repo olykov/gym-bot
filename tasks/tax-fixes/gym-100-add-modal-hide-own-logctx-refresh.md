@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-100
 title: "apps/web: fix broken add-exercise modal + Hide action for own items + refresh log-context on add/resolve"
 slug: gym-100-add-modal-hide-own-logctx-refresh
-status: todo
+status: in_progress
 priority: critical
 type: bug-fix
 labels: [tax-fixes, frontend, design, ux, bug]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-08T15:00:00Z
-start_date: null
+start_date: 2026-06-08T15:30:00Z
 finish_date: null
 updated: 2026-06-08T15:00:00Z
 epic: tax-fixes
