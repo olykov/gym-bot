@@ -34,6 +34,12 @@ interface RecordSheetProps {
 
 export function RecordSheet({ open, onClose }: RecordSheetProps) {
     const [chosen, setChosen] = useState<ChosenExercise | null>(null);
+    /**
+     * GYM-85: transient hint shown after resolution=existing on create, persists
+     * through the Phase A→B transition so it is visible in SetLogger. Cleared on
+     * sheet close or on the next add action.
+     */
+    const [createHint, setCreateHint] = useState<string | null>(null);
     const today = toISODate(new Date());
 
     // Phase A picker step — lifted here so the BackButton override can step back
@@ -69,6 +75,7 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
             setChosen(null);
             setPickerStep("muscles");
             setSelectedMuscle(null);
+            setCreateHint(null);
         }
     }, [open]);
 
@@ -109,12 +116,15 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
                     chosen={chosen}
                     today={today}
                     serverSets={serverSets}
+                    createHint={createHint}
+                    onClearCreateHint={() => setCreateHint(null)}
                     onSwitch={() => {
                         // GYM-77 #4: return to the exercise list for the same
                         // muscle (selectedMuscle is preserved here in the
                         // controller, so RecordPicker remounts with the right
                         // muscle and the picker step stays on "exercises").
                         setChosen(null);
+                        setCreateHint(null);
                     }}
                     onDone={onClose}
                 />
@@ -126,6 +136,7 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
                     selectedMuscle={selectedMuscle}
                     onMuscleChange={setSelectedMuscle}
                     onPick={setChosen}
+                    onCreateHint={setCreateHint}
                 />
             )}
         </BottomSheet>

@@ -1036,3 +1036,38 @@ when a muscle is selected (empty path safe).
 
 **Muscle list in the move view:** `ManageSheet` calls `useMuscles()` directly (the same cached query
 already warm from `RecordPicker`). No extra network round-trip on open: the cache is shared.
+
+## 12.11 Add-flow resolution UX (GYM-85)
+
+> Implemented 2026-06-08. Extends §12.2 (add-inline `+ Muscle` / `+ Exercise`). These rules are
+> BINDING for any future changes to the add-inline flow.
+
+`POST /muscles` and `POST /exercises` return a `resolution` field (`"created"` | `"unhidden"` |
+`"existing"`) on the returned Muscle/Exercise. The frontend branches on this field:
+
+- **`created`** — new row. Behave exactly as before: auto-select the item and proceed into the flow.
+  No message.
+
+- **`unhidden`** — an item the user had hidden was silently unhidden and returned. Same flow as
+  `created`: silent auto-select and proceed. No message, no prompt (operator decision: the user
+  re-added something they'd hidden; it just works).
+
+- **`existing`** — the name matched a visible item; no duplicate was created. **Show a graceful,
+  non-blocking, dismissible hint "You already have 'Name'."** AND still select/use the returned item
+  so the user is not dead-ended. The auto-select uses `data.name` (the canonical name the backend
+  returned), not the user-typed string.
+  - For **exercises**: since `onPick` immediately transitions to Phase B (SetLogger) and unmounts
+    RecordPicker, the hint is lifted to `RecordSheet` (`createHint` state) and rendered at the top
+    of `SetLogger`, below the "← Switch exercise" button. The hint is dismissible via a × button and
+    is cleared on exercise switch or sheet close.
+  - For **muscles**: `pickMuscle` navigates to the exercise step (RecordPicker stays mounted). The
+    hint is set in `resolveHint` state (local to RecordPicker) after `pickMuscle` returns, so it
+    renders in the exercise panel. It is cleared on back-navigation, new add field open, or goBack.
+
+**Auto-select canonical name:** all three resolutions use `data.name` from the backend response, not
+the user-typed string. This ensures the item's real display name (e.g. "Bench Press" even if the
+user typed "bench-press") is used in the auto-select.
+
+**ManageSheet rename (existing behavior, verified):** the rename PATCH 409 path already shows "That
+name is already in use." inline — this covers separator/case variants too (key-based dedup in the
+API as of GYM-85), so no change is needed there.

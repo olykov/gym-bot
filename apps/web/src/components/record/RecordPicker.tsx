@@ -101,6 +101,13 @@ interface RecordPickerProps {
     onMuscleChange: (name: string | null) => void;
     /** Hand the chosen exercise to the controller → swaps to Phase B. */
     onPick: (chosen: ChosenExercise) => void;
+    /**
+     * GYM-85: called when a create returns resolution=existing so the controller
+     * (RecordSheet) can surface the hint in Phase B (SetLogger) after the picker
+     * unmounts. Only called for the "existing" resolution; "created" and "unhidden"
+     * never call this (silent or no-op).
+     */
+    onCreateHint: (hint: string) => void;
 }
 
 /** The last exercise trained today: the group whose set has the highest id. */
@@ -187,7 +194,7 @@ function useTilePressHandlers(
     };
 }
 
-export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMuscleChange, onPick }: RecordPickerProps) {
+export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMuscleChange, onPick, onCreateHint }: RecordPickerProps) {
     const qc = useQueryClient();
     const topMuscles = useTopMuscles();
     const muscles = useMuscles();
@@ -202,6 +209,14 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
 
     // Which add-inline field is open (if any).
     const [adding, setAdding] = useState<"muscle" | "exercise" | null>(null);
+
+    /**
+     * GYM-85: non-blocking hint shown when POST /muscles or POST /exercises returns
+     * resolution=existing (the name matched a visible item — no duplicate created, but
+     * the user should know). Cleared whenever the user opens a new add field or navigates.
+     * Stays null for resolution=created (normal) and resolution=unhidden (fully silent).
+     */
+    const [resolveHint, setResolveHint] = useState<string | null>(null);
 
     // GYM-82: manage sheet state.
     const [manageItem, setManageItem] = useState<ManageItem | null>(null);
@@ -326,6 +341,7 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
     function pickMuscle(name: string): void {
         setShowAllExercises(false);
         setAdding(null);
+        setResolveHint(null);
         onMuscleChange(name);
         onStepChange("exercises");
         // GYM-83: warm both top-exercises (for frequency sort) and full catalog.
@@ -337,34 +353,63 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         onMuscleChange(null);
         setShowAllExercises(false);
         setAdding(null);
+        setResolveHint(null);
         onStepChange("muscles");
     }
 
+    /**
+     * GYM-85: branch on POST /muscles resolution.
+     * - created: auto-select and proceed (existing behavior).
+     * - unhidden: silently select the returned item (same flow, no message).
+     * - existing: show "You already have 'Name'." then proceed with the returned item.
+     * Auto-select always uses data.name (the canonical name the backend returned).
+     *
+     * Note: pickMuscle clears resolveHint so for muscles we set the hint AFTER
+     * calling pickMuscle (which navigates to the exercise step) so it shows there.
+     */
     function submitMuscle(name: string): void {
         createMuscle.mutate(
             { name },
             {
-                onSuccess: () => {
+                onSuccess: (data) => {
                     setAdding(null);
-                    pickMuscle(name);
+                    const canonicalName = data.name;
+                    // Navigate first (pickMuscle resets resolveHint), then set hint.
+                    pickMuscle(canonicalName);
+                    if (data.resolution === "existing") {
+                        setResolveHint(`You already have "${canonicalName}".`);
+                    }
                 },
             },
         );
     }
 
+    /**
+     * GYM-85: branch on POST /exercises resolution.
+     * - created: auto-select into Phase B (existing behavior).
+     * - unhidden: silently select the returned item (no message).
+     * - existing: bubble the hint to RecordSheet via onCreateHint (so it survives
+     *   RecordPicker unmounting on Phase A→B transition), then proceed.
+     * Auto-select always uses data.name (canonical) and data from the returned Exercise.
+     */
     function submitExercise(name: string): void {
         const muscleName = selectedMuscle;
         if (!muscleName) return;
         createExercise.mutate(
             { name, muscle_name: muscleName },
             {
-                onSuccess: () => {
+                onSuccess: (data) => {
                     setAdding(null);
-                    // Auto-select the new exercise into Phase B (§12.2). No
-                    // history yet → cold pre-fill stays empty until valid.
-                    // selectedMuscle is preserved in RecordSheet (GYM-77 #4)
-                    // so Back from Phase B will land on the exercise list.
-                    onPick({ muscleName, exerciseName: name });
+                    const canonicalName = data.name;
+                    if (data.resolution === "existing") {
+                        // Bubble to RecordSheet so the hint persists into Phase B
+                        // (SetLogger), since onPick immediately unmounts the picker.
+                        onCreateHint(`You already have "${canonicalName}".`);
+                    }
+                    // Auto-select into Phase B (§12.2). Uses canonical name from backend.
+                    // selectedMuscle is preserved in RecordSheet (GYM-77 #4) so Back
+                    // from Phase B lands on the exercise list.
+                    onPick({ muscleName, exerciseName: canonicalName });
                 },
             },
         );
@@ -431,9 +476,21 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                         : null
                                 }
                                 onSubmit={submitExercise}
-                                onCancel={() => onMuscleChange(null)}
+                                onCancel={() => {
+                                    onMuscleChange(null);
+                                    setResolveHint(null);
+                                }}
                             />
                         )}
+                        {/* GYM-85: non-blocking hint when resolution=existing (empty-user path). */}
+                        {resolveHint ? (
+                            <p
+                                aria-live="polite"
+                                className="text-label text-hint"
+                            >
+                                {resolveHint}
+                            </p>
+                        ) : null}
                     </div>
                 </div>
                 {/* Manage sheet (even in empty state, shouldn't be needed but keep consistent). */}
@@ -554,7 +611,10 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                     <button
                                         type="button"
                                         tabIndex={isExerciseStep ? -1 : 0}
-                                        onClick={() => setAdding("muscle")}
+                                        onClick={() => {
+                                            setAdding("muscle");
+                                            setResolveHint(null);
+                                        }}
                                         className="press-95 flex w-full items-center justify-center rounded-lg border border-dashed border-hairline px-3 text-center text-base text-hint"
                                         style={{ height: "88px" }}
                                     >
@@ -576,7 +636,10 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                         : null
                                 }
                                 onSubmit={submitMuscle}
-                                onCancel={() => setAdding(null)}
+                                onCancel={() => {
+                                    setAdding(null);
+                                    setResolveHint(null);
+                                }}
                             />
                         ) : null}
                     </section>
@@ -662,18 +725,36 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                     : null
                             }
                             onSubmit={submitExercise}
-                            onCancel={() => setAdding(null)}
+                            onCancel={() => {
+                                setAdding(null);
+                                setResolveHint(null);
+                            }}
                         />
                     ) : (
                         <button
                             type="button"
                             tabIndex={isExerciseStep ? 0 : -1}
-                            onClick={() => setAdding("exercise")}
+                            onClick={() => {
+                                setAdding("exercise");
+                                setResolveHint(null);
+                            }}
                             className="press-95 min-h-[44px] rounded-full border border-dashed border-hairline px-4 text-base text-hint"
                         >
                             + Exercise
                         </button>
                     )}
+                    {/* GYM-85: non-blocking hint when resolution=existing.
+                        Shown in the exercise panel since both muscle and exercise
+                        "existing" cases navigate here (muscle pick transitions to
+                        exercises first, then the hint is set). */}
+                    {resolveHint ? (
+                        <p
+                            aria-live="polite"
+                            className="text-label text-hint"
+                        >
+                            {resolveHint}
+                        </p>
+                    ) : null}
                 </div>
             </div>
 

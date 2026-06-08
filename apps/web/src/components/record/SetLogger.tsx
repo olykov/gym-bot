@@ -48,11 +48,22 @@ interface SetLoggerProps {
      * The sheet may pass an empty array when the day hasn't loaded yet.
      */
     serverSets: TrainingSet[];
+    /**
+     * GYM-85: non-blocking hint from the add-inline resolution=existing path.
+     * Shows "You already have 'Name'." below the switch button. Null when no hint.
+     * Persisted in RecordSheet (controller) so it survives the Phase A→B unmount.
+     */
+    createHint?: string | null;
+    /**
+     * GYM-85: called when the user dismisses the create hint (or whenever it
+     * should be cleared — e.g. on switch). RecordSheet owns the hint state.
+     */
+    onClearCreateHint?: () => void;
     onSwitch: () => void;
     onDone: () => void;
 }
 
-export function SetLogger({ chosen, today, serverSets, onSwitch, onDone }: SetLoggerProps) {
+export function SetLogger({ chosen, today, serverSets, createHint, onClearCreateHint, onSwitch, onDone }: SetLoggerProps) {
     const { muscleName, exerciseName } = chosen;
 
     const ctx = useLogContext(muscleName, exerciseName, today);
@@ -211,6 +222,28 @@ export function SetLogger({ chosen, today, serverSets, onSwitch, onDone }: SetLo
             >
                 ← Switch exercise
             </button>
+
+            {/* GYM-85: non-blocking hint when resolution=existing on the previous
+                add-inline action. Shown only once; dismissed by the × or naturally
+                when the user switches exercises. Tokens only — text-hint (muted). */}
+            {createHint ? (
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-hairline bg-secondary-bg px-3 py-2">
+                    <p
+                        aria-live="polite"
+                        className="text-label text-hint"
+                    >
+                        {createHint}
+                    </p>
+                    <button
+                        type="button"
+                        aria-label="Dismiss"
+                        onClick={onClearCreateHint}
+                        className="press-95 shrink-0 min-h-[32px] min-w-[32px] flex items-center justify-center text-base text-hint"
+                    >
+                        ×
+                    </button>
+                </div>
+            ) : null}
 
             {/* Exercise identity (read-only, GYM-77 #2).
                 The exercise name truncates at min-w-0 (the flex child clips).
