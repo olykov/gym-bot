@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-106
 title: "API: centralize exercise/muscle name→id resolver (own→global by name_key) + fix lingering exact-name sites — deployable, NO migration"
 slug: gym-106-resolver-centralize
-status: review
+status: done
 priority: high
 type: refactor
 labels: [tax-foundation, api]
