@@ -13,12 +13,12 @@ reporter: oleksii
 created: 2026-06-08T08:00:00Z
 start_date: 2026-06-08T10:00:00Z
 finish_date: 2026-06-08T00:00:00Z
-updated: 2026-06-08T00:00:00Z
+updated: 2026-06-08T12:00:00Z
 epic: tax-moves
 depends_on: []
 blocks: []
 related: [GYM-89]
-commits: [4e9b50d, 6e44c16]
+commits: [4e9b50d, 6e44c16, f9d54b0]
 tests: [apps/api/tests/test_gym90_move_exercise.py]
 design_reports: []
 review_reports: []
@@ -69,6 +69,30 @@ Python `models.py` are committed.
 
 Affected clients: Python (bot) and TypeScript (web/admin/miniapp) — purely additive, no breaking
 change to existing operations.
+
+### 2026-06-08 — Frontend slice (f9d54b0)
+
+Implemented the "Move to another muscle" action in `ManageSheet` for own exercises (`is_mine === true`, `kind === "exercise"`) as a new `move` view in the existing view state machine. Global exercises still show Hide only. Muscles are unaffected.
+
+**Move view:** A ← Back row returns to actions. A "Move to" label + scrollable list of muscles from `useMuscles()` (cached, no extra round-trip — same query already warm in RecordPicker). The current exercise's muscle is excluded via the `muscleId` field now passed through `ManageSheetProps.item`. Each muscle row is a full-width ≥52px button in the existing `--secondary-bg` / hairline style, consistent with the rename and delete action rows.
+
+**Error handling:**
+- 409 (name collision in target): inline message "You already have an exercise with this name in {muscle}." — stays in the move view so the user can pick a different target.
+- 403 (global/canonical — not movable): "This exercise can't be moved."
+- 404 (exercise or target not found): "Target muscle not found — try again."
+- Other: "Couldn't move — try again."
+
+**Hook + invalidation:** `useMoveExercise` added to `useRecord.ts` (mirrors the existing rename/delete/hide hooks). On success invalidates `["muscles"]`, `["analytics","top-muscles"]`, `["analytics","top-exercises"]`, and `["analytics","exercise-progress"]` via the shared `invalidateElementLists` helper plus an explicit exercise-progress invalidation.
+
+**API fn:** `moveExercise(exerciseId, body)` added to `api/analytics.ts` alongside the existing rename/delete/hide fns. `ExerciseMove` type re-exported from the generated schema.
+
+**RecordPicker change:** `ManageItem` extended with `muscleId?: number`; `openExerciseManage` passes `selectedMuscleId` so the move view can exclude the current muscle.
+
+**spec update:** `docs/frontend-spec.md` §12.10 updated to document the Move action, view design, error codes, hook additions, and the muscle-list caching note.
+
+**Build:** `tsc && vite build` — green, 0 errors.
+
+**Needs live-device pass:** verify the move view opens correctly from a long-press on an own exercise, that picking a target closes the sheet and the exercise appears under the new muscle in the picker, and that the 409 inline message renders in-place without dismissing the sheet.
 
 ### 2026-06-08 — API slice (6e44c16)
 
