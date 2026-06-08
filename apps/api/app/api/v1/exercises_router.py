@@ -368,26 +368,30 @@ def hide_exercise(
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> None:
-    """Hide a global exercise for the authenticated user.
+    """Hide a global or own exercise for the authenticated user.
 
-    Maps to ``hide_exercise(user_id, exercise_name, muscle_name)``.
+    Allows hiding any exercise visible to the caller — global exercises AND
+    exercises the caller created themselves.  This is needed for own exercises
+    that have logged history (the delete-guard blocks hard-delete, so Hide is
+    the only way to remove them from pickers).  (GYM-99)
 
     Args:
-        exercise_id: Id of the global exercise to hide.
+        exercise_id: Id of the exercise to hide (global or own).
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
     uid = principal["user_id"]
+    # Reason: accept global exercises OR the caller's own private exercises;
+    # RLS already ensures we can only see exercises visible to this user.
     exercise = (
         db.query(models.Exercise)
         .filter(
             models.Exercise.id == exercise_id,
-            models.Exercise.is_global.is_(True),
         )
         .first()
     )
     if exercise is None:
-        raise HTTPException(status_code=404, detail="Global exercise not found")
+        raise HTTPException(status_code=404, detail="Exercise not found")
 
     exists = (
         db.query(models.UserHiddenExercise)

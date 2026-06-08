@@ -9,6 +9,12 @@ soft-hide layer — subtracting rows the user has explicitly hidden.
 
 ``WHERE user_id`` / ``WHERE created_by`` filters in the routers are kept as
 defence-in-depth; RLS is the real enforcement boundary.
+
+GYM-99: hidden rows are excluded regardless of ownership (global OR own).
+Previously only global rows were subtracted from the visible set; now ANY row
+the user has hidden (including their own private items) is excluded.  This
+lets users with own exercises/muscles that have history (and therefore cannot
+be hard-deleted) hide them from pickers via the hide endpoint.
 """
 from typing import List
 
@@ -21,10 +27,8 @@ def visible_muscles(db: Session, user_id: int) -> List[Muscle]:
     """Return muscle groups visible to *user_id*, ordered by name.
 
     RLS already restricts the query to rows the user owns or that are global.
-    This function subtracts the soft-hide layer: global muscles the user has
-    explicitly hidden are excluded.
-
-    Private muscles created by the user are always returned (not hideable).
+    This function subtracts the soft-hide layer: any muscle the user has
+    explicitly hidden (global OR own) is excluded.  (GYM-99)
 
     Args:
         db: Active SQLAlchemy session with the RLS GUC already set for user_id.
@@ -41,16 +45,14 @@ def visible_muscles(db: Session, user_id: int) -> List[Muscle]:
     )
 
     # Reason: RLS enforces the hard boundary (is_global OR created_by = me).
-    # Here we only apply the soft-hide: exclude global muscles the user hid.
-    # Private muscles (is_global=False, created_by=user_id) are never hideable
-    # so they appear unconditionally once RLS admits them.
+    # The soft-hide now covers ALL ownership categories — a user can hide their
+    # own private muscles (that have history and cannot be hard-deleted) as well
+    # as global muscles.  Exclude any muscle whose id appears in user_hidden_muscles
+    # for this user, regardless of is_global. (GYM-99)
     return (
         db.query(Muscle)
         .filter(
-            ~(
-                Muscle.is_global.is_(True)
-                & Muscle.id.in_(db.query(hidden_subq.c.muscle_id))
-            )
+            ~Muscle.id.in_(db.query(hidden_subq.c.muscle_id))
         )
         .order_by(Muscle.name)
         .all()
@@ -63,8 +65,8 @@ def visible_exercises_for_muscle(
     """Return exercises for *muscle_id* visible to *user_id*, ordered by name.
 
     RLS already restricts the query to rows the user owns or that are global.
-    This function subtracts the soft-hide layer: global exercises the user has
-    explicitly hidden are excluded.
+    This function subtracts the soft-hide layer: any exercise the user has
+    explicitly hidden (global OR own) is excluded.  (GYM-99)
 
     Args:
         db: Active SQLAlchemy session with the RLS GUC already set for user_id.
@@ -82,15 +84,15 @@ def visible_exercises_for_muscle(
     )
 
     # Reason: RLS enforces the hard boundary (is_global OR created_by = me).
-    # Here we only apply the soft-hide: exclude global exercises the user hid.
+    # The soft-hide now covers ALL ownership categories — a user can hide their
+    # own private exercises (that have history and cannot be hard-deleted) as
+    # well as global exercises.  Exclude any exercise whose id appears in
+    # user_hidden_exercises for this user, regardless of is_global. (GYM-99)
     return (
         db.query(Exercise)
         .filter(
             Exercise.muscle == muscle_id,
-            ~(
-                Exercise.is_global.is_(True)
-                & Exercise.id.in_(db.query(hidden_subq.c.exercise_id))
-            ),
+            ~Exercise.id.in_(db.query(hidden_subq.c.exercise_id)),
         )
         .order_by(Exercise.name)
         .all()

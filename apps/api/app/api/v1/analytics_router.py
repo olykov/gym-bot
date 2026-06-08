@@ -75,8 +75,8 @@ def get_completed_sets(
         .join(models.Exercise, models.Training.exercise_id == models.Exercise.id)
         .filter(
             models.Training.user_id == uid,
-            models.Muscle.name == muscle,
-            models.Exercise.name == exercise,
+            models.Muscle.name_key == func.app_name_key(muscle),
+            models.Exercise.name_key == func.app_name_key(exercise),
             models.Training.date >= datetime.combine(date, datetime.min.time()),
             models.Training.date < datetime.combine(date, datetime.max.time()),
         )
@@ -125,8 +125,8 @@ def get_training_history(
         .join(models.Exercise, models.Training.exercise_id == models.Exercise.id)
         .filter(
             models.Training.user_id == uid,
-            models.Muscle.name == muscle,
-            models.Exercise.name == exercise,
+            models.Muscle.name_key == func.app_name_key(muscle),
+            models.Exercise.name_key == func.app_name_key(exercise),
             models.Training.date < datetime.combine(today, datetime.min.time()),
         )
         .order_by(models.Training.date.desc(), models.Training.set.asc())
@@ -177,8 +177,8 @@ def get_personal_record(
         .join(models.Exercise, models.Training.exercise_id == models.Exercise.id)
         .filter(
             models.Training.user_id == uid,
-            models.Muscle.name == muscle,
-            models.Exercise.name == exercise,
+            models.Muscle.name_key == func.app_name_key(muscle),
+            models.Exercise.name_key == func.app_name_key(exercise),
         )
         .order_by(
             models.Training.weight.desc(),
@@ -228,8 +228,8 @@ def get_max_reps_for_weight(
         .join(models.Exercise, models.Training.exercise_id == models.Exercise.id)
         .filter(
             models.Training.user_id == uid,
-            models.Muscle.name == muscle,
-            models.Exercise.name == exercise,
+            models.Muscle.name_key == func.app_name_key(muscle),
+            models.Exercise.name_key == func.app_name_key(exercise),
             models.Training.weight == weight,
         )
         .scalar()
@@ -751,8 +751,8 @@ def get_exercise_progress(
         db.query(models.Exercise.id)
         .join(models.Muscle, models.Exercise.muscle == models.Muscle.id)
         .filter(
-            models.Muscle.name == muscle,
-            models.Exercise.name == exercise,
+            models.Muscle.name_key == func.app_name_key(muscle),
+            models.Exercise.name_key == func.app_name_key(exercise),
         )
         .first()
     )
@@ -827,13 +827,17 @@ def _resolve_exercise_id(
 ) -> Optional[int]:
     """Resolve exercise_id from muscle + exercise name via the RLS-scoped session.
 
+    Matches by ``name_key`` (the normalized form produced by the SQL function
+    ``app_name_key``) so that name variants like "bench-press", "BENCH PRESS",
+    and "Bench Press" all resolve to the same canonical exercise (GYM-99).
+
     Uses the same join pattern as ``get_exercise_progress`` so the user cannot
     probe exercises invisible to them under RLS.
 
     Args:
         db: SQLAlchemy session (already GUC-wired for the calling user).
-        muscle: Muscle group name.
-        exercise: Exercise name.
+        muscle: Muscle group name (any case/separator variant).
+        exercise: Exercise name (any case/separator variant).
 
     Returns:
         The integer exercise id, or ``None`` when not found / not visible.
@@ -842,8 +846,8 @@ def _resolve_exercise_id(
         db.query(models.Exercise.id)
         .join(models.Muscle, models.Exercise.muscle == models.Muscle.id)
         .filter(
-            models.Muscle.name == muscle,
-            models.Exercise.name == exercise,
+            models.Muscle.name_key == func.app_name_key(muscle),
+            models.Exercise.name_key == func.app_name_key(exercise),
         )
         .first()
     )
@@ -1019,9 +1023,12 @@ def get_log_context(
 
     exercise_id = _resolve_exercise_id(db, muscle, exercise)
     if exercise_id is None:
-        empty = schemas.LogContext(completed_sets=[], last_session_sets=[], pr=None)
-        cache_set(cache_key, {"completed_sets": [], "last_session_sets": [], "pr": None})
-        return empty
+        # Reason: do NOT cache a resolution miss — caching an empty result here
+        # would poison the key for the full TTL and mask future history once the
+        # exercise becomes visible (e.g. after unhide or a race with creation).
+        # A miss is cheap: it's a single indexed key lookup; letting it fall
+        # through to the DB every time is correct and safe. (GYM-99)
+        return schemas.LogContext(completed_sets=[], last_session_sets=[], pr=None)
 
     completed = _fetch_completed_sets(db, uid, exercise_id, date)
     last_sets = _fetch_last_session_sets(db, uid, exercise_id, date)

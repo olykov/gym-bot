@@ -311,14 +311,21 @@ def hide_muscle(
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> None:
-    """Hide a global muscle for the authenticated user.
+    """Hide a global or own muscle for the authenticated user.
+
+    Allows hiding any muscle visible to the caller — global muscles AND
+    muscles the caller created themselves.  Own muscles with history cannot be
+    hard-deleted (delete-guard), so Hide is the only way to remove them from
+    pickers.  (GYM-99)
 
     Args:
-        muscle_id: Id of the global muscle to hide.
+        muscle_id: Id of the muscle to hide (global or own).
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
     """
     uid = principal["user_id"]
+    # Reason: RLS already scopes the session to rows visible to this user,
+    # so any row found here is legitimately accessible to the caller.
     muscle = db.query(models.Muscle).filter(models.Muscle.id == muscle_id).first()
     if muscle is None:
         raise HTTPException(status_code=404, detail="Muscle not found")

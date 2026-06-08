@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text, Numeric, BigInteger
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Text, Numeric, BigInteger, Computed
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from datetime import datetime
@@ -23,6 +23,9 @@ class Muscle(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), unique=True, nullable=False)
+    # Generated always as app_name_key(name) — live on prod since GYM-84.
+    # Mapped read-only here; never set by the app (the DB generates it).
+    name_key = Column(String, Computed("public.app_name_key(name)", persisted=True))
     is_global = Column(Boolean, default=True)
     created_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
 
@@ -34,6 +37,8 @@ class Exercise(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
+    # Generated always as app_name_key(name) — live on prod since GYM-84.
+    name_key = Column(String, Computed("public.app_name_key(name)", persisted=True))
     muscle = Column(Integer, ForeignKey("muscles.id"))
     is_global = Column(Boolean, default=True)
     created_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
