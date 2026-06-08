@@ -652,11 +652,24 @@ Phase B all occupy this same fixed height; only the body scrolls internally per 
      ~2/3, centered). It is deliberately softer than the canonical `<Divider>` hard cut: a whisper of
      separation per the operator ("совсем лёгкий, ненавязчивый"). **Only rendered when the Continue tile
      is present** (token-only, no magic colour; the §9.5 "dissolve" idea at micro scale).
-  3. **Muscle tile grid.** Muscles (`top-muscles` frequency order first, then any remaining from
-     `/muscles`) in a **fixed 3-column grid** (`.picker-tile-grid-muscle`: `repeat(3, 1fr)`) — GYM-77:
-     tiles have a **fixed height of 88px** (fits 3 text lines at body line-height + 24px padding);
-     long names clamp at 3 lines + ellipsis (`.tile-name` CSS class) so NO tile ever grows its row.
-     Picking a muscle **slides LEFT** to Step 2.
+  3. **Muscle tile grid (GYM-103 — source is VISIBLE muscles, freq-ordered).** Muscle tiles come
+     **only from `GET /muscles`** (which excludes hidden after GYM-99). `GET /analytics/top-muscles`
+     is used **solely for ordering** (build a name→frequency map, sort the visible muscles by frequency
+     desc then alpha). A hidden muscle that still appears in top-muscles does NOT get a tile — the
+     union strategy is gone. This mirrors what GYM-83 did for exercises. The grid is **fixed 3-column**
+     (`.picker-tile-grid-muscle`: `repeat(3, 1fr)`) — GYM-77: tiles **fixed height 88px** (3 text lines
+     + 24px padding); long names clamp at 3 lines + ellipsis (`.tile-name` CSS class) so NO tile grows
+     its row. Picking a muscle **slides LEFT** to Step 2.
+
+  3b. **"Show Hidden" expander — muscle step (GYM-103).** A collapsed-by-default expander at the
+      **bottom** of the muscle panel, only rendered when the user has hidden muscles
+      (`GET /muscles/hidden` returns non-empty). A text trigger (`--hint`, chevron-rotates open/close,
+      ≥44px) reveals hidden muscle tiles (same 88px height, same 3-col grid, but **dashed border +
+      `--hint` text + 70% opacity** to signal "hidden"). Long-press on a hidden tile opens `<ManageSheet
+      isHiddenItem>` → single "Unhide" action → `DELETE /muscles/{id}/hidden` → the muscle returns to the
+      normal tile list and leaves the hidden list. Invalidate `["muscles"]`, `["analytics","top-muscles"]`,
+      `["muscles","hidden"]` on success. **Never shown when the hidden list is empty** (no empty state
+      inside the expander; if the last item is unhidden the expander disappears).
 
   **Step 2 — exercise step (slide-in from right):**
   Tapping a muscle tile triggers a **horizontal push** — the muscle panel translates out to the left
@@ -667,6 +680,13 @@ Phase B all occupy this same fixed height; only the body scrolls internally per 
   in a **fixed 2-column grid** (`.picker-tile-grid-exercise`: `repeat(2, 1fr)`) at the **same fixed
   height (88px)** with the same line-clamp-3 treatment — top ~6 + "Show all" (§12.9). **`+ Muscle`**
   in the muscle grid and **`+ Exercise`** under the exercise tiles open inline add fields.
+
+  **"Show Hidden" expander — exercise step (GYM-103).** Same expander pattern at the bottom of the
+  exercise panel. Only rendered when `GET /exercises/hidden?muscle=<name>` returns non-empty. Hidden
+  exercise tiles use the same muted style (dashed border, `--hint`, 70% opacity). Long-press → `<ManageSheet
+  isHiddenItem>` → "Unhide" → `DELETE /exercises/{id}/hidden` → the exercise returns to the visible list.
+  Invalidate `["muscles"]`, `["analytics","top-muscles"]`, `["analytics","top-exercises"]`,
+  `["exercises","hidden",muscleName]` on success. The expander resets when the muscle step is revisited.
 
   4. **Add inline.** A `+ Muscle` tile in the muscle grid and a `+ Exercise` affordance under the
      exercise tiles open a tiny inline text field (in-sheet, not a new screen) → on submit

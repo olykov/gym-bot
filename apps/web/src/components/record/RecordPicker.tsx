@@ -54,6 +54,10 @@ import { hapticImpact } from "@/telegram/webapp";
 import {
     useCreateExercise,
     useCreateMuscle,
+    useHiddenMuscles,
+    useHiddenExercises,
+    useUnhideMuscle,
+    useUnhideExercise,
     prefetchPickerReads,
     prefetchMuscleExercises,
     prefetchLogContext,
@@ -204,6 +208,19 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
     // GYM-83: frequency data (top-exercises) is kept for ordering only.
     const topExercises = useTopExercises(selectedMuscle);
 
+    // GYM-103: hidden lists for the "Show Hidden" expander.
+    const hiddenMuscles = useHiddenMuscles();
+    const hiddenExercises = useHiddenExercises(selectedMuscle);
+    const unhideMuscle = useUnhideMuscle();
+    const unhideExercise = useUnhideExercise();
+
+    // GYM-103: expander open state (collapsed by default).
+    const [showHiddenMuscles, setShowHiddenMuscles] = useState(false);
+    const [showHiddenExercises, setShowHiddenExercises] = useState(false);
+
+    // GYM-103: manage sheet for hidden items (Unhide only).
+    const [hiddenManageItem, setHiddenManageItem] = useState<ManageItem | null>(null);
+
     const createMuscle = useCreateMuscle();
     const createExercise = useCreateExercise();
 
@@ -309,23 +326,30 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         }
     }, [qc, continueExercise, today]);
 
-    // Merge top-muscles (frequency order) with the rest of the catalog, so a
-    // user with private muscles never-trained can still browse them.
-    const muscleOptions = useMemo(() => {
-        const seen = new Set<string>();
-        const out: string[] = [];
+    // GYM-103 fix: muscle tiles come ONLY from the VISIBLE muscles list (which
+    // already excludes hidden after GYM-99). top-muscles is used SOLELY for
+    // ordering (frequency map). A hidden muscle therefore never lingers as a tile
+    // — even if it still appears in top-muscles (which ignores hidden status).
+    // This mirrors what GYM-83 did for exercises.
+    const muscleFrequencyMap = useMemo((): Map<string, number> => {
+        const map = new Map<string, number>();
         for (const m of topMuscles.data ?? []) {
-            if (seen.has(m.name)) continue;
-            seen.add(m.name);
-            out.push(m.name);
+            map.set(m.name, m.frequency);
         }
-        for (const m of muscles.data ?? []) {
-            if (seen.has(m.name)) continue;
-            seen.add(m.name);
-            out.push(m.name);
-        }
-        return out;
-    }, [topMuscles.data, muscles.data]);
+        return map;
+    }, [topMuscles.data]);
+
+    const muscleOptions = useMemo((): string[] => {
+        const catalog = muscles.data ?? [];
+        return [...catalog]
+            .sort((a, b) => {
+                const fa = muscleFrequencyMap.get(a.name) ?? 0;
+                const fb = muscleFrequencyMap.get(b.name) ?? 0;
+                if (fb !== fa) return fb - fa;
+                return a.name.localeCompare(b.name);
+            })
+            .map((m) => m.name);
+    }, [muscles.data, muscleFrequencyMap]);
 
     const visibleExercises = showAllExercises
         ? exerciseList
@@ -333,8 +357,10 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
     const hiddenCount = exerciseList.length - visibleExercises.length;
 
     // Brand-new user: nothing trained today AND no muscles to browse.
+    // GYM-103: muscle loading now depends on muscles (not topMuscles — that is
+    // used for ordering only; a user with no history can still have muscles).
     const everythingLoaded =
-        !day.isLoading && !topMuscles.isLoading && !muscles.isLoading;
+        !day.isLoading && !muscles.isLoading;
     const isEmptyNewUser =
         everythingLoaded && !continueExercise && muscleOptions.length === 0;
 
@@ -413,6 +439,27 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                 },
             },
         );
+    }
+
+    // GYM-103: open unhide manage sheet for a hidden muscle tile.
+    function openHiddenMuscleManage(m: Muscle): void {
+        setHiddenManageItem({
+            id: m.id,
+            name: m.name,
+            kind: "muscle",
+            is_mine: false, // hidden items are always global
+        });
+    }
+
+    // GYM-103: open unhide manage sheet for a hidden exercise tile.
+    function openHiddenExerciseManage(ex: Exercise): void {
+        setHiddenManageItem({
+            id: ex.id,
+            name: ex.name,
+            kind: "exercise",
+            is_mine: false, // hidden items are always global
+            muscleName: selectedMuscle ?? undefined,
+        });
     }
 
     // GYM-82: open manage sheet for a muscle tile.
@@ -588,15 +635,14 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                             Muscle
                         </div>
 
-                        {topMuscles.isError && muscles.isError ? (
+                        {muscles.isError ? (
                             <ErrorState
                                 message="Couldn't load muscles."
                                 onRetry={() => {
-                                    void topMuscles.refetch();
                                     void muscles.refetch();
                                 }}
                             />
-                        ) : topMuscles.isLoading && muscles.isLoading ? (
+                        ) : muscles.isLoading ? (
                             <div className="picker-tile-grid-muscle">
                                 {Array.from({ length: 6 }).map((_, i) => (
                                     <Skeleton
@@ -634,6 +680,33 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                 ) : null}
                             </div>
                         )}
+
+                        {/* GYM-103: "Show Hidden" expander — bottom of muscle panel.
+                            Only rendered when there ARE hidden muscles (collapsed
+                            by default, hidden entirely when the list is empty). */}
+                        <ShowHiddenExpander
+                            label="muscles"
+                            isOpen={showHiddenMuscles}
+                            onToggle={() => setShowHiddenMuscles((v) => !v)}
+                            isLoading={hiddenMuscles.isLoading}
+                            hasHidden={(hiddenMuscles.data?.length ?? 0) > 0}
+                            tabIndex={isExerciseStep ? -1 : 0}
+                        >
+                            <div className="picker-tile-grid-muscle">
+                                {(hiddenMuscles.data ?? []).map((m) => (
+                                    <HiddenMuscleTile
+                                        key={m.id}
+                                        name={m.name}
+                                        tabIndex={isExerciseStep ? -1 : 0}
+                                        isPending={
+                                            unhideMuscle.isPending &&
+                                            hiddenManageItem?.id === m.id
+                                        }
+                                        onLongPress={() => openHiddenMuscleManage(m)}
+                                    />
+                                ))}
+                            </div>
+                        </ShowHiddenExpander>
 
                         {adding === "muscle" ? (
                             <AddInlineField
@@ -776,6 +849,33 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                             {resolveHint}
                         </p>
                     ) : null}
+
+                    {/* GYM-103: "Show Hidden" expander — bottom of exercise panel.
+                        Only rendered when there ARE hidden exercises for this muscle.
+                        Collapsed by default, reset when the muscle changes. */}
+                    <ShowHiddenExpander
+                        label="exercises"
+                        isOpen={showHiddenExercises}
+                        onToggle={() => setShowHiddenExercises((v) => !v)}
+                        isLoading={hiddenExercises.isLoading}
+                        hasHidden={(hiddenExercises.data?.length ?? 0) > 0}
+                        tabIndex={isExerciseStep ? 0 : -1}
+                    >
+                        <div className="picker-tile-grid-exercise">
+                            {(hiddenExercises.data ?? []).map((ex) => (
+                                <HiddenExerciseTile
+                                    key={ex.id}
+                                    name={ex.name}
+                                    tabIndex={isExerciseStep ? 0 : -1}
+                                    isPending={
+                                        unhideExercise.isPending &&
+                                        hiddenManageItem?.id === ex.id
+                                    }
+                                    onLongPress={() => openHiddenExerciseManage(ex)}
+                                />
+                            ))}
+                        </div>
+                    </ShowHiddenExpander>
                 </div>
             </div>
 
@@ -784,6 +884,32 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                 open={manageItem !== null}
                 onClose={() => setManageItem(null)}
                 item={manageItem}
+            />
+
+            {/* GYM-103: Manage sheet for hidden items — Unhide only. */}
+            <ManageSheet
+                open={hiddenManageItem !== null}
+                onClose={() => setHiddenManageItem(null)}
+                item={hiddenManageItem}
+                isHiddenItem
+                onUnhide={() => {
+                    if (!hiddenManageItem) return;
+                    if (hiddenManageItem.kind === "muscle") {
+                        unhideMuscle.mutate(
+                            { muscleId: hiddenManageItem.id },
+                            { onSuccess: () => setHiddenManageItem(null) },
+                        );
+                    } else {
+                        unhideExercise.mutate(
+                            {
+                                exerciseId: hiddenManageItem.id,
+                                muscleName: hiddenManageItem.muscleName ?? selectedMuscle ?? "",
+                            },
+                            { onSuccess: () => setHiddenManageItem(null) },
+                        );
+                    }
+                }}
+                isUnhidePending={unhideMuscle.isPending || unhideExercise.isPending}
             />
         </div>
     );
@@ -834,6 +960,121 @@ function ExerciseTile({ name, tabIndex, onTap, onLongPress }: TileProps) {
             style={{ height: "88px" }}
         >
             <span className="tile-name">{name}</span>
+        </button>
+    );
+}
+
+// ── GYM-103 sub-components ────────────────────────────────────────────────────
+
+interface ShowHiddenExpanderProps {
+    /** "muscles" or "exercises" — used in the label text. */
+    label: string;
+    isOpen: boolean;
+    onToggle: () => void;
+    /** True while the hidden list is loading (shows nothing while loading). */
+    isLoading: boolean;
+    /** True when there is at least one hidden item — controls visibility. */
+    hasHidden: boolean;
+    tabIndex: number;
+    children: React.ReactNode;
+}
+
+/**
+ * Collapsed-by-default expander for the "Show Hidden" section.
+ *
+ * Design (Chalk & Iron, tokens only):
+ * - The trigger row is a text button in `--hint` with a rotated chevron arrow.
+ * - Content (the hidden tile grid) renders below the trigger when open.
+ * - Only rendered when `hasHidden` is true — hidden entirely when nothing is
+ *   hidden (the operator's requirement: "collapsed when nothing hidden").
+ * - While the hidden list is still loading, nothing is shown (avoids flash of
+ *   expander→nothing when the list arrives empty).
+ */
+function ShowHiddenExpander({
+    label,
+    isOpen,
+    onToggle,
+    isLoading,
+    hasHidden,
+    tabIndex,
+    children,
+}: ShowHiddenExpanderProps) {
+    if (isLoading || !hasHidden) return null;
+
+    return (
+        <div className="mt-2">
+            <button
+                type="button"
+                tabIndex={tabIndex}
+                onClick={onToggle}
+                aria-expanded={isOpen}
+                className="press-95 inline-flex min-h-[44px] items-center gap-1.5 text-label text-hint"
+            >
+                <span
+                    aria-hidden
+                    style={{
+                        display: "inline-block",
+                        transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                        transition: "transform 150ms ease",
+                    }}
+                >
+                    ›
+                </span>
+                Show hidden {label}
+            </button>
+            {isOpen ? <div className="mt-2">{children}</div> : null}
+        </div>
+    );
+}
+
+interface HiddenTileProps {
+    name: string;
+    tabIndex: number;
+    /** True while the unhide mutation is in-flight for this specific item. */
+    isPending: boolean;
+    /** Long-press → open the Unhide manage sheet. */
+    onLongPress: () => void;
+}
+
+/**
+ * A hidden muscle tile — same size as a normal tile but muted (dashed border,
+ * `--hint` text) to signal the item is hidden. Long-press → Unhide manage sheet.
+ * Tapping does nothing (hidden items can't be picked — they're not visible).
+ */
+function HiddenMuscleTile({ name, tabIndex, isPending, onLongPress }: HiddenTileProps) {
+    // Tap does nothing for hidden tiles (they can't be selected).
+    const pressHandlers = useTilePressHandlers(() => undefined, onLongPress);
+    return (
+        <button
+            type="button"
+            tabIndex={tabIndex}
+            title={name}
+            disabled={isPending}
+            {...pressHandlers}
+            className="tile-no-select flex w-full items-center justify-center rounded-lg border border-dashed border-hairline px-3 text-center text-base text-hint opacity-70 disabled:opacity-40"
+            style={{ height: "88px" }}
+        >
+            <span className="tile-name">{isPending ? "Unhiding…" : name}</span>
+        </button>
+    );
+}
+
+/**
+ * A hidden exercise tile — same size as normal but muted. Long-press → Unhide.
+ */
+function HiddenExerciseTile({ name, tabIndex, isPending, onLongPress }: HiddenTileProps) {
+    const pressHandlers = useTilePressHandlers(() => undefined, onLongPress);
+    return (
+        <button
+            type="button"
+            tabIndex={tabIndex}
+            title={name}
+            disabled={isPending}
+            {...pressHandlers}
+            className="tile-no-select flex w-full items-center justify-center rounded-lg border border-dashed border-hairline px-3 text-center text-base text-hint opacity-70 disabled:opacity-40"
+            style={{ height: "88px" }}
+        >
+            <span className="tile-name">{isPending ? "Unhiding…" : name}</span>
         </button>
     );
 }

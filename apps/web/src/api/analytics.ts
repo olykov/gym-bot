@@ -204,3 +204,43 @@ export function hideExercise(exerciseId: number): Promise<void> {
 export function moveExercise(exerciseId: number, body: ExerciseMove): Promise<Exercise> {
     return apiRequest<Exercise>(`/exercises/${exerciseId}/muscle`, { method: "PATCH", body });
 }
+
+/**
+ * GET /muscles/hidden — the global muscles the caller has hidden (GYM-102).
+ * Powers the "Show Hidden" expander in the muscle picker step. Returns [] when
+ * nothing is hidden.
+ */
+export function fetchHiddenMuscles(signal?: AbortSignal): Promise<Muscle[]> {
+    return apiRequest<Muscle[]>("/muscles/hidden", { signal });
+}
+
+/**
+ * GET /exercises/hidden?muscle=<name> — the global exercises the caller has
+ * hidden within a muscle (GYM-102). Powers the "Show Hidden" expander in the
+ * exercise picker step. Returns [] when nothing is hidden for that muscle.
+ *
+ * @param muscle - muscle group name.
+ */
+export function fetchHiddenExercises(
+    muscle: string,
+    signal?: AbortSignal,
+): Promise<Exercise[]> {
+    const qs = new URLSearchParams({ muscle }).toString();
+    return apiRequest<Exercise[]>(`/exercises/hidden?${qs}`, { signal });
+}
+
+/**
+ * DELETE /muscles/{muscle_id}/hidden — unhide a previously hidden global muscle
+ * (GYM-102). Returns 204 on success; the muscle returns to the visible list.
+ */
+export function unhideMuscle(muscleId: number): Promise<void> {
+    return apiRequest<void>(`/muscles/${muscleId}/hidden`, { method: "DELETE" });
+}
+
+/**
+ * DELETE /exercises/{exercise_id}/hidden — unhide a previously hidden global
+ * exercise (GYM-102). Returns 204; the exercise returns to the visible list.
+ */
+export function unhideExercise(exerciseId: number): Promise<void> {
+    return apiRequest<void>(`/exercises/${exerciseId}/hidden`, { method: "DELETE" });
+}

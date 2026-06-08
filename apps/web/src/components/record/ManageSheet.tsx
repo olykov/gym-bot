@@ -66,9 +66,28 @@ interface ManageSheetProps {
         /** Current muscle id — used to exclude it from the move target list (exercises only). */
         muscleId?: number;
     } | null;
+    /**
+     * GYM-103: when true, the sheet was opened from the "Show Hidden" expander and
+     * should offer only the "Unhide" action (no rename/delete/hide/move).
+     */
+    isHiddenItem?: boolean;
+    /**
+     * GYM-103: called when the user confirms "Unhide" in the hidden-item sheet.
+     * Must be provided when `isHiddenItem` is true.
+     */
+    onUnhide?: () => void;
+    /** GYM-103: true while the unhide mutation is in-flight. */
+    isUnhidePending?: boolean;
 }
 
-export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
+export function ManageSheet({
+    open,
+    onClose,
+    item,
+    isHiddenItem = false,
+    onUnhide,
+    isUnhidePending = false,
+}: ManageSheetProps) {
     const [view, setView] = useState<ManageView>("actions");
     const [renameError, setRenameError] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -272,8 +291,22 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
                     {kindLabel}
                 </p>
 
+                {/* ── GYM-103: UNHIDE view (hidden-item sheet — single action) ── */}
+                {view === "actions" && isHiddenItem ? (
+                    <div className="rounded-lg border border-hairline overflow-hidden">
+                        <button
+                            type="button"
+                            onClick={onUnhide}
+                            disabled={isUnhidePending}
+                            className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
+                        >
+                            {isUnhidePending ? "Unhiding…" : "Unhide"}
+                        </button>
+                    </div>
+                ) : null}
+
                 {/* ── ACTIONS view ─────────────────────────────────────── */}
-                {view === "actions" && (
+                {view === "actions" && !isHiddenItem && (
                     <div className="rounded-lg border border-hairline overflow-hidden">
                         {item.is_mine ? (
                             <>

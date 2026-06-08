@@ -26,6 +26,8 @@ import {
     deleteExercise,
     deleteMuscle,
     fetchExercises,
+    fetchHiddenExercises,
+    fetchHiddenMuscles,
     fetchLogContext,
     fetchTopExercises,
     fetchTopMuscles,
@@ -34,6 +36,8 @@ import {
     moveExercise,
     renameExercise,
     renameMuscle,
+    unhideExercise,
+    unhideMuscle,
     type Exercise,
     type ExerciseCreate,
     type ExerciseMove,
@@ -404,6 +408,83 @@ export function useMoveExercise() {
             void qc.invalidateQueries({
                 queryKey: ["analytics", "exercise-progress"],
             });
+        },
+    });
+}
+
+// ── GYM-103: Show Hidden + Unhide ────────────────────────────────────────────
+
+/**
+ * GET /muscles/hidden — the global muscles the caller has hidden (GYM-102/103).
+ * Powers the "Show Hidden" expander at the bottom of the muscle picker.
+ * Returns [] when nothing is hidden; the expander is omitted entirely in that
+ * case (no empty-state query fan-out on the happy path).
+ */
+export function useHiddenMuscles() {
+    return useQuery<Muscle[]>({
+        queryKey: ["muscles", "hidden"],
+        queryFn: ({ signal }) => fetchHiddenMuscles(signal),
+        staleTime: 5 * 60_000,
+    });
+}
+
+/**
+ * GET /exercises/hidden?muscle=<name> — the global exercises hidden for one
+ * muscle (GYM-102/103). Powers the "Show Hidden" expander on the exercise step.
+ * Disabled until a muscle name is provided so the empty path fires no query.
+ *
+ * @param muscleName - muscle group name; pass null to disable the query.
+ */
+export function useHiddenExercises(muscleName: string | null) {
+    return useQuery<Exercise[]>({
+        queryKey: ["exercises", "hidden", muscleName],
+        queryFn: ({ signal }) =>
+            fetchHiddenExercises(muscleName as string, signal),
+        enabled: muscleName != null,
+        staleTime: 5 * 60_000,
+    });
+}
+
+interface UnhideMuscleVars {
+    muscleId: number;
+}
+
+/**
+ * DELETE /muscles/{id}/hidden — unhide a previously hidden global muscle
+ * (GYM-103). On success invalidates the visible muscle list, top-muscles, and
+ * the hidden-muscles list so both lists update immediately.
+ */
+export function useUnhideMuscle() {
+    const qc = useQueryClient();
+    return useMutation<void, Error, UnhideMuscleVars>({
+        mutationFn: ({ muscleId }) => unhideMuscle(muscleId),
+        onSuccess: () => {
+            void qc.invalidateQueries({ queryKey: ["muscles"] });
+            void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
+            void qc.invalidateQueries({ queryKey: ["muscles", "hidden"] });
+        },
+    });
+}
+
+interface UnhideExerciseVars {
+    exerciseId: number;
+    muscleName: string;
+}
+
+/**
+ * DELETE /exercises/{id}/hidden — unhide a previously hidden global exercise
+ * (GYM-103). On success invalidates the visible exercises list, top-exercises,
+ * and the hidden-exercises list for the muscle so both lists update immediately.
+ */
+export function useUnhideExercise() {
+    const qc = useQueryClient();
+    return useMutation<void, Error, UnhideExerciseVars>({
+        mutationFn: ({ exerciseId }) => unhideExercise(exerciseId),
+        onSuccess: (_data, vars) => {
+            void qc.invalidateQueries({ queryKey: ["muscles"] });
+            void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
+            void qc.invalidateQueries({ queryKey: ["analytics", "top-exercises"] });
+            void qc.invalidateQueries({ queryKey: ["exercises", "hidden", vars.muscleName] });
         },
     });
 }
