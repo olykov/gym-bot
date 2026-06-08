@@ -11,7 +11,7 @@
  * States are first-class (§11.6): a layout-matching skeleton while loading, an
  * EmptyState for an empty day / 404, an inline ErrorState + retry on error.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
@@ -39,6 +39,23 @@ export function HistoryDay() {
 
     const day = useTrainingDay(date);
     const [target, setTarget] = useState<EditorTarget | null>(null);
+
+    // GYM-52: inline error message surfaced after an optimistic rollback so the
+    // user understands why the value reverted (spec §11.4/§11.7). Auto-dismissed
+    // after 3 s; no jarring animation — transition respects prefers-reduced-motion.
+    const [mutationError, setMutationError] = useState<string | null>(null);
+    const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    function showMutationError(msg: string): void {
+        if (dismissTimer.current) clearTimeout(dismissTimer.current);
+        setMutationError(msg);
+        dismissTimer.current = setTimeout(() => setMutationError(null), 3000);
+    }
+
+    // Clean up the timer on unmount.
+    useEffect(() => () => {
+        if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    }, []);
 
     // BackButton: on this route, Back returns to the list (the sheet, while open,
     // overrides this — see <BottomSheet>). Wired only when the sheet is closed.
@@ -101,6 +118,20 @@ export function HistoryDay() {
 
     return (
         <>
+            {/* GYM-52: mutation-error banner — surfaces after an optimistic rollback
+                so the user understands why the value reverted. Token-only styling
+                (text-label + text-accent matches the existing write-error pattern in
+                SetLogger §12.5). Auto-dismissed after 3 s; transition is guarded by
+                motion-reduce so it never causes discomfort. */}
+            {mutationError ? (
+                <div
+                    aria-live="polite"
+                    className="mb-3 rounded-md border border-hairline bg-secondary-bg px-3 py-2 transition-opacity duration-300 motion-reduce:transition-none"
+                >
+                    <p className="text-label text-accent">{mutationError}</p>
+                </div>
+            ) : null}
+
             {exercises.map((ex) => (
                 <Card key={ex.exercise_id}>
                     {/* GYM-77 #2: exercise name clips with ellipsis; muscle chip
@@ -143,6 +174,12 @@ export function HistoryDay() {
                         titleId="set-editor-title"
                         onClose={closeEditor}
                         onDeleted={afterDelete}
+                        onEditError={() =>
+                            showMutationError("Couldn't save — restored.")
+                        }
+                        onDeleteError={() =>
+                            showMutationError("Couldn't delete — restored.")
+                        }
                     />
                 ) : null}
             </BottomSheet>

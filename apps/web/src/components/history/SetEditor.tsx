@@ -39,6 +39,16 @@ interface SetEditorProps {
     onClose: () => void;
     /** Called after a delete settles (so the page can navigate back if empty). */
     onDeleted: () => void;
+    /**
+     * GYM-52: called when an edit mutation errors out (after optimistic
+     * rollback). The parent surfaces the "couldn't save — restored" message.
+     */
+    onEditError?: () => void;
+    /**
+     * GYM-52: called when a delete mutation errors out (after optimistic
+     * rollback). The parent surfaces the "couldn't delete — restored" message.
+     */
+    onDeleteError?: () => void;
 }
 
 export function SetEditor({
@@ -47,6 +57,8 @@ export function SetEditor({
     titleId,
     onClose,
     onDeleted,
+    onEditError,
+    onDeleteError,
 }: SetEditorProps) {
     const { set, exerciseName } = target;
 
@@ -78,6 +90,9 @@ export function SetEditor({
             { trainingId: set.training_id, body: { weight, reps } },
             {
                 onSuccess: () => hapticNotification("success"),
+                // GYM-52: rollback is silent without this — notify the parent so
+                // it can surface "Couldn't save — restored." to the user.
+                onError: () => onEditError?.(),
             },
         );
         // Optimistic: the onMutate cache patch already applied, so close
@@ -93,6 +108,9 @@ export function SetEditor({
     function confirmDelete(): void {
         del.mutate(set.training_id, {
             onSuccess: () => hapticNotification("success"),
+            // GYM-52: rollback is silent without this — notify the parent so
+            // it can surface "Couldn't delete — restored." to the user.
+            onError: () => onDeleteError?.(),
         });
         // Optimistic: the onMutate cache patch has already removed the row, so
         // close and let the page decide (from the live cache) whether the day
