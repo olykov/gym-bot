@@ -138,6 +138,42 @@ def list_muscles(
     return muscles
 
 
+@router.get("/muscles/hidden", response_model=List[schemas.Muscle], tags=["muscles"])
+def list_hidden_muscles(
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> List[schemas.Muscle]:
+    """List muscles the authenticated user has hidden (GYM-102).
+
+    Joins ``user_hidden_muscles`` for this user to ``muscles``, ordered by name.
+    Returns both global muscles and own private muscles the user has hidden.
+    ``is_mine`` is set to True only for the user's own private muscles.
+    ``resolution`` is null (read endpoint, not a create/resolve path).
+
+    Args:
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        Ordered list of hidden muscles (may be empty).
+    """
+    uid = principal["user_id"]
+    hidden_ids_subq = (
+        db.query(models.UserHiddenMuscle.muscle_id)
+        .filter(models.UserHiddenMuscle.user_id == uid)
+        .subquery()
+    )
+    muscles = (
+        db.query(models.Muscle)
+        .filter(models.Muscle.id.in_(db.query(hidden_ids_subq.c.muscle_id)))
+        .order_by(models.Muscle.name)
+        .all()
+    )
+    for m in muscles:
+        m.is_mine = bool(m.created_by == uid and not m.is_global)
+    return muscles
+
+
 @router.post("/muscles", response_model=schemas.Muscle, tags=["muscles"])
 def create_muscle(
     body: schemas.MuscleCreate,

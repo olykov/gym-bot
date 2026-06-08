@@ -27,6 +27,71 @@ router = APIRouter()
 
 
 @router.get(
+    "/exercises/hidden",
+    response_model=List[schemas.Exercise],
+    tags=["exercises"],
+)
+def list_hidden_exercises(
+    muscle: str,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> List[schemas.Exercise]:
+    """List exercises the authenticated user has hidden within a muscle (GYM-102).
+
+    Resolves the muscle by NAME_KEY using ``app_name_key(:muscle)`` (consistent
+    with GYM-99 analytics resolution).  Returns the exercises the caller has
+    explicitly hidden under that muscle, ordered by name.  Returns an empty
+    array when nothing is hidden — NOT a 404.
+
+    ``is_mine`` is set to True only for the user's own private exercises.
+    ``resolution`` is null (read endpoint, not a create/resolve path).
+
+    Args:
+        muscle: Muscle name (resolved via ``app_name_key``; case/dash/space-insensitive).
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        Ordered list of hidden exercises (may be empty).
+
+    Raises:
+        HTTPException: 404 when the muscle name does not resolve to any known muscle.
+    """
+    uid = principal["user_id"]
+
+    # Resolve the muscle by name_key so variant casing/spacing/dashes all work.
+    muscle_row = db.execute(
+        text(
+            "SELECT id FROM muscles "
+            "WHERE name_key = app_name_key(:muscle) "
+            "LIMIT 1"
+        ),
+        {"muscle": muscle},
+    ).fetchone()
+    if muscle_row is None:
+        raise HTTPException(status_code=404, detail="Muscle not found")
+    muscle_id = muscle_row[0]
+
+    hidden_ids_subq = (
+        db.query(models.UserHiddenExercise.exercise_id)
+        .filter(models.UserHiddenExercise.user_id == uid)
+        .subquery()
+    )
+    exercises = (
+        db.query(models.Exercise)
+        .filter(
+            models.Exercise.muscle == muscle_id,
+            models.Exercise.id.in_(db.query(hidden_ids_subq.c.exercise_id)),
+        )
+        .order_by(models.Exercise.name)
+        .all()
+    )
+    for ex in exercises:
+        ex.is_mine = bool(ex.created_by == uid and not ex.is_global)
+    return exercises
+
+
+@router.get(
     "/muscles/{muscle_id}/exercises",
     response_model=List[schemas.Exercise],
     tags=["exercises"],
