@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-103
 title: "apps/web: muscle list excludes hidden (freq-ordered visible) + Show Hidden expander + Unhide (muscles & exercises)"
 slug: gym-103-show-hidden-unhide-frontend
-status: todo
+status: in_progress
 priority: high
 type: feature
 labels: [tax-fixes, frontend, design, ux]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-08T16:30:00Z
-start_date: null
+start_date: 2026-06-08T17:30:00Z
 finish_date: null
 updated: 2026-06-08T16:30:00Z
 epic: tax-fixes
