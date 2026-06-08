@@ -26,6 +26,22 @@
         text-rendering: optimizeLegibility;
         /* Prevent rubber-band scroll of the whole page; only content scrolls. */
         overscroll-behavior: none;
+        /* GYM-98: app-wide no text selection for a native app feel. Long-press
+         * opens the manage sheet or triggers haptic feedback — not a copy menu.
+         * -webkit-touch-callout: none suppresses the iOS long-press popup. */
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
+
+    /* GYM-98: explicitly re-enable selection and touch callout on editable
+     * fields so typing, caret placement, and copy-paste work normally. */
+    input,
+    textarea,
+    [contenteditable] {
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
     }
 
     /* Bebas needs tabular figures off (it's display); Sora data uses the

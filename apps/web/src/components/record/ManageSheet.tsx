@@ -67,6 +67,9 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
     const [renameError, setRenameError] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [moveError, setMoveError] = useState<string | null>(null);
+    // GYM-98: track which muscle row is being moved so only that row shows the
+    // spinner/"Moving..." label. Other rows stay disabled but not spinning.
+    const [movingMuscleId, setMovingMuscleId] = useState<number | null>(null);
 
     const renameMuscle = useRenameMuscle();
     const renameExercise = useRenameExercise();
@@ -95,6 +98,7 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
         setRenameError(null);
         setDeleteError(null);
         setMoveError(null);
+        setMovingMuscleId(null);
     }
 
     function submitRename(newName: string): void {
@@ -210,11 +214,16 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
     function submitMove(targetMuscleId: number, targetMuscleName: string): void {
         if (!item) return;
         setMoveError(null);
+        // GYM-98: mark which row is in-flight so only that row shows the spinner.
+        setMovingMuscleId(targetMuscleId);
         moveExercise.mutate(
             { exerciseId: item.id, body: { muscle_id: targetMuscleId } },
             {
                 onSuccess: () => handleClose(),
                 onError: (err) => {
+                    // Reset the per-row pending marker on any error so the list
+                    // is interactive again (user can retry or pick a different target).
+                    setMovingMuscleId(null);
                     if (err instanceof ApiError) {
                         if (err.status === 409) {
                             setMoveError(
@@ -243,7 +252,7 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
     const kindLabel = item.kind === "muscle" ? "Muscle" : "Exercise";
 
     return (
-        <BottomSheet open={open} onClose={handleClose} titleId="manage-sheet-title">
+        <BottomSheet open={open} onClose={handleClose} titleId="manage-sheet-title" zIndex={40}>
             <div className="pb-2">
                 {/* Item name as Bebas headline — always visible */}
                 <h2
@@ -437,21 +446,24 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
                         <div className="rounded-lg border border-hairline overflow-hidden">
                             {(muscles.data ?? [])
                                 .filter((m) => m.id !== item.muscleId)
-                                .map((m, idx, arr) => (
-                                    <div key={m.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => submitMove(m.id, m.name)}
-                                            disabled={moveExercise.isPending}
-                                            className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
-                                        >
-                                            {moveExercise.isPending ? "Moving…" : m.name}
-                                        </button>
-                                        {idx < arr.length - 1 && (
-                                            <div className="h-px bg-hairline" aria-hidden />
-                                        )}
-                                    </div>
-                                ))}
+                                .map((m, idx, arr) => {
+                                    const isThisRowMoving = movingMuscleId === m.id;
+                                    return (
+                                        <div key={m.id}>
+                                            <button
+                                                type="button"
+                                                onClick={() => submitMove(m.id, m.name)}
+                                                disabled={moveExercise.isPending}
+                                                className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
+                                            >
+                                                {isThisRowMoving ? "Moving…" : m.name}
+                                            </button>
+                                            {idx < arr.length - 1 && (
+                                                <div className="h-px bg-hairline" aria-hidden />
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             {muscles.isLoading && (
                                 <div className="flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-base text-hint">
                                     Loading…

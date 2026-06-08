@@ -45,6 +45,13 @@ interface BottomSheetProps {
      */
     onBackOverride?: () => boolean;
     /**
+     * CSS z-index for the sheet overlay. Defaults to 30 (the shared sheet
+     * layer). Pass a higher value when the sheet is nested inside another
+     * sheet so it clears the parent sheet's stacking context and its scrim
+     * covers the full viewport uniformly (GYM-98).
+     */
+    zIndex?: number;
+    /**
      * Sheet body. Scrolls internally when the sheet hits its max-height; the
      * caller may pin its own sticky footer (the SAVE) with
      * `position:sticky; bottom:0` so it stays at the panel bottom (§11.4).
@@ -58,6 +65,7 @@ export function BottomSheet({
     titleId,
     fixedHeight = false,
     onBackOverride,
+    zIndex = 30,
     children,
 }: BottomSheetProps) {
     const panelRef = useRef<HTMLDivElement>(null);
@@ -118,7 +126,7 @@ export function BottomSheet({
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-30">
+        <div className="fixed inset-0" style={{ zIndex }}>
             {/* Scrim — tap to dismiss. Darker so it reads over near-black dark. */}
             <button
                 type="button"
