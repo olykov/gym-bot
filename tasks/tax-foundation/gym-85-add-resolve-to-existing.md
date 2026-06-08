@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-85
 title: "Add resolves-to-existing (silent unhide) + dedup on create & rename within visible set"
 slug: gym-85-add-resolve-to-existing
-status: review
+status: done
 priority: high
 type: feature
 labels: [taxonomy, api, api-contract, frontend, ux]
