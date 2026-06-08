@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-99
 title: "API: analytics resolve exercise/muscle by name_key + drop negative log-context cache + allow hiding OWN items"
 slug: gym-99-analytics-namekey-resolution
-status: review
+status: done
 priority: critical
 type: bug-fix
 labels: [tax-fixes, api, bug]
