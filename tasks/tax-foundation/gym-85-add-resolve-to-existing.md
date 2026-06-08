@@ -18,7 +18,7 @@ epic: tax-foundation
 depends_on: [GYM-84]
 blocks: []
 related: [GYM-86]
-commits: []
+commits: [013d658]
 tests: []
 design_reports: []
 review_reports: []
@@ -51,3 +51,29 @@ Adding/renaming should be smart about existing names (incl. hidden ones), per AD
 ## Acceptance
 - [ ] Re-adding a hidden item unhides it silently; adding/renaming to an existing visible name → 409 with a
       clear message; a genuinely new name still creates; covered by tests; build/suite green.
+
+## Comments
+
+### 2026-06-08 — Contract slice (commit 013d658)
+
+Done in `packages/api-contract/openapi.yaml` only (CONTRACT slice; API/frontend follow).
+
+- Added optional `resolution` to both `Muscle` and `Exercise` read schemas — string enum
+  `[created, unhidden, existing]`, `type: ['string', 'null']`, NOT required (modeled like
+  `is_mine`). Stays absent/null on list/read responses → non-breaking for bot/admin clients.
+  Desc: 'created' = new row; 'unhidden' = an existing hidden item was silently unhidden;
+  'existing' = item already existed and visible (no duplicate created).
+- Documented find-or-create-or-unhide on `POST /muscles` and `POST /exercises` (user by-name):
+  name normalized to key; if a row with that key exists in the caller's scope → hidden is
+  silently unhidden (resolution=unhidden, HTTP 200), visible is returned as-is with no duplicate
+  (resolution=existing, HTTP 200); otherwise a new row is created (resolution=created, HTTP 201).
+  Both endpoints now document the 200 (resolved) and 201 (created) responses. Request bodies
+  unchanged.
+- Rename PATCH contract untouched (409-on-duplicate already exists; GYM-85 rename dedup is an
+  API-internal key-based comparison, no contract change).
+- `make validate` passes (OpenAPI 3.1, 34 paths, 38 schemas). Regenerated both clients
+  (`make gen-python`, `make gen-typescript`). Python `models.py` imports cleanly: `Resolution`
+  enum = [created, unhidden, existing]; `resolution` present on `Muscle` and `Exercise`.
+  TS `tsc --noEmit --strict` passes; `resolution?: "created" | "unhidden" | "existing" | null`
+  present on both. Note: TS client is gitignored (regenerated on demand), Python client is the
+  installable tracked artifact.
