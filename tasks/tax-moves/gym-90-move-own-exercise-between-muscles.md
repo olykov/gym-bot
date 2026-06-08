@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-90
 title: "Move OWN exercise between muscles (long-tap → Move to muscle; own-only; dedup vs target) — startable now"
 slug: gym-90-move-own-exercise-between-muscles
-status: review
+status: done
 priority: high
 type: feature
 labels: [taxonomy, api, api-contract, frontend, ux]
