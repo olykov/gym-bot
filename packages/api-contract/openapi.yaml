@@ -684,6 +684,7 @@ paths:
           schema:
             type: string
             format: date
+        - $ref: '#/components/parameters/TimezoneQuery'
       responses:
         '200':
           description: Training days for the caller, newest first.
@@ -1046,6 +1047,7 @@ paths:
           schema:
             type: string
             format: date
+        - $ref: '#/components/parameters/TimezoneQuery'
       responses:
         '200':
           description: Activity counts, one entry per active day in the range.
@@ -1072,6 +1074,7 @@ paths:
         - serviceAuth: []
       parameters:
         - $ref: '#/components/parameters/ActAsUser'
+        - $ref: '#/components/parameters/TimezoneQuery'
       responses:
         '200':
           description: The dashboard summary numbers.
@@ -1311,6 +1314,19 @@ components:
       description: Exercise name.
       schema:
         type: string
+    TimezoneQuery:
+      name: tz
+      in: query
+      required: false
+      description: >
+        Optional IANA timezone name (e.g. "Asia/Tbilisi", "Europe/Berlin") used to
+        compute day/week boundaries for grouping. When provided, days and weeks are
+        grouped in this timezone; when omitted, boundaries are computed in UTC
+        (unchanged, backward-compatible behavior). Only meaningful on endpoints that
+        group results by day or week.
+      schema:
+        type: string
+        example: Asia/Tbilisi
     Skip:
       name: skip
       in: query
