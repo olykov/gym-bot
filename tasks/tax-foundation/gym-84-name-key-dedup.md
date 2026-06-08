@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-84
 title: "DB: normalized name_key + UNIQUE(name_key, scope) on muscles & exercises + backfill"
 slug: gym-84-name-key-dedup
-status: review
+status: done
 priority: high
 type: feature
 labels: [taxonomy, db, validation]
@@ -114,3 +114,9 @@ name_key) THEN runs `alembic upgrade head` — 0004 must no-op the already-prese
 drops the name_key columns, and drops `app_name_key()`. It does NOT un-rename the duplicates that
 upgrade renamed (the original colliding names are not recorded). Accepted/documented — renamed rows
 remain valid with their suffixed display names.
+
+### 2026-06-08 — prod application is MANUAL (operator decision)
+Deploy does NOT auto-apply Alembic migrations (ansible only mounts init.sql [fresh-volume only] +
+runs create_app_role.sql). Operator chose manual application per packages/db/RUNBOOK.md. This migration
+(0004) must be applied to prod by hand (`alembic upgrade head` as the DB superuser/DB_USER against the
+prod DB) BEFORE GYM-85 (API uses app_name_key on prod) ships. Code is on main; prod schema apply pending.
