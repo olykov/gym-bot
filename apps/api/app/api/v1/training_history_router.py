@@ -1,9 +1,10 @@
-"""Training history endpoints — GYM-47 / GYM-58.
+"""Training history endpoints — GYM-47 / GYM-58 / GYM-51.
 
 Implements:
-  GET  /training/days        — day-grouped summary, reverse-chronological
-  GET  /training/day/{date}  — full exercise/set detail for one day
-  DELETE /training/{id}      — delete caller's own set
+  GET  /training/days              — day-grouped summary, reverse-chronological
+  GET  /training/day/{date}        — full exercise/set detail for one day
+  DELETE /training/{id}            — delete caller's own set
+  PATCH /training/{id}/move        — move set to another date and/or exercise (GYM-51)
 
 All routes use ``get_principal`` + ``get_db_for_principal`` (RLS-scoped to
 the authenticated caller, fail-closed).
@@ -16,16 +17,21 @@ GYM-58: Optional ``tz`` query param added to ``list_training_days``.  When
 provided, the ``t.date::date`` grouping is replaced by
 ``(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date`` in SELECT/GROUP BY/
 ORDER BY only — the WHERE filter keeps the raw column for sargability.
+
+GYM-51: PATCH move stores date at noon UTC so the set lands on the intended
+calendar day in every ±12h timezone.
 """
 import logging
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from app.services.resolve import resolve_exercise_id
 
 from app.core.cache import invalidate_user
 from app.core.database import get_db_for_principal
@@ -273,3 +279,154 @@ def delete_training(
         raise HTTPException(status_code=500, detail="Failed to delete training record")
 
     invalidate_user(uid)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /training/{training_id}/move  — GYM-51
+# ---------------------------------------------------------------------------
+
+@router.patch(
+    "/training/{training_id}/move",
+    response_model=schemas.Training,
+    tags=["training"],
+)
+def move_training(
+    training_id: str,
+    body: schemas.TrainingMove,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> schemas.Training:
+    """Move a training set to another date and/or exercise.
+
+    At least one of {date, (muscle_name + exercise_name)} must be supplied.
+    muscle_name and exercise_name must always appear together — they move the
+    set to a different exercise under the named muscle.
+
+    Date storage: noon UTC of the target calendar day, so the set lands on the
+    intended day in every real-world timezone (±12h safe).
+
+    Returns 409 when the move would create a duplicate (same user + resulting
+    date day + resulting exercise_id + same set number already exists in a
+    DIFFERENT row).
+
+    Args:
+        training_id: Server-assigned id of the training set to move.
+        body: Fields to change (date, muscle_name+exercise_name, or both).
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        The updated training record.
+
+    Raises:
+        HTTPException 404: Row not found or not owned by caller.
+        HTTPException 422: Empty body; or only one of muscle_name/exercise_name;
+                           or target exercise not resolvable.
+        HTTPException 409: Move would collide with an existing set at the same
+                           day + exercise + set-number.
+    """
+    uid = principal["user_id"]
+
+    # --- body validation ---
+    has_date = body.date is not None
+    has_muscle = body.muscle_name is not None
+    has_exercise = body.exercise_name is not None
+
+    if not has_date and not has_muscle and not has_exercise:
+        raise HTTPException(
+            status_code=422,
+            detail="Body must contain at least one of: date, or muscle_name + exercise_name.",
+        )
+
+    if has_muscle != has_exercise:
+        raise HTTPException(
+            status_code=422,
+            detail="muscle_name and exercise_name must both be provided together.",
+        )
+
+    # --- fetch own row (RLS already scopes to uid) ---
+    training = (
+        db.query(models.Training)
+        .filter(
+            models.Training.id == training_id,
+            models.Training.user_id == uid,
+        )
+        .first()
+    )
+    if training is None:
+        raise HTTPException(
+            status_code=404, detail="Training record not found or access denied"
+        )
+
+    # --- compute target values ---
+    if has_date:
+        # Store at noon UTC: safe for ±12h offsets.
+        target_date = datetime.combine(body.date, time(12, 0))
+    else:
+        target_date = training.date
+
+    if has_muscle:
+        # resolve_exercise_id: own-first-then-global, name_key matching.
+        target_exercise_id = resolve_exercise_id(
+            db, uid, body.muscle_name, body.exercise_name
+        )
+        if target_exercise_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Exercise '{body.exercise_name}' under muscle '{body.muscle_name}' "
+                    "not found or not visible to you."
+                ),
+            )
+        # Fetch the muscle_id for the resolved exercise.
+        row = db.execute(
+            text("SELECT muscle FROM exercises WHERE id = :eid"),
+            {"eid": target_exercise_id},
+        ).fetchone()
+        target_muscle_id = row[0] if row else training.muscle_id
+    else:
+        target_exercise_id = training.exercise_id
+        target_muscle_id = training.muscle_id
+
+    # --- collision check (409): same user + same day + same exercise + same set# ---
+    # Day boundaries for the target date (one calendar day).
+    target_day_start = datetime(target_date.year, target_date.month, target_date.day)
+    target_day_end = target_day_start + timedelta(days=1)
+
+    collision = (
+        db.query(models.Training)
+        .filter(
+            models.Training.user_id == uid,
+            models.Training.exercise_id == target_exercise_id,
+            models.Training.set == training.set,
+            models.Training.date >= target_day_start,
+            models.Training.date < target_day_end,
+            models.Training.id != training_id,  # exclude the row being moved
+        )
+        .first()
+    )
+    if collision is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Set {training.set} already exists for exercise_id={target_exercise_id} "
+                f"on {target_date.date()} — move would create a duplicate."
+            ),
+        )
+
+    # --- apply changes ---
+    training.date = target_date
+    training.exercise_id = target_exercise_id
+    training.muscle_id = target_muscle_id
+
+    try:
+        db.commit()
+        db.refresh(training)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Error moving training record: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to move training record")
+
+    # Purge analytics cache for both the source and target day.
+    invalidate_user(uid)
+    return training

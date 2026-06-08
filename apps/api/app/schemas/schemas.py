@@ -4,8 +4,13 @@ Covers both the existing admin CRUD shapes and the full contract defined in
 packages/api-contract/openapi.yaml.  Admin shapes are preserved unchanged so
 that existing endpoints keep working.
 """
+import datetime as _dt
 from datetime import datetime, date
 from typing import List, Optional
+
+# Alias: prevents Pydantic from confusing the field name ``date`` with the
+# ``datetime.date`` type when both appear in the same class namespace.
+_Date = _dt.date
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -211,7 +216,9 @@ class TrainingCreate(BaseModel):
     """Create a training set (user-facing, mirrors bot save_training_data).
 
     Muscle and exercise are referenced by name so the request matches what the
-    bot sends today.  id, date, and user_id are assigned by the server.
+    bot sends today.  id and user_id are assigned by the server.  ``date`` is
+    optional: when provided the set is logged on that calendar day (at noon UTC
+    for tz-safety); when omitted the server uses utcnow() (unchanged).
 
     Name fields use ``validate_lookup_name``: they are normalized (trim +
     whitespace-collapse) and must not be empty, but NO max-length cap and NO
@@ -227,6 +234,7 @@ class TrainingCreate(BaseModel):
     set: int
     weight: float
     reps: float
+    date: Optional[_Date] = None
 
     @field_validator("muscle_name", "exercise_name", mode="before")
     @classmethod
@@ -244,6 +252,30 @@ class TrainingUpdate(BaseModel):
 
     weight: float
     reps: float
+
+
+class TrainingMove(BaseModel):
+    """Request body for PATCH /training/{training_id}/move (GYM-51).
+
+    All fields are optional; at least one of {date, (muscle_name +
+    exercise_name)} must be supplied.  If either muscle_name or exercise_name
+    is given, both are required (they move together).
+
+    Name fields use ``validate_lookup_name``: normalized (trim +
+    whitespace-collapse), must not be empty, no max-length cap.
+    """
+
+    date: Optional[_Date] = None
+    muscle_name: Optional[str] = None
+    exercise_name: Optional[str] = None
+
+    @field_validator("muscle_name", "exercise_name", mode="before")
+    @classmethod
+    def _normalize_lookup_name(cls, v: object) -> str:
+        """Normalize lookup reference; reject empty only (no length/char cap)."""
+        if v is None:
+            return v  # type: ignore[return-value]
+        return validate_lookup_name(str(v))
 
 
 # ---------------------------------------------------------------------------

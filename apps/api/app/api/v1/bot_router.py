@@ -19,7 +19,7 @@ that user.  The call is graceful — Redis errors never fail the HTTP request.
 """
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -521,9 +521,17 @@ def create_training(
     if exercise_id is None:
         raise HTTPException(status_code=404, detail="Exercise not found")
 
+    # GYM-51: optional retroactive date — store at noon UTC for tz-safety.
+    # Noon is safe for all ±12h offsets: a set logged on 2024-03-15 at noon UTC
+    # still falls on 2024-03-15 in every real-world timezone.
+    if body.date is not None:
+        training_date = datetime.combine(body.date, time(12, 0))
+    else:
+        training_date = datetime.utcnow()
+
     training = models.Training(
         id=uuid.uuid4().hex,
-        date=datetime.utcnow(),
+        date=training_date,
         user_id=uid,
         muscle_id=muscle_id,
         exercise_id=exercise_id,
