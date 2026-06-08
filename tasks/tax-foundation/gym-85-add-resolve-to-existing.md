@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-85
 title: "Add resolves-to-existing (silent unhide) + dedup on create & rename within visible set"
 slug: gym-85-add-resolve-to-existing
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [taxonomy, api, api-contract, frontend, ux]
@@ -12,14 +12,14 @@ model: null
 reporter: oleksii
 created: 2026-06-08T08:00:00Z
 start_date: 2026-06-08T13:30:00Z
-finish_date: null
-updated: 2026-06-08T08:00:00Z
+finish_date: 2026-06-08T00:00:00Z
+updated: 2026-06-08T00:00:00Z
 epic: tax-foundation
 depends_on: [GYM-84]
 blocks: []
 related: [GYM-86]
-commits: [013d658]
-tests: []
+commits: [013d658, 75bb30b]
+tests: [apps/api/tests/test_gym85_resolve_dedup.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -49,7 +49,7 @@ Adding/renaming should be smart about existing names (incl. hidden ones), per AD
   do nothing clever (matching is a later phase).
 
 ## Acceptance
-- [ ] Re-adding a hidden item unhides it silently; adding/renaming to an existing visible name → 409 with a
+- [x] Re-adding a hidden item unhides it silently; adding/renaming to an existing visible name → 409 with a
       clear message; a genuinely new name still creates; covered by tests; build/suite green.
 
 ## Comments
@@ -77,3 +77,47 @@ Done in `packages/api-contract/openapi.yaml` only (CONTRACT slice; API/frontend 
   TS `tsc --noEmit --strict` passes; `resolution?: "created" | "unhidden" | "existing" | null`
   present on both. Note: TS client is gitignored (regenerated on demand), Python client is the
   installable tracked artifact.
+
+### 2026-06-08 — API slice (commit 75bb30b)
+
+Implemented in `apps/api/` only (API slice; frontend follows separately).
+
+**Resolution logic and precedence (POST /muscles, POST /exercises):**
+
+The endpoint first checks for the caller's OWN row (created_by == uid), then a GLOBAL row,
+then falls through to create. The DB function `app_name_key(:input)` is called in SQL for
+every lookup — normalization never happens in Python, so DB and API can never diverge.
+
+1. Key matches caller's OWN row → return it, `resolution=existing`, HTTP 200.
+2. Key matches a GLOBAL row NOT hidden for this user → return it, `resolution=existing`, HTTP 200.
+3. Key matches a GLOBAL row that IS hidden → delete UserHiddenMuscle/UserHiddenExercise row
+   silently → return the global row, `resolution=unhidden`, HTTP 200.
+4. No key match → INSERT new own row, `resolution=created`, HTTP 201.
+
+Own items (created_by != NULL) are never hidden (no UserHidden row for own items); so
+hidden-check applies only to globals — the precedence order correctly reflects this.
+
+**How 200 vs 201 is set:** The endpoint declares `Response` as a FastAPI dependency
+injection parameter (`http_response: Response`). Each branch sets
+`http_response.status_code` explicitly (200 or 201) before returning. The ORM object
+(Muscle/Exercise) is returned directly and serialised by the `response_model` as usual.
+No JSONResponse wrapping needed.
+
+**Rename key-based dedup (PATCH /muscles/{id}, PATCH /exercises/{id}):**
+
+The old name-equality pre-check (`WHERE name == new_name`) was replaced with a key-based
+check: `WHERE name_key = app_name_key(:new_name) AND id <> :self_id`. This catches
+separator/case variants ("Bench Press" and "bench-press" are the same key). Renaming to
+the item's own current key (e.g. same name, different whitespace) is allowed because
+`id <> self_id` excludes the row itself. The IntegrityError backstop on the unique index
+is kept as a last-resort safety net; on IntegrityError the session is rolled back before
+raising 409.
+
+**Schemas:** `resolution: Optional[str] = None` added to both `Muscle` and `Exercise`
+read schemas in `apps/api/app/schemas/schemas.py`. The field stays `null` on list/GET
+endpoints (set only by create endpoints), which is non-breaking.
+
+**Test suite:** `apps/api/tests/test_gym85_resolve_dedup.py` — 16 integration tests:
+all 4 resolution branches for muscles (own, visible global, hidden global, new) and for
+exercises; separator/case variant test for both; rename key-dedup 409 and 200 cases for
+both; rename to own current key allowed. Full suite result: **294 passed, 0 failed**.
