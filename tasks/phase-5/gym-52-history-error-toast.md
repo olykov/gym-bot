@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-52
 title: "apps/web: surface a 'couldn't save — restored' message on mutation error"
 slug: gym-52-history-error-toast
-status: in_progress
+status: review
 priority: low
 type: bug-fix
 labels: [phase-5, frontend]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-04T21:35:00Z
 start_date: 2026-06-08T22:50:00Z
-finish_date: null
-updated: 2026-06-04T21:35:00Z
+finish_date: 2026-06-08T00:00:00Z
+updated: 2026-06-08T00:00:00Z
 epic: phase-5
 depends_on: [GYM-49]
 blocks: []
 related: [GYM-12]
-commits: []
+commits: [5767f41]
 tests: []
 design_reports: []
 review_reports: []
@@ -45,3 +45,28 @@ reduced-motion. No new library.
 
 ### 2026-06-04T21:35:00Z — task created
 Flagged during the GYM-49 review. Minor (error-only path); does not block the History push.
+
+### 2026-06-08T00:00:00Z — implemented (5767f41)
+
+**Where the message fires:**
+- Edit: `onError` callback wired in `SetEditor.save()` via `edit.mutate(…, { onError })` — calls `onEditError?.()` which the parent (`HistoryDay`) receives.
+- Delete: `onError` callback wired in `SetEditor.confirmDelete()` via `del.mutate(…, { onError })` — calls `onDeleteError?.()`.
+- Both are fired after TanStack Query's `onError` in `useTraining.ts` has already rolled back the optimistic patch (the cache is restored before the callback fires).
+
+**Message text:**
+- Edit: "Couldn't save — restored."
+- Delete: "Couldn't delete — restored."
+
+**Where the banner renders:**
+- In `HistoryDay`, above the exercise card list, as a `<div aria-live="polite">` with a `<p>` inside.
+- Auto-dismissed after 3 s via `setTimeout` in `showMutationError()`. The timer is reset on re-trigger and cleaned up on unmount.
+
+**Styling reused:**
+- Banner container: `rounded-md border border-hairline bg-secondary-bg px-3 py-2` — the same as the `createHint` banner in `SetLogger` (GYM-85).
+- Text: `text-label text-accent` — matches the existing `create.isError` inline pattern in `SetLogger` §12.5.
+- Tokens only; no new CSS or library.
+
+**Reduced-motion:**
+- The container has `transition-opacity duration-300 motion-reduce:transition-none`. No keyframe animations; Tailwind's `motion-reduce:` utility disables the opacity transition for users who have `prefers-reduced-motion: reduce`.
+
+**Build result:** `tsc && vite build` — green, no errors or warnings.
