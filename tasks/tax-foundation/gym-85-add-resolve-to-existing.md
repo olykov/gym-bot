@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-85
 title: "Add resolves-to-existing (silent unhide) + dedup on create & rename within visible set"
 slug: gym-85-add-resolve-to-existing
-status: backlog
+status: in_progress
 priority: high
 type: feature
 labels: [taxonomy, api, api-contract, frontend, ux]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-08T08:00:00Z
-start_date: null
+start_date: 2026-06-08T13:30:00Z
 finish_date: null
 updated: 2026-06-08T08:00:00Z
 epic: tax-foundation
