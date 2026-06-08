@@ -13,12 +13,12 @@ reporter: oleksii
 created: 2026-06-04T18:00:00Z
 start_date: 2026-06-09T00:00:00Z
 finish_date: 2026-06-09T00:00:00Z
-updated: 2026-06-09T00:00:00Z
+updated: 2026-06-09T12:00:00Z
 epic: phase-5
 depends_on: [GYM-49]
 blocks: []
 related: [GYM-12]
-commits: [fba7842, 7c9ec86, 14f08e8]
+commits: [fba7842, 7c9ec86, 14f08e8, a33a411]
 tests: [apps/api/tests/test_gym51_add_move.py]
 design_reports: []
 review_reports: []
@@ -101,3 +101,46 @@ Added to `training_history_router.py` (co-located with DELETE and history reads)
 - Cache: `invalidate_user` called once with correct uid on success.
 
 Full suite result: **385 passed, 0 failed**.
+
+### 2026-06-09T12:00:00Z — frontend slice (a33a411)
+
+Frontend implementation of GYM-51 landed in `apps/web/`:
+
+**Add set retroactively (`<AddSetInline>`):**
+A quiet `"+ Add set"` affordance appears after the last `<SetRow>` in each exercise group on the day
+detail. Tapping expands an inline weight/reps form (two `<Stepper>` fields, pre-filled from the last
+set of that exercise on that day). The next set number is derived client-side
+(`max(existing set numbers) + 1`). On confirm: `POST /training {muscle_name, exercise_name, set,
+weight, reps, date}`. The form is NOT in a separate sheet — it expands inside the card so the exercise
+context remains visible. 409 collision surfaces as an inline error. On success: success haptic +
+collapse. `useAddSet(date)` hook, invalidates the full cross-screen key set on settle.
+
+**Move set (`<MoveSetPanel>` + `useMoveSet`):**
+A **"Move"** action button added to the `SetEditor` header row (alongside the existing "Delete" — both
+`--accent` text, ≥44px, right-aligned). Tapping Move swaps the sheet body to `<MoveSetPanel>` (the
+exercise identity header stays so the user knows which set they are moving). The panel presents:
+- A native `<input type="date">` pre-filled with the current day for the new date target.
+- A muscle→exercise picker (same two-step tile pattern as `RecordPicker`): tapping "change" opens the
+  muscle list (frequency-sorted via `useMuscles` + `useTopMuscles`), then the exercise list for the
+  picked muscle (`useTopExercises` + `useExercises`). Back navigation works through the sub-steps.
+- "Move set" sticky button (`SheetSaveButton`) — enabled when at least one of {date, exercise} has
+  changed. Calls `PATCH /training/{id}/move`. 409 → graceful inline error. 422/404 → graceful error.
+- Cancel returns to edit mode with no mutation.
+
+`useMoveSet(sourceDate)` optimistically removes the set from the source day cache on `onMutate`,
+rolls back on error, and on settle invalidates both the source day and the target day (if different),
+plus all analytics keys (`summary`, `activity`, `exercise-progress`, `log-context`, `days`).
+
+**`EditorTarget` type change (non-breaking):** `muscleName` field added (was previously not on the
+type). All callers in `HistoryDay.tsx` updated to pass `ex.muscle_name` when opening the editor.
+
+**Build result:** `tsc && vite build` — 730 modules, 0 errors, 0 warnings. Green.
+
+**Needs live-device pass:**
+- Add-set: verify the pre-fill correctly tracks the last set of the exercise (especially after a
+  prior add within the same session before the cache refreshes).
+- Move date: verify the native date picker behaves well in Telegram WebView on iOS/Android.
+- Move exercise: verify the muscle/exercise picker scrolls correctly inside the non-fixedHeight
+  BottomSheet body (the picker is not wrapped in a fixedHeight sheet, so the sheet should auto-expand
+  to the content; if it clips, the sheet's max-height needs a review).
+- 409 collision: needs a real conflicting row to verify the inline error message appears correctly.
