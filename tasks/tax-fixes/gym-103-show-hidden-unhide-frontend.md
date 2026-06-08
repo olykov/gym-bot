@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-103
 title: "apps/web: muscle list excludes hidden (freq-ordered visible) + Show Hidden expander + Unhide (muscles & exercises)"
 slug: gym-103-show-hidden-unhide-frontend
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [tax-fixes, frontend, design, ux]
@@ -12,12 +12,12 @@ model: null
 reporter: oleksii
 created: 2026-06-08T16:30:00Z
 start_date: 2026-06-08T17:30:00Z
-finish_date: null
-updated: 2026-06-08T16:30:00Z
+finish_date: 2026-06-08T18:30:00Z
+updated: 2026-06-08T18:30:00Z
 epic: tax-fixes
 depends_on: [GYM-102]
 related: [GYM-83, GYM-99]
-commits: []
+commits: [70602bb]
 tests: []
 design_reports: []
 review_reports: []
@@ -55,3 +55,23 @@ backlog_ref: ""
 
 ### 2026-06-08T16:30:00Z — task created
 Depends on GYM-102 (list-hidden). Frontend-design plugin mandatory — operator wants the Show Hidden expander.
+
+### 2026-06-08T18:30:00Z — implementation complete (70602bb)
+
+**Muscle-list source fix (#1):**
+- `muscleOptions` now derives exclusively from `GET /muscles` (visible catalog, GYM-99 excludes hidden). `top-muscles` is used only for ordering: a name→frequency map sorts visible muscles by frequency desc then alpha. A hidden muscle that persists in top-muscles no longer appears as a tile. This mirrors what GYM-83 did for exercises. The `everythingLoaded`/`isEmptyNewUser` guard updated accordingly (no longer waits on topMuscles).
+
+**Show Hidden + Unhide (#2, Chalk & Iron, tokens only):**
+- New API fns in `api/analytics.ts`: `fetchHiddenMuscles`, `fetchHiddenExercises`, `unhideMuscle`, `unhideExercise`.
+- New hooks in `hooks/useRecord.ts`: `useHiddenMuscles`, `useHiddenExercises(muscleName)`, `useUnhideMuscle`, `useUnhideExercise`. Unhide invalidates the visible list, top-muscles/top-exercises, and the hidden list so both panels update immediately.
+- `RecordPicker.tsx`: a `ShowHiddenExpander` sub-component (collapsed by default, invisible when list is empty, chevron-rotates open, tokens only, ≥44px trigger) appended at the bottom of each picker panel. Hidden tiles use same 88px height and grid layout as normal tiles but with dashed border, `--hint` text, 70% opacity to signal hidden state. Long-press → `ManageSheet isHiddenItem` → single "Unhide" action.
+- `ManageSheet.tsx`: added `isHiddenItem`, `onUnhide`, `isUnhidePending` props. When `isHiddenItem=true` the actions view shows only "Unhide" — all other actions (rename/hide/delete/move) are suppressed. The existing flow is unchanged.
+
+**Build:** `npm run build` green (tsc + vite), 726 modules, no type errors.
+
+**Live-device pass needed:**
+- Verify a hidden muscle no longer appears as a tile after hiding.
+- Verify the "Show Hidden" expander appears only when there are hidden items.
+- Verify long-press on a hidden tile opens the Unhide sheet and the Unhide action works.
+- Verify after unhiding, the item reappears in the normal tile list and leaves the hidden list (query invalidation).
+- Test on a device with keyboard (the muscle/exercise panels consume `--keyboard-pad` already).
