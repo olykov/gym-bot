@@ -14,12 +14,16 @@ import {
     useQueryClient,
 } from "@tanstack/react-query";
 import {
+    createTraining,
     deleteTraining,
     fetchTrainingDay,
     fetchTrainingDays,
+    moveTraining,
     updateTraining,
+    type TrainingCreate,
     type TrainingDay,
     type TrainingDayDetail,
+    type TrainingMove,
     type TrainingUpdate,
 } from "@/api/training";
 import { DEVICE_TZ } from "@/lib/timezone";
@@ -170,5 +174,80 @@ export function useDeleteSet(date: string) {
             if (ctx?.previous) qc.setQueryData(dayKey(date), ctx.previous);
         },
         onSettled: () => invalidateAfterMutation(qc, date),
+    });
+}
+
+interface AddSetVars {
+    body: TrainingCreate;
+}
+
+/**
+ * Add a set retroactively to a specific day/exercise (GYM-51).
+ *
+ * No optimistic patch — the set number and server-assigned id must come from
+ * the API response before we can insert accurately. Invalidates on settle so
+ * the day detail re-fetches with the new set included. Also invalidates the
+ * cross-screen analytics keys (a new set can change summary/activity/progress).
+ */
+export function useAddSet(date: string) {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: ({ body }: AddSetVars) => createTraining(body),
+        onSettled: () => invalidateAfterMutation(qc, date),
+    });
+}
+
+interface MoveSetVars {
+    trainingId: string;
+    body: TrainingMove;
+    /** The target date (if different from the source) — must also be invalidated. */
+    targetDate?: string;
+}
+
+/**
+ * Move a set to another day and/or exercise (GYM-51 PATCH /training/{id}/move).
+ *
+ * Optimistically removes the set from the source day-detail cache so it
+ * disappears immediately. On error rolls back. On settle invalidates both the
+ * source day and the target day (if different), plus all analytics keys.
+ */
+export function useMoveSet(sourceDate: string) {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: ({ trainingId, body }: MoveSetVars) =>
+            moveTraining(trainingId, body),
+        onMutate: async ({ trainingId }: MoveSetVars) => {
+            await qc.cancelQueries({ queryKey: dayKey(sourceDate) });
+            const previous = qc.getQueryData<TrainingDayDetail>(
+                dayKey(sourceDate),
+            );
+            if (previous) {
+                const exercises = previous.exercises
+                    .map((ex) => ({
+                        ...ex,
+                        sets: ex.sets.filter(
+                            (s) => s.training_id !== trainingId,
+                        ),
+                    }))
+                    .filter((ex) => ex.sets.length > 0);
+                qc.setQueryData<TrainingDayDetail>(dayKey(sourceDate), {
+                    ...previous,
+                    exercises,
+                });
+            }
+            return { previous };
+        },
+        onError: (_err, _vars, ctx) => {
+            if (ctx?.previous)
+                qc.setQueryData(dayKey(sourceDate), ctx.previous);
+        },
+        onSettled: (_data, _err, vars) => {
+            // Always invalidate the source day.
+            invalidateAfterMutation(qc, sourceDate);
+            // Also invalidate the target day if it differs from the source.
+            if (vars?.targetDate && vars.targetDate !== sourceDate) {
+                invalidateAfterMutation(qc, vars.targetDate);
+            }
+        },
     });
 }

@@ -404,15 +404,26 @@ multi-year history never loads as one unbounded list (see §11.7).
   - **Swipe-left on a `<SetRow>`** reveals a `--accent` **Delete** action (the touch-native delete
     gesture); the same delete also lives inside the sheet (§11.4) so it's reachable without the gesture
     and on desktop. Both paths run the confirm in §11.4.
+  - **`<AddSetInline>` (GYM-51 v2):** after the last `<SetRow>` in each exercise group, a quiet
+    `"+ Add set"` row (Sora `--hint`, ≥44px, `<Divider>` above) opens an **inline weight/reps entry**
+    within the same card. The inline form reuses two `<Stepper>` fields, pre-filled from the last set
+    of that exercise on that day, with an "Add" (`--accent` fill, ≥44px) and a "Cancel". The next set
+    number is computed client-side (`max(existing set #s on this day) + 1`). On confirm,
+    `POST /training {muscle_name, exercise_name, set, weight, reps, date}`. On 409 (collision) shows
+    an inline "That set already exists." error; on success haptic + collapses. The form is NOT in a new
+    sheet — it expands inline so the exercise context is visible. Invalidates `["training","day",date]`,
+    `["training","days"]`, `["analytics","summary"]`, `["analytics","activity"]`,
+    `["analytics","exercise-progress"]`, `["analytics","log-context"]` on settle.
 - **States:** `SkeletonCard` matching the exercise/set layout while loading; `<EmptyState>` "EMPTY DAY"
   if a detail somehow has no sets (e.g. the last set was just deleted — then auto-`navigate(-1)` back to
   the list after the optimistic update lands); `<ErrorState>` + retry on error; 404 → "This day has no
   trainings" empty state, not a crash.
 - **Query key:** `["training", "day", date]`.
 
-### 11.4 Set editor — `<BottomSheet>` with steppers, in-sheet sticky Save, delete + confirm
-The single interaction for editing/removing a set. **Bottom-sheet** (mobile-native, thumb-reachable),
-NOT a centered modal:
+### 11.4 Set editor — `<BottomSheet>` with steppers, in-sheet sticky Save, delete + confirm + move
+The single interaction for editing/removing/moving a set. **Bottom-sheet** (mobile-native,
+thumb-reachable), NOT a centered modal. Three modes: `edit` (default), `confirmDelete`, `move`
+(GYM-51 v2):
 
 - **`<BottomSheet>`** — slides up from the bottom inside the shell, anchored to the bottom safe-area
   (`max(env(safe-area-inset-bottom), --tg-safe-bottom)`, §4), `--bg` surface with the §9.5 top hairline
@@ -426,8 +437,9 @@ NOT a centered modal:
   running off-screen, so Weight + Reps + Save + Delete are always reachable and the lowest field
   (Reps) is never clipped. The body's bottom padding clears the device / Telegram bottom inset.
 - **Header:** the set's identity, read-only — `{exercise_name}` (Sora 600) + `Set {n}` (`--hint`).
-  Only weight/reps are mutable (matches `TrainingUpdate`); muscle/exercise/set-number are NOT editable
-  in v1 (moving a set = GYM-51).
+  Only weight/reps are editable in-sheet. The header also hosts two secondary actions (both in `--accent`
+  text, ≥44px, right-aligned): **Move** (GYM-51) and **Delete**. Both are hidden during the
+  `confirmDelete` step to keep the confirm UI clean.
 - **Two `<Stepper>` fields** — **Weight (kg)** and **Reps**:
   - `<Stepper>` (a.k.a. `<NumberField>`) = a **−** button, a center numeric value, a **+** button; the
     value is also a tappable `<input inputmode="decimal">` (weight) / `inputmode="numeric"` (reps) so a
@@ -454,6 +466,29 @@ NOT a centered modal:
   ("Delete this set?" → **Cancel** / **Delete**) with `notificationOccurred('warning')` haptic; the
   destructive **Delete** is the accent button. Confirmed → `DELETE /training/{training_id}`.
   Two-step confirm is mandatory (fat-finger guard, §11.7).
+- **Move (GYM-51 v2):** a **"Move" action** in the header row (beside Delete, both `--accent` text,
+  ≥44px, right-aligned). Tapping **Move** swaps the sheet body to `<MoveSetPanel>` (the header remains
+  so the user knows which set they are moving). The move panel presents:
+  1. **New day** — a native `<input type="date">` (pre-filled with the current day, token-styled:
+     `--secondary-bg`, `border-hairline`, radius token). One field, no custom calendar widget.
+  2. **New exercise** — "Exercise: {current name} — change" row that opens an inline
+     **muscle → exercise picker** (same two-step tile pattern as `RecordPicker`: muscle list first,
+     then exercise list within that muscle). Both lists reuse `useMuscles` + `useTopMuscles` (for
+     ordering) + `useTopExercises` + `useExercises` (already warm from the record flow cache). A "Clear
+     exercise change" affordance resets to "same exercise". ← Back in the picker returns to the move
+     main view.
+  - **"Move set" button (sticky, `--accent` fill, `SheetSaveButton`):** enabled only when at least one
+    of {date, exercise} has changed from the current values. Fires
+    `PATCH /training/{training_id}/move {date?, muscle_name?, exercise_name?}`.
+  - **Cancel** returns to the edit mode without any mutation.
+  - **Error handling:** 409 → "That slot is already taken — pick a different day or exercise." inline
+    banner (`bg-secondary-bg`, `border-hairline`, `text-accent`). 422/404 → "Couldn't move — check
+    your selection." Both are inline (not a new sheet, not a toast). On success: haptic success +
+    `onClose()` + `onDeleted()` (triggers the empty-day check, same as delete).
+  - **Invalidation:** on settle, `useMoveSet` invalidates both the **source day** and the **target day**
+    (if the date changed), plus all analytics keys (`summary`, `activity`, `exercise-progress`,
+    `log-context`, `days`). This means both the History day the set came from and the day it moved to
+    re-fetch correctly.
 
 **Optimistic update + cache invalidation (the cross-screen contract).** Both mutations are optimistic
 via TanStack Query `onMutate`:
@@ -464,11 +499,15 @@ via TanStack Query `onMutate`:
 - **Delete:** snapshot, optimistically remove the `<SetRow>` from the day detail and decrement the
   day's `sets_count`/`exercises_count` (drop the exercise group if it was its last set); if the day is
   now empty, `navigate(-1)`. `onError` → restore. `onSettled` → invalidate.
+- **Move (GYM-51):** snapshot, optimistically remove the set from the source day (same as delete);
+  on error roll back. `onSettled` → invalidate both source day + target day (if different) + full
+  analytics key set. **No optimistic patch to the target day** (server must confirm the placement).
 - **Invalidate on settle (so Dashboard/Progress refresh):**
   `["training","day",date]`, `["training","days"]` (all windows), `["analytics","summary"]`,
-  `["analytics","activity"]`, and `["analytics","exercise-progress"]` (a PR/weight edit can move the
-  chart). Editing weight can change a PR → the Dashboard PRs card and the Progress chart must re-fetch;
-  this is why summary + activity + exercise-progress are all in the invalidation set.
+  `["analytics","activity"]`, `["analytics","exercise-progress"]` (a PR/weight edit can move the
+  chart), and `["analytics","log-context"]` (GYM-105). Editing weight can change a PR → the Dashboard
+  PRs card and the Progress chart must re-fetch; this is why summary + activity + exercise-progress are
+  all in the invalidation set.
 
 ### 11.5 New primitives to add (token-only, reused — define them once in `apps/web/src/components/ui`)
 All four are **tokens-only** (spacing 4/8/12/16/24/32, color via §3 + §9.3 vars), mobile-first at

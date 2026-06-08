@@ -17,6 +17,7 @@ export type TrainingSet = Schemas["TrainingSet"];
 export type TrainingUpdate = Schemas["TrainingUpdate"];
 export type Training = Schemas["Training"];
 export type TrainingCreate = Schemas["TrainingCreate"];
+export type TrainingMove = Schemas["TrainingMove"];
 
 /**
  * GET /training/days?from&to — one entry per training day, newest first.
@@ -72,4 +73,21 @@ export function deleteTraining(trainingId: string): Promise<void> {
     return apiRequest<void>(`/training/${encodeURIComponent(trainingId)}`, {
         method: "DELETE",
     });
+}
+
+/**
+ * PATCH /training/{training_id}/move — move a set to another day and/or exercise.
+ *
+ * At least one of {date, (muscle_name + exercise_name)} must be provided.
+ * Returns the updated Training on success; throws ApiError on 409 (collision),
+ * 422 (invalid), or 404 (not found / not owned).
+ */
+export function moveTraining(
+    trainingId: string,
+    body: TrainingMove,
+): Promise<Training> {
+    return apiRequest<Training>(
+        `/training/${encodeURIComponent(trainingId)}/move`,
+        { method: "PATCH", body },
+    );
 }

@@ -1,8 +1,16 @@
 /**
- * The set editor (spec §11.4) — the contents of the <BottomSheet>. Two
- * <Stepper>s (Weight / Reps), a sticky in-sheet SAVE button, and a secondary
- * two-step Delete confirm. Edit + delete are optimistic via the useTraining
- * mutations; the parent owns the day `date` (the query key) and the close.
+ * The set editor (spec §11.4, GYM-51 v2) — the contents of the <BottomSheet>.
+ * Two <Stepper>s (Weight / Reps), a sticky in-sheet SAVE button, a secondary
+ * two-step Delete confirm, and a new "Move" action (GYM-51).
+ *
+ * Modes:
+ *   "edit"  — default, shows weight/reps steppers + Save + Delete (unchanged)
+ *   "move"  — tapping "Move" swaps the body for <MoveSetPanel>; header stays.
+ *   "confirmDelete" — in-sheet confirm before delete (unchanged)
+ *
+ * Edit + delete are optimistic via the useTraining mutations; move is via
+ * useMoveSet (optimistic removal from source day). The parent owns the day
+ * `date` (the query key) and the close.
  *
  * Validation (§11.7): Save is enabled only when weight & reps are valid
  * (non-empty, non-negative, reps integer) AND changed from the original.
@@ -26,10 +34,14 @@ import { hapticNotification } from "@/telegram/webapp";
 import { useDeleteSet, useEditSet } from "@/hooks/useTraining";
 import { Stepper, parseNumeric } from "@/components/ui/Stepper";
 import { SheetSaveButton } from "@/components/ui/SheetSaveButton";
+import { MoveSetPanel } from "./MoveSetPanel";
+
+type EditorMode = "edit" | "move" | "confirmDelete";
 
 export interface EditorTarget {
     set: TrainingSet;
     exerciseName: string;
+    muscleName: string;
 }
 
 interface SetEditorProps {
@@ -60,11 +72,11 @@ export function SetEditor({
     onEditError,
     onDeleteError,
 }: SetEditorProps) {
-    const { set, exerciseName } = target;
+    const { set, exerciseName, muscleName } = target;
 
     const [weightText, setWeightText] = useState(String(set.weight));
     const [repsText, setRepsText] = useState(String(set.reps));
-    const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const [mode, setMode] = useState<EditorMode>("edit");
 
     const edit = useEditSet(date);
     const del = useDeleteSet(date);
@@ -81,7 +93,7 @@ export function SetEditor({
     useEffect(() => {
         setWeightText(String(set.weight));
         setRepsText(String(set.reps));
-        setConfirmingDelete(false);
+        setMode("edit");
     }, [set.training_id, set.weight, set.reps]);
 
     function save(): void {
@@ -102,7 +114,7 @@ export function SetEditor({
 
     function startDelete(): void {
         hapticNotification("warning");
-        setConfirmingDelete(true);
+        setMode("confirmDelete");
     }
 
     function confirmDelete(): void {
@@ -121,11 +133,42 @@ export function SetEditor({
 
     const headerSub = useMemo(() => `Set ${set.set}`, [set.set]);
 
+    // Move mode — delegates entirely to MoveSetPanel.
+    if (mode === "move") {
+        return (
+            <div>
+                {/* Header retained in move mode so the user knows which set. */}
+                <div className="mb-4 min-w-0">
+                    <h2
+                        id={titleId}
+                        className="truncate text-base font-semibold text-text"
+                    >
+                        {exerciseName}
+                    </h2>
+                    <p className="text-label uppercase tracking-wide text-hint">
+                        {headerSub}
+                    </p>
+                </div>
+                <MoveSetPanel
+                    date={date}
+                    exerciseName={exerciseName}
+                    muscleName={muscleName}
+                    set={set}
+                    onMoved={() => {
+                        onClose();
+                        onDeleted(); // the set left the source day — same post-delete check
+                    }}
+                    onCancel={() => setMode("edit")}
+                />
+            </div>
+        );
+    }
+
     return (
         <div>
-            {/* Header row: read-only identity (§11.4) + the delete affordance.
-               Delete lives HERE, in the header, spatially separated from the
-               bottom SAVE so it is not mis-tapped (§11.7). */}
+            {/* Header row: read-only identity (§11.4) + Delete + Move actions.
+               Both Delete and Move live HERE, in the header, spatially separated
+               from the bottom SAVE so they are not mis-tapped (§11.7). */}
             <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <h2
@@ -139,29 +182,44 @@ export function SetEditor({
                     </p>
                 </div>
 
-                {/* Delete trigger — accent text, sparing per §9.3; ≥44px tap. */}
-                {!confirmingDelete && (
-                    <button
-                        type="button"
-                        onClick={startDelete}
-                        className="press-95 -mr-2 inline-flex min-h-[44px] shrink-0 items-center gap-1 px-2 text-base text-accent"
-                        aria-label={`Delete ${exerciseName} ${headerSub}`}
-                    >
-                        <TrashIcon />
-                        Delete
-                    </button>
+                {/* Delete + Move triggers — accent text, sparing per §9.3; ≥44px tap.
+                    Hidden during the delete-confirm step to keep the UI clean. */}
+                {mode === "edit" && (
+                    <div className="flex shrink-0 items-center gap-1">
+                        {/* Move button (GYM-51) */}
+                        <button
+                            type="button"
+                            onClick={() => setMode("move")}
+                            className="press-95 -mr-1 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
+                            aria-label={`Move ${exerciseName} ${headerSub}`}
+                        >
+                            <MoveIcon />
+                            Move
+                        </button>
+
+                        {/* Delete trigger */}
+                        <button
+                            type="button"
+                            onClick={startDelete}
+                            className="press-95 -mr-2 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
+                            aria-label={`Delete ${exerciseName} ${headerSub}`}
+                        >
+                            <TrashIcon />
+                            Delete
+                        </button>
+                    </div>
                 )}
             </div>
 
             {/* Two-step confirm (§11.4 / §11.7) — rendered high, under the
                header, separated from the sticky SAVE. */}
-            {confirmingDelete && (
+            {mode === "confirmDelete" && (
                 <div className="mb-5 rounded-md border border-hairline bg-secondary-bg p-3">
                     <p className="text-base text-text">Delete this set?</p>
                     <div className="mt-3 flex gap-2">
                         <button
                             type="button"
-                            onClick={() => setConfirmingDelete(false)}
+                            onClick={() => setMode("edit")}
                             className="press-95 min-h-[44px] flex-1 rounded-md border border-hairline bg-bg text-base text-text"
                         >
                             Cancel
@@ -178,35 +236,66 @@ export function SetEditor({
                 </div>
             )}
 
-            <div className="flex flex-col gap-6">
-                <Stepper
-                    label="Weight"
-                    unit="kg"
-                    value={weight}
-                    text={weightText}
-                    onChange={({ text }) => setWeightText(text)}
-                    min={0}
-                    step={2.5}
-                    inputMode="decimal"
-                />
-                <Stepper
-                    label="Reps"
-                    value={reps}
-                    text={repsText}
-                    onChange={({ text }) => setRepsText(text)}
-                    min={0}
-                    step={1}
-                    integer
-                    inputMode="numeric"
-                />
-            </div>
+            {mode === "edit" && (
+                <>
+                    <div className="flex flex-col gap-6">
+                        <Stepper
+                            label="Weight"
+                            unit="kg"
+                            value={weight}
+                            text={weightText}
+                            onChange={({ text }) => setWeightText(text)}
+                            min={0}
+                            step={2.5}
+                            inputMode="decimal"
+                        />
+                        <Stepper
+                            label="Reps"
+                            value={reps}
+                            text={repsText}
+                            onChange={({ text }) => setRepsText(text)}
+                            min={0}
+                            step={1}
+                            integer
+                            inputMode="numeric"
+                        />
+                    </div>
 
-            {/* Sticky in-sheet SAVE (§11.4, GYM-54) — the shared
-               <SheetSaveButton>, pinned to the bottom of the sheet's scroll
-               viewport so it never clips (replaces the native MainButton).
-               Disabled when unchanged/invalid (same logic as before). */}
-            <SheetSaveButton label="Save" onClick={save} disabled={!canSave} />
+                    {/* Sticky in-sheet SAVE (§11.4, GYM-54) — the shared
+                       <SheetSaveButton>, pinned to the bottom of the sheet's scroll
+                       viewport so it never clips (replaces the native MainButton).
+                       Disabled when unchanged/invalid (same logic as before). */}
+                    <SheetSaveButton
+                        label="Save"
+                        onClick={save}
+                        disabled={!canSave}
+                    />
+                </>
+            )}
         </div>
+    );
+}
+
+/** Small move/transfer glyph (two arrows, token-stroked, currentColor). */
+function MoveIcon() {
+    return (
+        <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+        >
+            <path d="M5 9l4-4-4-4" />
+            <path d="M9 5H3" />
+            <path d="M19 15l-4 4 4 4" />
+            <path d="M15 19h6" />
+            <path d="M3 15h8M13 9h8" />
+        </svg>
     );
 }
 

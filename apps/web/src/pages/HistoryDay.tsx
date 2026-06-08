@@ -31,6 +31,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SetRow } from "@/components/ui/SetRow";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { SetEditor, type EditorTarget } from "@/components/history/SetEditor";
+import { AddSetInline } from "@/components/history/AddSetInline";
 
 export function HistoryDay() {
     const { date = "" } = useParams();
@@ -69,8 +70,12 @@ export function HistoryDay() {
         };
     }, [navigate, target]);
 
-    function openEditor(set: TrainingSet, exerciseName: string): void {
-        setTarget({ set, exerciseName });
+    function openEditor(
+        set: TrainingSet,
+        exerciseName: string,
+        muscleName: string,
+    ): void {
+        setTarget({ set, exerciseName, muscleName });
     }
 
     function closeEditor(): void {
@@ -151,14 +156,31 @@ export function HistoryDay() {
                             <SetRow
                                 set={set}
                                 onEdit={() =>
-                                    openEditor(set, ex.exercise_name)
+                                    openEditor(
+                                        set,
+                                        ex.exercise_name,
+                                        ex.muscle_name,
+                                    )
                                 }
                                 onDelete={() =>
-                                    openEditor(set, ex.exercise_name)
+                                    openEditor(
+                                        set,
+                                        ex.exercise_name,
+                                        ex.muscle_name,
+                                    )
                                 }
                             />
                         </div>
                     ))}
+
+                    {/* GYM-51: add-set retroactively for this exercise on this day. */}
+                    <Divider />
+                    <AddSetInline
+                        date={date}
+                        muscleName={ex.muscle_name}
+                        exerciseName={ex.exercise_name}
+                        existingSets={ex.sets}
+                    />
                 </Card>
             ))}
 
