@@ -1,4 +1,4 @@
-"""Analytics endpoints — GYM-22 / GYM-26 / GYM-39 / GYM-56.
+"""Analytics endpoints — GYM-22 / GYM-26 / GYM-39 / GYM-56 / GYM-58.
 
 All analytics reads are scoped by the authenticated user (derived from
 ``get_principal``), which accepts EITHER a user JWT OR service-token
@@ -17,11 +17,18 @@ GYM-39 additions (Mini App dashboard):
 
 GYM-56:
 - current_streak changed from consecutive days to consecutive Monday-start weeks (UTC).
+
+GYM-58:
+- Optional ``tz`` query param (IANA timezone name) added to get_activity, get_summary,
+  get_activity.  When provided, day/week boundaries follow the user's local wall-clock
+  via ``AT TIME ZONE 'UTC' AT TIME ZONE :tz`` applied only in SELECT/GROUP BY/ORDER BY
+  (never in WHERE — keeps queries sargable).  Cache keys include tz to prevent collisions.
 """
 import logging
 from collections import defaultdict
 from datetime import datetime, date, timedelta, timezone
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, text
@@ -41,6 +48,30 @@ router = APIRouter()
 
 # Maximum date-range span for /analytics/activity (reject absurd ranges).
 _MAX_ACTIVITY_DAYS = 400
+
+
+def _validate_tz(tz: Optional[str]) -> Optional[ZoneInfo]:
+    """Validate and return a ZoneInfo for the given IANA timezone name.
+
+    Args:
+        tz: IANA timezone name (e.g. "Asia/Tbilisi") or None.
+
+    Returns:
+        A ``ZoneInfo`` instance when tz is provided, or ``None`` when tz is None
+        (meaning UTC behaviour is preserved).
+
+    Raises:
+        HTTPException 422: When tz is not a valid IANA timezone name.
+    """
+    if tz is None:
+        return None
+    try:
+        return ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, KeyError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid or unknown timezone: {tz!r}. Use an IANA timezone name, e.g. 'Asia/Tbilisi'.",
+        )
 
 
 @router.get(
@@ -450,6 +481,7 @@ def get_top_muscles(
 def get_activity(
     from_date: date = Query(..., alias="from"),
     to_date: date = Query(..., alias="to"),
+    tz: Optional[str] = Query(default=None),
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.ActivityDay]:
@@ -462,11 +494,17 @@ def get_activity(
     Sargability note: the WHERE clause uses ``date >= :from AND date < :to_exclusive``
     (i.e. a half-open range on the raw TIMESTAMP column) so that Postgres can use
     ``idx_training_user_date (user_id, date)`` without wrapping the column in a
-    function.  CAST(date AS DATE) appears only in GROUP BY / SELECT, never in WHERE.
+    function.  The AT TIME ZONE transform appears only in GROUP BY / SELECT / ORDER BY,
+    never in WHERE.
+
+    GYM-58: When ``tz`` is supplied, day boundaries follow the user's local wall-clock
+    via ``date AT TIME ZONE 'UTC' AT TIME ZONE :tz`` in SELECT/GROUP BY/ORDER BY.
+    The WHERE predicate keeps the raw timestamp column for index sargability.
 
     Args:
         from_date: Inclusive start date (``from`` query parameter).
         to_date: Inclusive end date (``to`` query parameter).
+        tz: Optional IANA timezone name (e.g. "Asia/Tbilisi"). Default None = UTC.
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
@@ -475,7 +513,10 @@ def get_activity(
 
     Raises:
         HTTPException 400: If ``from`` > ``to`` or range exceeds 400 days.
+        HTTPException 422: If ``tz`` is not a valid IANA timezone name.
     """
+    _validate_tz(tz)  # raises 422 on invalid tz
+
     if from_date > to_date:
         raise HTTPException(status_code=400, detail="'from' must be <= 'to'")
     span = (to_date - from_date).days + 1
@@ -486,7 +527,7 @@ def get_activity(
         )
 
     uid = principal["user_id"]
-    cache_key = make_key(uid, "activity", frm=str(from_date), to=str(to_date))
+    cache_key = make_key(uid, "activity", frm=str(from_date), to=str(to_date), tz=tz or "UTC")
     cached = cache_get(cache_key)
     if cached is not None:
         return [schemas.ActivityDay(**item) for item in cached]
@@ -494,24 +535,47 @@ def get_activity(
     # Half-open range: [from_date 00:00:00, to_date+1day 00:00:00)
     # Reason: idx_training_user_date is on (user_id, date); plain range predicates on
     # `date` allow Postgres to use the index without a function scan.
-    # DATE_TRUNC appears only in GROUP BY / SELECT, never in WHERE.
+    # AT TIME ZONE appears only in GROUP BY / SELECT / ORDER BY, never in WHERE.
     to_exclusive = datetime(to_date.year, to_date.month, to_date.day) + timedelta(days=1)
     from_dt = datetime(from_date.year, from_date.month, from_date.day)
 
-    rows = db.execute(
-        text("""
+    if tz is None:
+        # UTC path — unchanged behaviour.
+        query_params: dict = {"uid": uid, "from_dt": from_dt, "to_exclusive": to_exclusive}
+        day_expr = "DATE_TRUNC('day', date)"
+        sql = f"""
             SELECT
-                DATE_TRUNC('day', date) AS day,
-                COUNT(*)                AS sets_count
+                {day_expr} AS day,
+                COUNT(*)    AS sets_count
             FROM training
             WHERE user_id = :uid
               AND date >= :from_dt
               AND date  < :to_exclusive
-            GROUP BY DATE_TRUNC('day', date)
-            ORDER BY DATE_TRUNC('day', date)
-        """),
-        {"uid": uid, "from_dt": from_dt, "to_exclusive": to_exclusive},
-    ).fetchall()
+            GROUP BY {day_expr}
+            ORDER BY {day_expr}
+        """
+    else:
+        # Timezone-aware path: convert UTC timestamp to the user's local wall-clock
+        # before truncating.  The AT TIME ZONE transform stays out of WHERE.
+        # Reason: 'date AT TIME ZONE UTC AT TIME ZONE tz' first interprets the naive
+        # TIMESTAMP as UTC, then converts to tz, yielding the local-wall-clock value.
+        query_params = {
+            "uid": uid, "from_dt": from_dt, "to_exclusive": to_exclusive, "tz": tz
+        }
+        day_expr = "DATE_TRUNC('day', date AT TIME ZONE 'UTC' AT TIME ZONE :tz)"
+        sql = f"""
+            SELECT
+                {day_expr} AS day,
+                COUNT(*)    AS sets_count
+            FROM training
+            WHERE user_id = :uid
+              AND date >= :from_dt
+              AND date  < :to_exclusive
+            GROUP BY {day_expr}
+            ORDER BY {day_expr}
+        """
+
+    rows = db.execute(text(sql), query_params).fetchall()
 
     # Build result — extract the calendar date from the truncated timestamp.
     result = []
@@ -530,6 +594,7 @@ def get_activity(
     tags=["analytics"],
 )
 def get_analytics_summary(
+    tz: Optional[str] = Query(default=None),
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> schemas.AnalyticsSummary:
@@ -550,25 +615,31 @@ def get_analytics_summary(
             prior set for that exercise.  This produces a meaningfully different
             metric (prs <= sets, and typically prs < exercises for exercisers who
             have been training consistently with progressive overload).
-        current_streak: consecutive Monday-start weeks (UTC) ending at the current
-            week, each containing >=1 training session (GYM-56).
-            Reason: training timestamps are stored in UTC (Postgres TIMESTAMP WITHOUT
-            TIME ZONE).  ``date_trunc('week', date)`` in Postgres is Monday-start,
-            consistent with the activity-grid convention.  The current week is
-            "forgiving": if it has no session yet (week in progress), the chain is
-            not broken — consecutive prior weeks are counted instead.  The chain
-            breaks only at a fully-elapsed week with zero sessions.  Per-user
-            timezone support (GYM-58) is out of scope here.
+        current_streak: consecutive Monday-start weeks ending at the current
+            week in the requested timezone (default UTC), each containing >=1
+            training session (GYM-56, GYM-58).
+            Reason: training timestamps are stored as naive UTC TIMESTAMP.
+            When ``tz`` is provided, ``date_trunc('week', date AT TIME ZONE 'UTC'
+            AT TIME ZONE :tz)`` groups rows by the user's local wall-clock week.
+            The streak anchor (current week / today) is also derived in that
+            timezone.  The current week is "forgiving": if no session has happened
+            yet this week (week in progress), the chain is not broken.
 
     Args:
+        tz: Optional IANA timezone name (e.g. "Asia/Tbilisi"). Default None = UTC.
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         AnalyticsSummary with exercises, sets, prs, current_streak.
+
+    Raises:
+        HTTPException 422: If ``tz`` is not a valid IANA timezone name.
     """
+    _validate_tz(tz)  # raises 422 on invalid tz
+
     uid = principal["user_id"]
-    cache_key = make_key(uid, "summary")
+    cache_key = make_key(uid, "summary", tz=tz or "UTC")
     cached = cache_get(cache_key)
     if cached is not None:
         return schemas.AnalyticsSummary(**cached)
@@ -616,27 +687,38 @@ def get_analytics_summary(
 
     prs = int(pr_row[0]) if pr_row else 0
 
-    # Streak (GYM-56): bucket training rows into Monday-start ISO weeks (UTC) and
-    # count consecutive weeks ending at the current week, each with >=1 session.
-    # Reason: date_trunc('week', date) in Postgres yields Monday 00:00 UTC for
-    # any timestamp in that week.  The WHERE clause stays a plain user_id filter
-    # so Postgres can use idx_training_user_date (user_id, date) for the scan;
-    # date_trunc appears only in GROUP BY / SELECT, never in WHERE — keeping the
-    # predicate sargable.
-    today_utc = datetime.now(timezone.utc).date()
-
-    active_weeks_rows = db.execute(
-        text("""
+    # Streak (GYM-56 / GYM-58): bucket training rows into Monday-start ISO weeks
+    # and count consecutive weeks ending at the current week, each with >=1 session.
+    # When tz is provided, the AT TIME ZONE transform converts the naive UTC timestamp
+    # to the user's local wall-clock before truncating — the WHERE clause stays a plain
+    # user_id filter so Postgres uses idx_training_user_date; the transform appears only
+    # in GROUP BY / SELECT, keeping the predicate sargable.
+    if tz is None:
+        # UTC path — unchanged behaviour.
+        today_ref = datetime.now(timezone.utc).date()
+        week_sql = """
             SELECT DATE_TRUNC('week', date)::date AS week_start
             FROM training
             WHERE user_id = :uid
             GROUP BY DATE_TRUNC('week', date)
             ORDER BY week_start DESC
-        """),
-        {"uid": uid},
-    ).fetchall()
+        """
+        week_params: dict = {"uid": uid}
+    else:
+        # Timezone-aware path: current date in the user's timezone for the streak anchor.
+        tz_info = ZoneInfo(tz)
+        today_ref = datetime.now(tz_info).date()
+        week_sql = """
+            SELECT DATE_TRUNC('week', date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date AS week_start
+            FROM training
+            WHERE user_id = :uid
+            GROUP BY DATE_TRUNC('week', date AT TIME ZONE 'UTC' AT TIME ZONE :tz)
+            ORDER BY week_start DESC
+        """
+        week_params = {"uid": uid, "tz": tz}
 
-    streak = _compute_streak_weeks([r[0] for r in active_weeks_rows], today_utc)
+    active_weeks_rows = db.execute(text(week_sql), week_params).fetchall()
+    streak = _compute_streak_weeks([r[0] for r in active_weeks_rows], today_ref)
 
     result = schemas.AnalyticsSummary(
         exercises=exercises,

@@ -1,4 +1,4 @@
-"""Training history endpoints — GYM-47.
+"""Training history endpoints — GYM-47 / GYM-58.
 
 Implements:
   GET  /training/days        — day-grouped summary, reverse-chronological
@@ -11,11 +11,17 @@ the authenticated caller, fail-closed).
 Cache invalidation: every mutation calls ``cache.invalidate_user(uid)`` to
 purge stale analytics:{user_id}:* keys so Dashboard/Progress numbers stay
 current after edits.  Graceful if Redis is down.
+
+GYM-58: Optional ``tz`` query param added to ``list_training_days``.  When
+provided, the ``t.date::date`` grouping is replaced by
+``(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date`` in SELECT/GROUP BY/
+ORDER BY only — the WHERE filter keeps the raw column for sargability.
 """
 import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -34,6 +40,26 @@ router = APIRouter()
 _DEFAULT_WINDOW_DAYS = 180
 
 
+def _validate_tz(tz: Optional[str]) -> None:
+    """Raise HTTP 422 when tz is not a valid IANA timezone name.
+
+    Args:
+        tz: IANA timezone name or None (None is always valid — UTC behaviour).
+
+    Raises:
+        HTTPException 422: When tz is supplied but not a recognised IANA zone.
+    """
+    if tz is None:
+        return
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, KeyError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid or unknown timezone: {tz!r}. Use an IANA timezone name, e.g. 'Asia/Tbilisi'.",
+        )
+
+
 @router.get(
     "/training/days",
     response_model=List[schemas.TrainingDay],
@@ -42,6 +68,7 @@ _DEFAULT_WINDOW_DAYS = 180
 def list_training_days(
     from_date: Optional[date] = Query(None, alias="from"),
     to_date: Optional[date] = Query(None, alias="to"),
+    tz: Optional[str] = Query(default=None),
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.TrainingDay]:
@@ -52,15 +79,26 @@ def list_training_days(
     the last 180 days.  The WHERE clause is sargable — it filters on the raw
     ``date`` column which is covered by ``idx_training_user_date``.
 
+    GYM-58: When ``tz`` is provided, day boundaries follow the user's local
+    wall-clock.  The day expression ``t.date::date`` is replaced by
+    ``(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date`` in SELECT/GROUP BY/
+    ORDER BY only.  The WHERE keeps the raw timestamp column.
+
     Args:
         from_date: Inclusive start date; defaults to today minus 180 days.
         to_date: Inclusive end date; defaults to today.
+        tz: Optional IANA timezone name (e.g. "Asia/Tbilisi"). Default None = UTC.
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         List of ``TrainingDay`` summaries, newest first.
+
+    Raises:
+        HTTPException 422: If ``tz`` is not a valid IANA timezone name.
     """
+    _validate_tz(tz)  # raises 422 on invalid tz
+
     uid = principal["user_id"]
     today = date.today()
     date_from = from_date or (today - timedelta(days=_DEFAULT_WINDOW_DAYS))
@@ -73,23 +111,33 @@ def list_training_days(
     dt_from = datetime(date_from.year, date_from.month, date_from.day)
     dt_to = datetime(date_to.year, date_to.month, date_to.day) + timedelta(days=1)
 
-    rows = db.execute(
-        text("""
-            SELECT
-                t.date::date                      AS day,
-                ARRAY_AGG(DISTINCT m.name)        AS muscles,
-                COUNT(DISTINCT t.exercise_id)     AS exercises_count,
-                COUNT(*)                          AS sets_count
-            FROM training t
-            JOIN muscles m ON m.id = t.muscle_id
-            WHERE t.user_id = :uid
-              AND t.date >= :dt_from
-              AND t.date  < :dt_to
-            GROUP BY t.date::date
-            ORDER BY t.date::date DESC
-        """),
-        {"uid": uid, "dt_from": dt_from, "dt_to": dt_to},
-    ).fetchall()
+    if tz is None:
+        # UTC path — unchanged behaviour.
+        day_expr = "t.date::date"
+        query_params: dict = {"uid": uid, "dt_from": dt_from, "dt_to": dt_to}
+    else:
+        # Timezone-aware path: convert the naive UTC timestamp to the user's local
+        # wall-clock before casting to date.  The AT TIME ZONE transform stays out
+        # of the WHERE clause so the index on (user_id, date) is still used.
+        day_expr = "(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date"
+        query_params = {"uid": uid, "dt_from": dt_from, "dt_to": dt_to, "tz": tz}
+
+    sql = f"""
+        SELECT
+            {day_expr}                            AS day,
+            ARRAY_AGG(DISTINCT m.name)            AS muscles,
+            COUNT(DISTINCT t.exercise_id)         AS exercises_count,
+            COUNT(*)                              AS sets_count
+        FROM training t
+        JOIN muscles m ON m.id = t.muscle_id
+        WHERE t.user_id = :uid
+          AND t.date >= :dt_from
+          AND t.date  < :dt_to
+        GROUP BY {day_expr}
+        ORDER BY {day_expr} DESC
+    """
+
+    rows = db.execute(text(sql), query_params).fetchall()
 
     return [
         schemas.TrainingDay(
