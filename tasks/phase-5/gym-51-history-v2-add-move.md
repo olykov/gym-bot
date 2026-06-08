@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-51
 title: "History v2: add a set retroactively + move a set (date/exercise)"
 slug: gym-51-history-v2-add-move
-status: backlog
+status: in_progress
 priority: low
 type: feature
 labels: [phase-5, frontend, api]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-04T18:00:00Z
-start_date: null
+start_date: 2026-06-09T00:00:00Z
 finish_date: null
 updated: 2026-06-04T18:00:00Z
 epic: phase-5
