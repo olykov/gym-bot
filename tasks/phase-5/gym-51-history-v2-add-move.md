@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-51
 title: "History v2: add a set retroactively + move a set (date/exercise)"
 slug: gym-51-history-v2-add-move
-status: review
+status: done
 priority: low
 type: feature
 labels: [phase-5, frontend, api]
