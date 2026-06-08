@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-104
 title: "apps/web: PR chip shows wrong/no PR on reopen (one-shot prAnchor race) — derive effective PR + Show-Hidden polish"
 slug: gym-104-pr-chip-race-fix
-status: review
+status: done
 priority: critical
 type: bug-fix
 labels: [tax-fixes, frontend, bug]
