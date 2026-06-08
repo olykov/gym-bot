@@ -237,6 +237,31 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /muscles/hidden:
+    get:
+      tags: [muscles]
+      summary: List muscle groups the authenticated user has hidden
+      description: >
+        The global muscles the caller has hidden (via `PUT /muscles/{muscle_id}/hidden`).
+        Powers the "Show Hidden → Unhide" affordance. Empty array when nothing is hidden.
+      operationId: listHiddenMuscles
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '200':
+          description: Muscle groups hidden by the caller.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Muscle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /muscles/{muscle_id}/hidden:
     put:
       tags: [muscles]
@@ -406,6 +431,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Exercise'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /exercises/hidden:
+    get:
+      tags: [exercises]
+      summary: List exercises the authenticated user has hidden within a muscle
+      description: >
+        The global exercises the caller has hidden (via `PUT /exercises/{exercise_id}/hidden`)
+        for the given muscle. Powers the "Show Hidden → Unhide" affordance. Empty array when
+        nothing is hidden for that muscle.
+      operationId: listHiddenExercises
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '200':
+          description: Exercises hidden by the caller within the muscle.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Exercise'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
