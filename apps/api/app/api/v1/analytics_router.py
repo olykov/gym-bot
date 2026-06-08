@@ -32,6 +32,8 @@ from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
+from app.services.resolve import resolve_exercise_id as _shared_resolve_exercise_id
+from app.services.resolve import resolve_muscle_id as _shared_resolve_muscle_id
 
 logger = logging.getLogger(__name__)
 
@@ -269,13 +271,19 @@ def get_top_exercises(
     """
     uid = principal["user_id"]
 
+    # GYM-106: resolve muscle by name_key so variant names (e.g. "bench-press")
+    # work consistently.  Returns empty list when the muscle is not found /
+    # not visible — matches previous behaviour for unknown muscle names.
+    muscle_id = _shared_resolve_muscle_id(db, uid, muscle)
+    if muscle_id is None:
+        return []
+
     rows = (
         db.query(models.Exercise.name, func.count().label("frequency"))
         .join(models.Training, models.Training.exercise_id == models.Exercise.id)
-        .join(models.Muscle, models.Training.muscle_id == models.Muscle.id)
         .filter(
             models.Training.user_id == uid,
-            models.Muscle.name == muscle,
+            models.Training.muscle_id == muscle_id,
         )
         .group_by(models.Exercise.name)
         .order_by(func.count().desc(), models.Exercise.name.asc())
@@ -745,24 +753,13 @@ def get_exercise_progress(
     if cached is not None:
         return schemas.ExerciseProgress(**cached)
 
-    # Resolve exercise_id through the RLS-scoped exercises table so the user
-    # cannot enumerate exercises they cannot see.
-    ex_row = (
-        db.query(models.Exercise.id)
-        .join(models.Muscle, models.Exercise.muscle == models.Muscle.id)
-        .filter(
-            models.Muscle.name_key == func.app_name_key(muscle),
-            models.Exercise.name_key == func.app_name_key(exercise),
-        )
-        .first()
-    )
+    # GYM-106: resolve exercise_id via shared resolver (own-first, name_key-based).
+    exercise_id = _shared_resolve_exercise_id(db, uid, muscle, exercise)
 
-    if ex_row is None:
+    if exercise_id is None:
         empty = {"series": []}
         cache_set(cache_key, empty)
         return schemas.ExerciseProgress(series=[])
-
-    exercise_id = ex_row[0]
 
     rows = db.execute(
         text("""
@@ -824,34 +821,31 @@ def _resolve_exercise_id(
     db: Session,
     muscle: str,
     exercise: str,
+    uid: Optional[int] = None,
 ) -> Optional[int]:
     """Resolve exercise_id from muscle + exercise name via the RLS-scoped session.
 
-    Matches by ``name_key`` (the normalized form produced by the SQL function
-    ``app_name_key``) so that name variants like "bench-press", "BENCH PRESS",
-    and "Bench Press" all resolve to the same canonical exercise (GYM-99).
+    GYM-106: delegates to the shared ``resolve_exercise_id`` helper in
+    ``app.services.resolve``.  That helper matches by ``name_key`` (the
+    ``app_name_key`` SQL function) and applies deterministic own-first-then-global
+    priority so that variant names ("bench-press", "BENCH PRESS") all resolve to
+    the same row.
 
-    Uses the same join pattern as ``get_exercise_progress`` so the user cannot
-    probe exercises invisible to them under RLS.
+    The ``uid`` parameter is forwarded when supplied; when omitted (legacy call
+    sites) the resolver still works correctly because RLS already scopes the
+    session — the own-first ordering simply degrades to a less-discriminating
+    ``LIMIT 1`` when uid is unknown, which is safe in the RLS context.
 
     Args:
         db: SQLAlchemy session (already GUC-wired for the calling user).
         muscle: Muscle group name (any case/separator variant).
         exercise: Exercise name (any case/separator variant).
+        uid: Caller's user id (optional; used for own-first determinism).
 
     Returns:
         The integer exercise id, or ``None`` when not found / not visible.
     """
-    row = (
-        db.query(models.Exercise.id)
-        .join(models.Muscle, models.Exercise.muscle == models.Muscle.id)
-        .filter(
-            models.Muscle.name_key == func.app_name_key(muscle),
-            models.Exercise.name_key == func.app_name_key(exercise),
-        )
-        .first()
-    )
-    return row[0] if row else None
+    return _shared_resolve_exercise_id(db, uid or 0, muscle, exercise)
 
 
 def _fetch_completed_sets(
@@ -1021,7 +1015,7 @@ def get_log_context(
             pr=schemas.PersonalRecord(**pr_raw) if pr_raw else None,
         )
 
-    exercise_id = _resolve_exercise_id(db, muscle, exercise)
+    exercise_id = _resolve_exercise_id(db, muscle, exercise, uid)
     if exercise_id is None:
         # Reason: do NOT cache a resolution miss — caching an empty result here
         # would poison the key for the full TTL and mask future history once the

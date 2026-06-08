@@ -34,6 +34,7 @@ from app.core.auth import (
     create_session_token,
     verify_telegram_webapp_auth,
 )
+from app.services.resolve import resolve_muscle_id, resolve_exercise_id
 
 # ---------------------------------------------------------------------------
 # Auth / static-data router — paths UNCHANGED from pre-GYM-23
@@ -252,14 +253,13 @@ def create_user_training(
     """
     user_id = int(current_user["sub"])
 
-    muscle = db.query(models.Muscle).filter(models.Muscle.name == training.muscle_name).first()
-    if not muscle:
+    # GYM-106: resolve by name_key (own-first-then-global, variant-name aware).
+    muscle_id = resolve_muscle_id(db, user_id, training.muscle_name)
+    if not muscle_id:
         raise HTTPException(status_code=404, detail="Muscle not found")
 
-    exercise = (
-        db.query(models.Exercise).filter(models.Exercise.name == training.exercise_name).first()
-    )
-    if not exercise:
+    exercise_id = resolve_exercise_id(db, user_id, training.muscle_name, training.exercise_name)
+    if not exercise_id:
         raise HTTPException(status_code=404, detail="Exercise not found")
 
     new_id = uuid.uuid4().hex
@@ -268,8 +268,8 @@ def create_user_training(
         id=new_id,
         date=datetime.now(),
         user_id=user_id,
-        muscle_id=muscle.id,
-        exercise_id=exercise.id,
+        muscle_id=muscle_id,
+        exercise_id=exercise_id,
         set=int(training.set_id),
         weight=float(training.weight),
         reps=int(training.reps),

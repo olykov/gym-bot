@@ -32,6 +32,7 @@ from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
+from app.services.resolve import resolve_muscle_id, resolve_exercise_id
 from app.services.visibility import visible_muscles
 
 logger = logging.getLogger(__name__)
@@ -511,28 +512,21 @@ def create_training(
     """
     uid = principal["user_id"]
 
-    muscle = (
-        db.query(models.Muscle)
-        .filter(models.Muscle.name == body.muscle_name)
-        .first()
-    )
-    if muscle is None:
+    # GYM-106: resolve by name_key (own-first-then-global, variant-name aware).
+    muscle_id = resolve_muscle_id(db, uid, body.muscle_name)
+    if muscle_id is None:
         raise HTTPException(status_code=404, detail="Muscle not found")
 
-    exercise = (
-        db.query(models.Exercise)
-        .filter(models.Exercise.name == body.exercise_name)
-        .first()
-    )
-    if exercise is None:
+    exercise_id = resolve_exercise_id(db, uid, body.muscle_name, body.exercise_name)
+    if exercise_id is None:
         raise HTTPException(status_code=404, detail="Exercise not found")
 
     training = models.Training(
         id=uuid.uuid4().hex,
         date=datetime.utcnow(),
         user_id=uid,
-        muscle_id=muscle.id,
-        exercise_id=exercise.id,
+        muscle_id=muscle_id,
+        exercise_id=exercise_id,
         set=body.set,
         weight=body.weight,
         reps=body.reps,

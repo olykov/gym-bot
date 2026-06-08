@@ -19,6 +19,7 @@ from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
+from app.services.resolve import resolve_muscle_id
 from app.services.visibility import visible_exercises_for_muscle, visible_muscles
 
 logger = logging.getLogger(__name__)
@@ -160,22 +161,16 @@ def create_exercise(
     muscle_name = body.muscle_name.strip()
     exercise_name = body.name  # already normalized by the validator
 
-    # Resolve or create the owning muscle (by name, not by key).
-    muscle = (
-        db.query(models.Muscle)
-        .filter(
-            models.Muscle.name == muscle_name,
-            (models.Muscle.is_global.is_(True)) | (models.Muscle.created_by == uid),
-        )
-        .order_by(models.Muscle.is_global.desc())
-        .first()
-    )
-    if muscle is None:
-        muscle = models.Muscle(name=muscle_name, is_global=False, created_by=uid)
-        db.add(muscle)
+    # GYM-106: resolve the owning muscle by name_key (own-first-then-global,
+    # variant-name aware) rather than exact name.  If no visible muscle matches
+    # the key, fall back to creating a new own muscle with the supplied display
+    # name (preserving the GYM-85 create-or-resolve behaviour).
+    muscle_id = resolve_muscle_id(db, uid, muscle_name)
+    if muscle_id is None:
+        new_muscle = models.Muscle(name=muscle_name, is_global=False, created_by=uid)
+        db.add(new_muscle)
         db.flush()
-
-    muscle_id = muscle.id
+        muscle_id = new_muscle.id
 
     # 1. Own exercise: same key + same muscle + same user.
     own = db.execute(
