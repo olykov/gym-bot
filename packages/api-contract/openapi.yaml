@@ -782,6 +782,61 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /training/{training_id}/move:
+    patch:
+      tags: [training]
+      summary: Move a training set to another day and/or exercise
+      description: >
+        Moves the caller's own set to another calendar day (date) and/or another
+        exercise (muscle_name + exercise_name). Only the caller's own record can be
+        moved (RLS-scoped per identity / X-Act-As-User). At least one of
+        {date, (muscle_name + exercise_name)} must be provided; the set's number,
+        weight and reps are preserved. History v2 (GYM-51).
+      operationId: moveTrainingSet
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TrainingId'
+        - $ref: '#/components/parameters/ActAsUser'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingMove'
+      responses:
+        '200':
+          description: The moved training record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Training'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Training set not found or not owned by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: >
+            The target day + exercise already has a set with the same set number
+            (collision).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: >
+            Invalid body, nothing to move (no date and no muscle_name+exercise_name),
+            or the target exercise does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # ---------------------------------------------------------------- analytics
   /analytics/completed-sets:
     get:
@@ -1699,6 +1754,13 @@ components:
           type: number
         reps:
           type: number
+        date:
+          type: string
+          format: date
+          description: >
+            Optional calendar day to log the set on (date part only; naive-tolerant
+            per GYM-30). When provided, the set is recorded on that day (retroactive
+            add). When omitted, the server uses now() — unchanged, backward-compatible.
 
     TrainingUpdate:
       type: object
@@ -1708,6 +1770,37 @@ components:
           type: number
         reps:
           type: number
+
+    TrainingMove:
+      type: object
+      description: >
+        Move an existing set to another calendar day and/or another exercise.
+        All fields are OPTIONAL, but at least one of {date, (muscle_name +
+        exercise_name)} must be provided — a body that moves nothing is rejected
+        (422). To move to another exercise, send BOTH muscle_name and exercise_name.
+        Validation (at-least-one, both names together, target exercise exists) is
+        enforced in the API.
+      properties:
+        date:
+          type: string
+          format: date
+          description: >
+            Target calendar day to move the set to (date part only; naive-tolerant
+            per GYM-30). Omit to keep the set on its current day.
+        muscle_name:
+          type: string
+          description: >
+            Target muscle group name — reference to an existing record, normalized
+            only (trim + collapse internal whitespace), not length/char-bound.
+            Required together with exercise_name when moving to another exercise.
+            See docs/validation.md (Name rules — Create vs lookup).
+        exercise_name:
+          type: string
+          description: >
+            Target exercise name — reference to an existing record, normalized only
+            (trim + collapse internal whitespace), not length/char-bound. Required
+            together with muscle_name when moving to another exercise.
+            See docs/validation.md (Name rules — Create vs lookup).
 
     TrainingDay:
       type: object
