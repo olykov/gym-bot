@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-58
 title: "Analytics in the user's timezone (streak, activity grid, day boundaries)"
 slug: gym-58-user-timezone-analytics
-status: review
+status: done
 priority: low
 type: feature
 labels: [phase-5, api]
