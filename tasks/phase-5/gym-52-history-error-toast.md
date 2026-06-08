@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-52
 title: "apps/web: surface a 'couldn't save — restored' message on mutation error"
 slug: gym-52-history-error-toast
-status: review
+status: done
 priority: low
 type: bug-fix
 labels: [phase-5, frontend]
