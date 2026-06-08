@@ -992,11 +992,25 @@ Title: item name in Bebas Neue (truncated), kind label ("Muscle" / "Exercise") i
 Action rows: full-width buttons, ≥52px, `--secondary-bg`, hairline divider between rows.
 
 Ownership gating (from `is_mine` field, GYM-80):
-- **Own custom item (`is_mine === true`):** Rename + Delete action rows.
+- **Own custom item (`is_mine === true`):** Rename + Move (exercises only) + Delete action rows.
   - **Rename** → switches the sheet body to an inline `AddInlineField` (the same component used for
     `+ Muscle` / `+ Exercise`, pre-filled with the current name, same `maxLength` from `validation.ts`).
     409 (dup name) → "That name is already in use." inline message; 422 → server message. On success
     the sheet closes and the tile lists invalidate and refresh.
+  - **Move to another muscle** (exercises only, GYM-90) → switches the sheet body to the `move`
+    sub-view: a "Move to" label + a scrollable list of all visible muscles (from `useMuscles()`), with
+    the exercise's current muscle excluded. Each row is a full-width ≥52px button in the same
+    `--secondary-bg` / hairline style. Tapping a target calls `PATCH /exercises/{id}/muscle` with
+    `{ muscle_id }`. On success → close + full invalidation (muscles, top-muscles, top-exercises,
+    exercise-progress). Error handling:
+    - 409 (name collision in target): "You already have an exercise with this name in {muscle}." —
+      stay in move view so the user can pick a different muscle.
+    - 403 (global/canonical — not the caller's own): "This exercise can't be moved."
+    - 404 (exercise or target muscle not found): "Target muscle not found — try again."
+    - Other: "Couldn't move — try again."
+    A ← Back row returns to the actions view. While `moveExercise.isPending`, all muscle buttons show
+    "Moving…" and are disabled. The `muscleId` of the current exercise is passed through
+    `ManageSheetProps.item.muscleId` (set in `RecordPicker.openExerciseManage`) to perform the filter.
   - **Delete** → switches the sheet body to a confirm step: `"Delete '{name}'? This cannot be
     undone."` with Cancel and Delete buttons. Delete uses `--accent` fill (the same primary-action
     treatment as Save). On **409 (has history)** switches to the "offer-hide" sub-view:
@@ -1006,10 +1020,12 @@ Ownership gating (from `is_mine` field, GYM-80):
   `PUT /muscles/{id}/hidden` or `PUT /exercises/{id}/hidden`. On success → close + invalidate.
 
 **hooks added to `useRecord.ts`:** `useRenameMuscle`, `useRenameExercise`, `useDeleteMuscle`,
-`useDeleteExercise`, `useHideMuscle`, `useHideExercise`. All invalidate `["muscles"]`,
-`["analytics","top-muscles"]`, `["analytics","top-exercises"]` on success. `useRenameExercise`
-additionally invalidates `["analytics","exercise-progress"]` and the specific muscle's
-`["analytics","top-exercises",muscleName]` so progress charts keyed by the old exercise name refresh.
+`useDeleteExercise`, `useHideMuscle`, `useHideExercise`, `useMoveExercise` (GYM-90). All invalidate
+`["muscles"]`, `["analytics","top-muscles"]`, `["analytics","top-exercises"]` on success.
+`useRenameExercise` additionally invalidates `["analytics","exercise-progress"]` and the specific
+muscle's `["analytics","top-exercises",muscleName]` so progress charts keyed by the old exercise name
+refresh. `useMoveExercise` additionally invalidates `["analytics","exercise-progress"]` since the
+muscle context changed.
 
 **Exercise id lookup:** `useTopExercises` returns only `{name, frequency}` (no `id`/`is_mine`). For
 manage actions, `RecordPicker` also loads the full `Exercise[]` via `useExercises(selectedMuscleId)`
@@ -1017,3 +1033,6 @@ manage actions, `RecordPicker` also loads the full `Exercise[]` via `useExercise
 derived from `muscleByName` (from `useMuscles()`). This is a second query for the selected muscle's
 exercises — acceptable since it is already prefetched and cached (5-min staleTime), and it fires only
 when a muscle is selected (empty path safe).
+
+**Muscle list in the move view:** `ManageSheet` calls `useMuscles()` directly (the same cached query
+already warm from `RecordPicker`). No extra network round-trip on open: the cache is shared.

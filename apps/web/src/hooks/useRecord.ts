@@ -31,10 +31,12 @@ import {
     fetchTopMuscles,
     hideExercise,
     hideMuscle,
+    moveExercise,
     renameExercise,
     renameMuscle,
     type Exercise,
     type ExerciseCreate,
+    type ExerciseMove,
     type ExerciseRename,
     type LogContext,
     type Muscle,
@@ -355,6 +357,33 @@ export function useHideExercise() {
         mutationFn: ({ exerciseId }) => hideExercise(exerciseId),
         onSuccess: () => {
             invalidateElementLists(qc);
+        },
+    });
+}
+
+interface MoveExerciseVars {
+    exerciseId: number;
+    body: ExerciseMove;
+}
+
+/**
+ * PATCH /exercises/{id}/muscle — move the caller's own exercise to another
+ * muscle (GYM-90). On success invalidates the muscle + exercise lists and
+ * top-muscles/top-exercises so the exercise appears under the new muscle and
+ * disappears from the old one. The exercise-progress series is also invalidated
+ * since the muscle context changed.
+ * 403: exercise is global (not movable). 404: exercise or target muscle not
+ * found. 409: name collision in the target muscle — surfaced to the caller.
+ */
+export function useMoveExercise() {
+    const qc = useQueryClient();
+    return useMutation<Exercise, Error, MoveExerciseVars>({
+        mutationFn: ({ exerciseId, body }) => moveExercise(exerciseId, body),
+        onSuccess: () => {
+            invalidateElementLists(qc);
+            void qc.invalidateQueries({
+                queryKey: ["analytics", "exercise-progress"],
+            });
         },
     });
 }

@@ -24,6 +24,7 @@ export type MuscleCreate = Schemas["MuscleCreate"];
 export type ExerciseCreate = Schemas["ExerciseCreate"];
 export type MuscleRename = Schemas["MuscleRename"];
 export type ExerciseRename = Schemas["ExerciseRename"];
+export type ExerciseMove = Schemas["ExerciseMove"];
 
 /** GET /analytics/summary — the four dashboard numbers (scoped to the caller). */
 export function fetchSummary(signal?: AbortSignal): Promise<AnalyticsSummary> {
@@ -192,4 +193,14 @@ export function deleteExercise(exerciseId: number): Promise<void> {
  */
 export function hideExercise(exerciseId: number): Promise<void> {
     return apiRequest<void>(`/exercises/${exerciseId}/hidden`, { method: "PUT" });
+}
+
+/**
+ * PATCH /exercises/{exercise_id}/muscle — move the caller's own exercise to
+ * another muscle (GYM-90). Returns the updated Exercise on success.
+ * 403: exercise is global/canonical. 404: exercise or target muscle not found.
+ * 409: caller already has an exercise with that name in the target muscle.
+ */
+export function moveExercise(exerciseId: number, body: ExerciseMove): Promise<Exercise> {
+    return apiRequest<Exercise>(`/exercises/${exerciseId}/muscle`, { method: "PATCH", body });
 }

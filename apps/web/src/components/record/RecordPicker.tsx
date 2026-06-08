@@ -78,6 +78,8 @@ interface ManageItem {
     kind: "muscle" | "exercise";
     is_mine: boolean;
     muscleName?: string;
+    /** Current muscle id — for the GYM-90 move view to exclude the current muscle. */
+    muscleId?: number;
 }
 
 interface RecordPickerProps {
@@ -389,6 +391,7 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
             kind: "exercise",
             is_mine: ex.is_mine ?? false,
             muscleName: selectedMuscle ?? undefined,
+            muscleId: selectedMuscleId ?? undefined,
         });
     }
 

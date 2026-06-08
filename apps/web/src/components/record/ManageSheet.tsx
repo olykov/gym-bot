@@ -4,13 +4,17 @@
  * Opened by a ~480ms long-press on a muscle or exercise tile. Reuses the shared
  * <BottomSheet> (auto-height, not fixedHeight) so it slides up in the same
  * Chalk & Iron language as every other sheet. The sheet is deliberately small —
- * one or two action rows + an optional confirm/rename sub-view — to feel like a
- * contextual menu, not a new screen.
+ * one or two action rows + an optional confirm/rename/move sub-view — to feel like
+ * a contextual menu, not a new screen.
  *
  * Ownership-gated (GYM-80 `is_mine`):
- *   - Own custom item (`is_mine === true`): Rename + Delete.
+ *   - Own custom item (`is_mine === true`): Rename + Move to another muscle + Delete.
  *     - Rename → inline edit reusing AddInlineField pattern, pre-filled, enforces
  *       maxLength. 409 (dup name) → graceful inline message; 422 → server message.
+ *     - Move (exercises only, GYM-90) → muscle list (all visible muscles, excluding
+ *       the current one). Picking a target calls PATCH /exercises/{id}/muscle.
+ *       On success: close + full invalidation. 409 (name collision in target) →
+ *       graceful inline message, stay in move view. 403/404 → graceful error.
  *     - Delete → confirm step (destructive, in-design). On 409 (has history)
  *       offers Hide instead of showing a plain error.
  *   - Global catalog item (`is_mine === false`): Hide only.
@@ -30,12 +34,14 @@ import {
     useDeleteExercise,
     useHideMuscle,
     useHideExercise,
+    useMoveExercise,
 } from "@/hooks/useRecord";
+import { useMuscles } from "@/hooks/useAnalytics";
 import { ApiError } from "@/api/client";
 import { MUSCLE_NAME_MAX, EXERCISE_NAME_MAX } from "@/validation";
 
 type ItemKind = "muscle" | "exercise";
-type ManageView = "actions" | "rename" | "confirm-delete" | "offer-hide";
+type ManageView = "actions" | "rename" | "confirm-delete" | "offer-hide" | "move";
 
 interface ManageSheetProps {
     /** Whether the sheet is open. */
@@ -47,10 +53,12 @@ interface ManageSheetProps {
         id: number;
         name: string;
         kind: ItemKind;
-        /** True = caller's own custom item (rename/delete). False = global (hide only). */
+        /** True = caller's own custom item (rename/delete/move). False = global (hide only). */
         is_mine: boolean;
         /** Muscle name — needed for exercise invalidation. */
         muscleName?: string;
+        /** Current muscle id — used to exclude it from the move target list (exercises only). */
+        muscleId?: number;
     } | null;
 }
 
@@ -58,6 +66,7 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
     const [view, setView] = useState<ManageView>("actions");
     const [renameError, setRenameError] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [moveError, setMoveError] = useState<string | null>(null);
 
     const renameMuscle = useRenameMuscle();
     const renameExercise = useRenameExercise();
@@ -65,6 +74,10 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
     const deleteExercise = useDeleteExercise();
     const hideMuscle = useHideMuscle();
     const hideExercise = useHideExercise();
+    const moveExercise = useMoveExercise();
+
+    // Muscle list for the move view — only fetched once (cached), re-used from useMuscles.
+    const muscles = useMuscles();
 
     const isPendingMutation =
         renameMuscle.isPending ||
@@ -72,7 +85,8 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
         deleteMuscle.isPending ||
         deleteExercise.isPending ||
         hideMuscle.isPending ||
-        hideExercise.isPending;
+        hideExercise.isPending ||
+        moveExercise.isPending;
 
     function handleClose(): void {
         onClose();
@@ -80,6 +94,7 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
         setView("actions");
         setRenameError(null);
         setDeleteError(null);
+        setMoveError(null);
     }
 
     function submitRename(newName: string): void {
@@ -192,6 +207,36 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
         }
     }
 
+    function submitMove(targetMuscleId: number, targetMuscleName: string): void {
+        if (!item) return;
+        setMoveError(null);
+        moveExercise.mutate(
+            { exerciseId: item.id, body: { muscle_id: targetMuscleId } },
+            {
+                onSuccess: () => handleClose(),
+                onError: (err) => {
+                    if (err instanceof ApiError) {
+                        if (err.status === 409) {
+                            setMoveError(
+                                `You already have an exercise with this name in ${targetMuscleName}.`,
+                            );
+                            return;
+                        }
+                        if (err.status === 403) {
+                            setMoveError("This exercise can't be moved.");
+                            return;
+                        }
+                        if (err.status === 404) {
+                            setMoveError("Target muscle not found — try again.");
+                            return;
+                        }
+                    }
+                    setMoveError("Couldn't move — try again.");
+                },
+            },
+        );
+    }
+
     if (!item) return null;
 
     const maxLength = item.kind === "muscle" ? MUSCLE_NAME_MAX : EXERCISE_NAME_MAX;
@@ -228,6 +273,22 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
                                 >
                                     Rename
                                 </button>
+                                {/* Move to another muscle (exercises only) */}
+                                {item.kind === "exercise" && (
+                                    <>
+                                        <div className="h-px bg-hairline" aria-hidden />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMoveError(null);
+                                                setView("move");
+                                            }}
+                                            className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text"
+                                        >
+                                            Move to another muscle
+                                        </button>
+                                    </>
+                                )}
                                 <div className="h-px bg-hairline" aria-hidden />
                                 {/* Delete */}
                                 <button
@@ -350,6 +411,59 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
                                     ? "Hiding…"
                                     : "Hide"}
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── MOVE view (GYM-90) ────────────────────────────────── */}
+                {view === "move" && (
+                    <div className="space-y-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setView("actions");
+                                setMoveError(null);
+                            }}
+                            className="press-95 -ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
+                        >
+                            ← Back
+                        </button>
+                        <p className="text-label uppercase tracking-wide text-hint">
+                            Move to
+                        </p>
+                        {moveError ? (
+                            <p className="text-label text-accent">{moveError}</p>
+                        ) : null}
+                        <div className="rounded-lg border border-hairline overflow-hidden">
+                            {(muscles.data ?? [])
+                                .filter((m) => m.id !== item.muscleId)
+                                .map((m, idx, arr) => (
+                                    <div key={m.id}>
+                                        <button
+                                            type="button"
+                                            onClick={() => submitMove(m.id, m.name)}
+                                            disabled={moveExercise.isPending}
+                                            className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
+                                        >
+                                            {moveExercise.isPending ? "Moving…" : m.name}
+                                        </button>
+                                        {idx < arr.length - 1 && (
+                                            <div className="h-px bg-hairline" aria-hidden />
+                                        )}
+                                    </div>
+                                ))}
+                            {muscles.isLoading && (
+                                <div className="flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-base text-hint">
+                                    Loading…
+                                </div>
+                            )}
+                            {!muscles.isLoading &&
+                                (muscles.data ?? []).filter((m) => m.id !== item.muscleId)
+                                    .length === 0 && (
+                                    <div className="flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-base text-hint">
+                                        No other muscles available.
+                                    </div>
+                                )}
                         </div>
                     </div>
                 )}
