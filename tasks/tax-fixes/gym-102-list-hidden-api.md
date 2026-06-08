@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-102
 title: "Contract+API: list hidden muscles/exercises for the user (powers Show Hidden) + confirm hide-own muscle"
 slug: gym-102-list-hidden-api
-status: in_progress
+status: review
 priority: high
 type: feature
 labels: [tax-fixes, api, api-contract]
@@ -12,14 +12,14 @@ model: null
 reporter: oleksii
 created: 2026-06-08T16:30:00Z
 start_date: 2026-06-08T17:00:00Z
-finish_date: null
-updated: 2026-06-08T16:30:00Z
+finish_date: 2026-06-08T00:00:00Z
+updated: 2026-06-08T00:00:00Z
 epic: tax-fixes
 depends_on: []
 blocks: [GYM-103]
 related: [GYM-99]
-commits: [3d46c1c]
-tests: []
+commits: [3d46c1c, 883637a]
+tests: [apps/api/tests/test_gym102_list_hidden.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -42,7 +42,7 @@ can't offer a "Show Hidden → Unhide" affordance. Need a list-hidden read.
 - Regen both clients. Tests: hidden lists return exactly the user's hidden items; empty when none.
 
 ## Acceptance criteria
-- [ ] list-hidden endpoints for muscles + exercises; hide-own muscle confirmed; clients regenerated;
+- [x] list-hidden endpoints for muscles + exercises; hide-own muscle confirmed; clients regenerated;
       tests + full apps/api suite green.
 
 ## Comments
@@ -72,3 +72,26 @@ models unchanged (hand-maintained `client.py` wrapper unaffected — additive, n
 
 Remaining (core-api-engineer, separate slice): implement the two endpoints in `apps/api` +
 confirm hide-own-muscle end-to-end + tests.
+
+### 2026-06-08 — API slice (core-api-engineer)
+Commit `883637a`. 335 passed, 0 failed across the full `apps/api` test suite.
+
+**GET /muscles/hidden** (`bot_router.py`): subquery over `user_hidden_muscles` for
+the caller joins to `muscles`; ordered by name; `is_mine` populated (True only for
+own private muscles); `resolution` null.
+
+**GET /exercises/hidden?muscle=<name>** (`exercises_router.py`): muscle resolved
+by `app_name_key(:muscle)` (variant case/dash/space-insensitive, consistent with
+GYM-99); returns Exercise[] of hidden exercises under that muscle for the caller;
+`is_mine` populated; `resolution` null; 404 when muscle name does not resolve;
+empty array when nothing hidden.
+
+**Hide-own-muscle confirmed end-to-end**: `PUT /muscles/{id}/hidden` has no
+global-only guard (GYM-99 removed it); `visible_muscles` excludes hidden rows
+regardless of ownership (GYM-99). Tests confirm: own muscle hides → absent from
+`GET /muscles` → present in `GET /muscles/hidden` with `is_mine=True` → unhide
+restores to visible list and removes from hidden list.
+
+**Tests** (`tests/test_gym102_list_hidden.py`): 16 new tests across 3 classes
+(`TestListHiddenMuscles`, `TestListHiddenExercises`, `TestHideOwnMuscleEndToEnd`)
+with dedicated `USER_102_ID = 500102` seed. Full suite result: **335 passed, 0 failed**.
