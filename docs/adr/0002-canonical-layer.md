@@ -99,7 +99,23 @@ name projection through one helper; out of scope now.)
 behind exhaustive tests (rename-global → log → PR/history correct + no split; variant-name resolves; cross-
 user sees canonical name; collisions 409). Held until operator review + prod migration. Do NOT auto-deploy.
 
+## Operator decisions (2026-06-08)
+- **Fork 1 (shared-surface display):** ratings/leaderboards show the CANONICAL name (e.g. "Bench Press"),
+  never a user's private alias. Confirmed.
+- **Fork 2a (reset):** add a "Reset to original name" action (deletes the override row → reverts to the
+  canonical name), AND gate the whole rename-canonical feature behind a config flag
+  (`FEATURE_CANONICAL_RENAME`) so it can be switched off without a code rollback. Confirmed.
+- **Fork 2b (Link):** Link-a-custom-to-canonical is triggered via long-tap (manage sheet action) on an own
+  custom exercise, picking a canonical in the SAME muscle. **UX caveat (agreed): Link has no payoff until
+  ratings exist — ship Link WITH ratings (GYM-13/competition), not standalone.**
+- **Scope decision:** GYM-86 (rename-canonical) + tax-linking (GYM-88 merge, GYM-89 Link) are DEFERRED on
+  YAGNI grounds (single-user app today; ratings/AI are Phase 6/7). The structural debt that made this risky
+  (name resolution/display scattered across ~22 sites, no shared helper) is addressed SEPARATELY and now by
+  **GYM-106** (centralize the resolver + a name-projection seam) — hardening, not avoidance.
+
 ## Status / next
-Schema (0005/0006) authored + tested locally + HELD (GYM-86/87). This ADR + the built-green-held schema go
-to the operator for review; the resolver/display build (GYM-86a + GYM-86) fires on their nod + after the
-prod migration is applied.
+Status: **accepted (design) / DEFERRED (build)**. Schema (0005/0006) authored + tested + HELD on branch
+`tax-canonical/foundation`; this ADR records the design + decisions. GYM-86/87/88/89 → deferred (backlog).
+GYM-106 (resolver centralization, no migration) proceeds now as the de-fragmentation step. Resume the
+canonical build when ratings/AI are actually being built (or the rename-need recurs) — apply 0005/0006 to
+prod first, then GYM-86 behind the feature flag + exhaustive tests.

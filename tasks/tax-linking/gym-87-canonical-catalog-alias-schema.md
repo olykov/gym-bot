@@ -3,8 +3,8 @@ schema_version: 1
 id: GYM-87
 title: "DB: canonical catalog formalization + alias/synonym table + merge-support columns"
 slug: gym-87-canonical-catalog-alias-schema
-status: review
-priority: high
+status: backlog
+priority: medium
 type: feature
 labels: [taxonomy, db]
 assignee: null

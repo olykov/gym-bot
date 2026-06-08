@@ -3,8 +3,8 @@ schema_version: 1
 id: GYM-86
 title: "DB+API+frontend: per-user exercise override (canonical_id + display_name) — rename a canonical keeps the link"
 slug: gym-86-canonical-reference-overrides
-status: in_progress
-priority: high
+status: backlog
+priority: medium
 type: feature
 labels: [taxonomy, db, api, frontend]
 assignee: null
