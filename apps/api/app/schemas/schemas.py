@@ -119,6 +119,12 @@ class ExerciseRename(BaseModel):
         return validate_name(str(v), max_len=EXERCISE_NAME_MAX)
 
 
+class ExerciseMove(BaseModel):
+    """Request body for PATCH /exercises/{exercise_id}/muscle (own-custom move)."""
+
+    muscle_id: int
+
+
 class Exercise(_ORM):
     """Full exercise representation."""
 

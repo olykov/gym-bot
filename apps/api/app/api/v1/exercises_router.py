@@ -19,7 +19,7 @@ from app.core.database import get_db_for_principal
 from app.middleware.permissions import Principal, get_principal
 from app.models import models
 from app.schemas import schemas
-from app.services.visibility import visible_exercises_for_muscle
+from app.services.visibility import visible_exercises_for_muscle, visible_muscles
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +187,93 @@ def rename_exercise(
         raise HTTPException(
             status_code=409,
             detail=f"You already have an exercise named '{new_name}' under that muscle",
+        )
+
+    exercise.is_mine = True
+    return exercise
+
+
+@router.patch(
+    "/exercises/{exercise_id}/muscle",
+    response_model=schemas.Exercise,
+    tags=["exercises"],
+)
+def move_exercise(
+    exercise_id: int,
+    body: schemas.ExerciseMove,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> schemas.Exercise:
+    """Move a private exercise to a different muscle (GYM-90).
+
+    Only the caller's own custom (non-global) exercise may be moved.
+    Returns 403 when the target is a global item or owned by another user.
+    Returns 404 when the exercise does not exist, or when the target muscle
+    does not exist or is not visible to the caller.
+    Returns 409 when the caller already has an exercise with the same name
+    under the target muscle (unique ``(name, muscle, created_by)`` index).
+
+    Args:
+        exercise_id: Id of the private exercise to move.
+        body: Target ``muscle_id``.
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        The updated Exercise record with ``is_mine=True``.
+    """
+    uid = principal["user_id"]
+    target_muscle_id = body.muscle_id
+
+    # Resolve the exercise first — distinguish 403 (global/unowned) from 404.
+    exercise = db.query(models.Exercise).filter(models.Exercise.id == exercise_id).first()
+    if exercise is None:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    if exercise.is_global or exercise.created_by != uid:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot move a global or unowned exercise",
+        )
+
+    # Target muscle must exist AND be visible to the caller (global or own).
+    visible = visible_muscles(db, uid)
+    target_muscle = next((m for m in visible if m.id == target_muscle_id), None)
+    if target_muscle is None:
+        raise HTTPException(status_code=404, detail="Target muscle not found")
+
+    # Pre-check: caller already has an exercise with the same name in target muscle.
+    dup = (
+        db.query(models.Exercise)
+        .filter(
+            models.Exercise.name == exercise.name,
+            models.Exercise.created_by == uid,
+            models.Exercise.is_global.is_(False),
+            models.Exercise.muscle == target_muscle_id,
+            models.Exercise.id != exercise_id,
+        )
+        .first()
+    )
+    if dup:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"You already have an exercise named '{exercise.name}' "
+                f"under that muscle"
+            ),
+        )
+
+    exercise.muscle = target_muscle_id
+    try:
+        db.commit()
+        db.refresh(exercise)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"You already have an exercise named '{exercise.name}' "
+                f"under that muscle"
+            ),
         )
 
     exercise.is_mine = True
