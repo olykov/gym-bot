@@ -10,28 +10,54 @@ CREATE TABLE IF NOT EXISTS users (
     bio TEXT
 );
 
+-- Canonical name-normalization function (GYM-84). SINGLE SOURCE OF TRUTH for
+-- the lexical dedup key: lower -> unify '-'/'_' to space -> strip incidental
+-- punctuation ('.,) -> collapse whitespace -> trim. IMMUTABLE so it can back
+-- the generated name_key columns + their unique indexes, and so the Core API
+-- (GYM-85) can call the SAME function for write-path lookups. Mirrors
+-- packages/db/alembic/versions/0004_name_key.py.
+CREATE OR REPLACE FUNCTION public.app_name_key(p_name text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $fn$
+    SELECT btrim(
+        regexp_replace(
+            translate(
+                translate(lower(p_name), '-_', '  '),
+                E'\'`.,', ''
+            ),
+            '\s+', ' ', 'g'
+        )
+    )
+$fn$;
+
 CREATE TABLE IF NOT EXISTS muscles (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    name_key TEXT GENERATED ALWAYS AS (public.app_name_key(name)) STORED,
     is_global BOOLEAN DEFAULT TRUE,
     created_by BIGINT REFERENCES users(id)
 );
--- Unique index for global muscles
-CREATE UNIQUE INDEX IF NOT EXISTS idx_muscles_name_global ON muscles (name) WHERE created_by IS NULL;
--- Unique index for user-specific muscles
-CREATE UNIQUE INDEX IF NOT EXISTS idx_muscles_name_user ON muscles (name, created_by) WHERE created_by IS NOT NULL;
+-- Unique index for global muscles (dedup on normalized name_key; GYM-84)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_muscles_name_key_global ON muscles (name_key) WHERE created_by IS NULL;
+-- Unique index for user-specific muscles (dedup on normalized name_key; GYM-84)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_muscles_name_key_user ON muscles (name_key, created_by) WHERE created_by IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS exercises (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    name_key TEXT GENERATED ALWAYS AS (public.app_name_key(name)) STORED,
     muscle INT REFERENCES muscles(id),
     is_global BOOLEAN DEFAULT TRUE,
     created_by BIGINT REFERENCES users(id)
 );
--- Unique index for global exercises
-CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_global ON exercises (name, muscle) WHERE created_by IS NULL;
--- Unique index for user-specific exercises
-CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_user ON exercises (name, muscle, created_by) WHERE created_by IS NOT NULL;
+-- Unique index for global exercises (dedup on normalized name_key; GYM-84)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_name_key_global ON exercises (name_key, muscle) WHERE created_by IS NULL;
+-- Unique index for user-specific exercises (dedup on normalized name_key; GYM-84)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_name_key_user ON exercises (name_key, muscle, created_by) WHERE created_by IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS user_hidden_exercises (
     user_id BIGINT REFERENCES users(id),

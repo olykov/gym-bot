@@ -102,3 +102,68 @@ Python and TypeScript clients build without a Unicode-escape compromise.
 **Create** fields carry `minLength: 1`, `maxLength`, and the canonical `pattern` above.
 **Lookup** fields carry only `minLength: 1` (normalized server-side; no `maxLength`, no
 `pattern`) — see "Create vs lookup" above.
+
+---
+
+## Dedup key (`name_key`) — lexical de-duplication
+
+> Distinct from the **display normalization** above. Display normalization (trim + collapse
+> whitespace) decides *what gets stored* in `name`. The **dedup key** decides *which names count
+> as the same thing* for uniqueness. "Bench Press", "bench-press", "bench_press", and
+> "BENCH  PRESS" are stored with their own display names but collapse to **one** `name_key`, so
+> only one can exist per scope. (ADR 0001, layer 2a — lexical dedup.)
+
+### Canonical key function — `app_name_key(text)`
+
+The match key is computed by **one** IMMUTABLE Postgres SQL function,
+`public.app_name_key(text)`, installed by migration
+`packages/db/alembic/versions/0004_name_key.py` (GYM-84) and mirrored in
+`packages/db/init.sql`. It is the **single source of truth**:
+
+- the DB backs `muscles.name_key` and `exercises.name_key`
+  (`GENERATED ALWAYS AS (app_name_key(name)) STORED`) and the partial UNIQUE indexes with it;
+- the Core API (`apps/api`) MUST call this same function for write-path lookups (GYM-85) — never
+  re-implement the key in application code, or the API and DB can disagree and let a duplicate
+  slip in (or wrongly 404 a real match).
+
+### Normalization steps (in order)
+
+Applied to a name to derive its `name_key`:
+
+1. **Lowercase** — `lower()`. (Postgres `lower()` folds Cyrillic correctly, e.g. `Ё`→`ё`. Full
+   Unicode casefold is **not** used — `lower()` is sufficient for the Latin/Cyrillic catalog.)
+2. **Unify separators** — hyphen `-` and underscore `_` are replaced with a space.
+3. **Strip incidental punctuation** — apostrophes (`'` and `` ` ``), dots `.`, and commas `,` are
+   removed (so `O'Brien's` and `OBriens` share a key; `v2.0` → `v20`).
+4. **Collapse whitespace** — every run of whitespace becomes a single ASCII space.
+5. **Trim** — leading/trailing whitespace removed.
+
+Examples:
+
+| Input | `name_key` |
+|-------|------------|
+| `Bench Press` / `bench-press` / `bench_press` / `BENCH  PRESS` | `bench press` |
+| `  O'Brien's  Curl... ` | `obriens curl` |
+| `Жим  Лёжа` | `жим лёжа` |
+| `Push-Up, v2.0` | `push up v20` |
+
+**Accent-folding is intentionally NOT applied.** The `unaccent` extension is not used: accent
+differences are rare in this catalog and would add an extension dependency plus an IMMUTABLE-wrapper
+requirement for marginal benefit. This can be layered into `app_name_key` later if a real need
+appears (a single function change then propagates to both the generated columns and the API).
+
+### Uniqueness scope
+
+`name_key` uniqueness mirrors the original name-based partial unique indexes:
+
+| Table | Global rows (`created_by IS NULL`) | User rows (`created_by IS NOT NULL`) |
+|-------|------------------------------------|--------------------------------------|
+| `muscles` | UNIQUE `(name_key)` | UNIQUE `(name_key, created_by)` |
+| `exercises` | UNIQUE `(name_key, muscle)` | UNIQUE `(name_key, muscle, created_by)` |
+
+The earlier `name`-based unique indexes were dropped — the `name_key` uniques subsume them.
+
+> **Note for GYM-85 (API write path):** on create/rename, normalize the incoming name to its
+> key with `app_name_key` and check the visible set before inserting. Per ADR 0001, a key match
+> resolves to the existing row (silently unhiding a hidden one) rather than blindly creating a
+> duplicate; adding a name whose key already matches a *visible* row of yours is rejected.

@@ -19,6 +19,8 @@ packages/db/
     versions/
       0001_baseline.py             # baseline = exactly today's production schema
       0002_rls.py                  # RLS helpers, policies on the 6 base tables, GRANTs to app_rw
+      0003_training_frequency_indexes.py  # per-user (user_id, muscle_id/exercise_id) indexes
+      0004_name_key.py             # app_name_key() fn + generated name_key + UNIQUE + collision-rename
   requirements.txt                 # alembic + psycopg2-binary
 ```
 
