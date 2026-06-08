@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-98
 title: "apps/web: move pending only on tapped muscle + sheet white-strip dim fix + app-wide no text-select"
 slug: gym-98-manage-move-polish
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [phase-5, frontend, design, ux]
