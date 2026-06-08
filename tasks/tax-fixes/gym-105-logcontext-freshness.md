@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-105
 title: "apps/web: log-context stale 10min → refetch-on-open + History delete/edit invalidates it (fix stale PR/history/completed-sets)"
 slug: gym-105-logcontext-freshness
-status: review
+status: done
 priority: critical
 type: bug-fix
 labels: [tax-fixes, frontend, bug]
