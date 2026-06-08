@@ -18,7 +18,7 @@ epic: tax-moves
 depends_on: []
 blocks: []
 related: [GYM-89]
-commits: []
+commits: [4e9b50d]
 tests: []
 design_reports: []
 review_reports: []
@@ -41,3 +41,31 @@ independent of the taxonomy work and can ship NOW (operator: "можно вот 
 ## Acceptance
 - [ ] Move an own exercise to another muscle from the manage sheet; own-only; dedup vs target; tests +
       build green.
+
+## Comments
+
+### 2026-06-08 — Contract slice (4e9b50d)
+Added a dedicated move operation to `packages/api-contract/openapi.yaml`, mirroring the rename PATCH
+(tag `exercises`, `get_principal` security: userJwt + serviceAuth + ActAsUser).
+
+- Operation: `PATCH /exercises/{exercise_id}/muscle`, `operationId: moveExercise`.
+- Request body: `ExerciseMove { muscle_id: integer (required) }` — target muscle id.
+- Responses:
+  - 200 → updated `Exercise`.
+  - 401 → Unauthorized.
+  - 403 → Forbidden (exercise is global/canonical or not the caller's own; canonical placement is
+    GYM-91's decision, rejected here).
+  - 404 → NotFound (exercise or target muscle not found / not visible to caller).
+  - 409 → Conflict (caller already has an exercise with the same name under the target muscle —
+    unique `(name, muscle, created_by)` collision).
+- Used a dedicated `.../muscle` sub-resource rather than overloading the rename PATCH, leaving the
+  working rename contract untouched.
+
+Regenerated both clients: `make validate` OK (34 paths, 38 schemas); `make gen-python` +
+`make gen-typescript` clean. TS client `tsc --noEmit --strict` exit 0; Python client imports
+(`ExerciseMove(muscle_id=7)` round-trips). `moveExercise` + `ExerciseMove` present in both generated
+outputs. The TS `schema.ts` is gitignored (regenerated on demand), so only `openapi.yaml` and the
+Python `models.py` are committed.
+
+Affected clients: Python (bot) and TypeScript (web/admin/miniapp) — purely additive, no breaking
+change to existing operations.
