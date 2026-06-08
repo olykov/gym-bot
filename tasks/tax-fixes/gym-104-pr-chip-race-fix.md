@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-104
 title: "apps/web: PR chip shows wrong/no PR on reopen (one-shot prAnchor race) — derive effective PR + Show-Hidden polish"
 slug: gym-104-pr-chip-race-fix
-status: in_progress
+status: review
 priority: critical
 type: bug-fix
 labels: [tax-fixes, frontend, bug]
@@ -12,12 +12,12 @@ model: null
 reporter: oleksii
 created: 2026-06-08T18:30:00Z
 start_date: 2026-06-08T18:30:00Z
-finish_date: null
-updated: 2026-06-08T18:30:00Z
+finish_date: 2026-06-08T00:00:00Z
+updated: 2026-06-08T00:00:00Z
 epic: tax-fixes
 depends_on: [GYM-101, GYM-103]
 related: [GYM-99]
-commits: []
+commits: [047ee4e]
 tests: []
 design_reports: []
 review_reports: []
@@ -65,3 +65,35 @@ in the Mini App SetLogger PR-chip logic.
 
 ### 2026-06-08T18:30:00Z — task created
 Prod-verified data safe + server PR correct; bug is the SetLogger one-shot prAnchor race. Critical.
+
+### 2026-06-08T00:00:00Z — implemented (047ee4e)
+
+**#3 — PR chip race (critical):** Replaced the fragile one-shot `prAnchor` useState + seed
+`useEffect` pattern with a `useMemo`-derived `effectivePR` computed each render from `serverPR`
+(ctx.data.pr) and `sessionBestWeight` (max weight across sessionSets). The effective PR weight is
+`max(serverPR.weight, sessionBestWeight)`; reps are shown only when the server PR is the source
+(session sets have no reps). This eliminates the race entirely: no matter when `ctx` resolves, the
+real server PR wins once it arrives — a 2.5kg session set saved before log-context loaded cannot lock
+in a wrong anchor, because there is no anchor state to lock. Reopening Barbell row will show
+"PR 80kg × 5" as soon as ctx resolves. The PR-beat pulse fires when a new set strictly exceeds
+`effectivePR.weight`. The `setPrAnchor` state and seed effect are removed; no timing dependence
+remains. Build: tsc + vite green.
+
+**#1 — Show Hidden spacing:** `ShowHiddenExpander` trigger button changed from `gap-1.5` to `gap-2`
+and an explicit `{" "}` space added before the label text, so the rotated `›` chevron has visible
+separation from "Show hidden muscles/exercises".
+
+**#2 — Exercise-step Show Hidden expander invisible after hide:** Root cause: `invalidateElementLists`
+(called by `useHideExercise`, `useHideMuscle`, `useDeleteExercise`, move, rename, etc.) did not
+invalidate `["exercises", "hidden"]`. After hiding an exercise, the hidden-exercises cache (seeded as
+`[]` on first exercise-step visit) stayed stale within its 5-minute `staleTime`, so
+`hiddenExercises.data.length` remained 0 and `ShowHiddenExpander` never rendered. Fix: added
+`qc.invalidateQueries({ queryKey: ["exercises", "hidden"] })` to `invalidateElementLists` — covers
+the partial key prefix so all per-muscle hidden caches are refreshed on any element-list mutation.
+
+**Needs live-device pass:**
+- Open Barbell row on a real device after a cold open (ctx not yet resolved); log 2.5kg before ctx
+  arrives; confirm PR chip shows 80kg × 5 once ctx resolves, NOT 2.5kg.
+- Hide one exercise in Back, re-open the exercise step for Back, confirm "Show hidden exercises"
+  appears; long-press hidden tile, confirm Unhide works and tile returns to the visible grid.
+- Confirm "Show hidden" trigger has a visible space between the chevron and text.
