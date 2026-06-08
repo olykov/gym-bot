@@ -80,8 +80,6 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
 
     // Sets logged this session for THIS exercise (optimistic recap source).
     const [sessionSets, setSessionSets] = useState<SessionSet[]>([]);
-    // The PR weight anchor — updated locally so a second PR also celebrates.
-    const [prAnchor, setPrAnchor] = useState<number | null>(null);
     // PR-beat flare: the recap-row index to flare + a pulse on the Save button.
     const [pulse, setPulse] = useState(false);
     const [flareSet, setFlareSet] = useState<number | null>(null);
@@ -92,17 +90,51 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
     const weight = parseNumeric(weightText, false);
     const reps = parseNumeric(repsText, true);
 
-    const pr = ctx.data?.pr ?? null;
+    const serverPR = ctx.data?.pr ?? null;
 
-    // Server PR resolves once → seed the local anchor (don't clobber a session PR).
-    useEffect(() => {
-        if (pr && prAnchor === null) setPrAnchor(pr.weight);
-    }, [pr, prAnchor]);
+    /**
+     * GYM-104 #3: DERIVED effective PR — no race, no timing dependence.
+     *
+     * The effective PR is always the greater of:
+     *   - the server PR (ctx.data.pr) — the real historical record from the server
+     *   - the best session set (max weight among sessionSets this session)
+     *
+     * This completely replaces the one-shot `prAnchor` useState pattern that caused
+     * the race: prAnchor started null; if the user saved a set BEFORE log-context
+     * resolved, the PR-beat set prAnchor = <session weight> (e.g. 2.5), and the
+     * seed effect `if (pr && prAnchor === null)` then never fired, permanently
+     * locking in 2.5 instead of the real server PR (80).
+     *
+     * With the derived approach: once ctx resolves and serverPR.weight = 80, the
+     * effective PR is max(80, sessionBest) = 80 — regardless of what session sets
+     * were logged before ctx resolved. A 2.5kg session set never hides the real PR.
+     *
+     * The chip shows:
+     *  - `PR {w}kg × {r}` when the server PR is the effective max (reps known).
+     *  - `PR {w}kg`        when a session set strictly exceeds the server PR (no reps source).
+     *
+     * PR-beat fires when a newly-saved set STRICTLY exceeds the current
+     * effectivePR.weight (so it's always compared against the real max).
+     */
+    const effectivePR = useMemo(() => {
+        const serverWeight = serverPR?.weight ?? -Infinity;
+        const sessionBestWeight = sessionSets.reduce<number>(
+            (best, s) => Math.max(best, s.weight),
+            -Infinity,
+        );
+        if (serverWeight === -Infinity && sessionBestWeight === -Infinity) {
+            return null;
+        }
+        const effectiveWeight = Math.max(serverWeight, sessionBestWeight);
+        // Show reps only when the server PR is the source (session sets have no reps).
+        const effectiveReps =
+            serverPR && serverPR.weight >= sessionBestWeight ? serverPR.reps : null;
+        return { weight: effectiveWeight, reps: effectiveReps };
+    }, [serverPR, sessionSets]);
 
     // Reset everything when the chosen exercise changes (sheet re-used).
     useEffect(() => {
         setSessionSets([]);
-        setPrAnchor(null);
         setPulse(false);
         setFlareSet(null);
         setWeightText("");
@@ -201,10 +233,12 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                     hapticNotification("success");
                     // Append to recap (optimistic) + re-arm in place (§12.3).
                     setSessionSets((prev) => [...prev, { set, weight, reps }]);
-                    // PR-beat: strictly beats the known anchor (or first ever).
-                    const beat = prAnchor === null || weight > prAnchor;
+                    // PR-beat: strictly beats the current effective PR (or first ever).
+                    // effectivePR is derived (never stale), so a session set saved
+                    // before log-context resolved still compares against the correct
+                    // effective weight once ctx resolves on the NEXT render.
+                    const beat = effectivePR === null || weight > effectivePR.weight;
                     if (beat) {
-                        setPrAnchor(weight);
                         setPulse(true);
                         setFlareSet(set);
                         window.setTimeout(() => {
@@ -217,11 +251,6 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
             },
         );
     }
-
-    // The PR reps for the chip — held alongside the anchor weight so the chip
-    // reads "PR {w}kg × {r}". Session PRs have no reps source, so the chip drops
-    // the × part once the local anchor diverges from the server PR.
-    const prReps = pr && prAnchor === pr.weight ? pr.reps : null;
 
     return (
         // GYM-101: root is a flex column that fills the sheet body (the sheet
@@ -330,14 +359,14 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                     <h3 className="font-display text-title text-text">
                         SET {nextSet}
                     </h3>
-                    {prAnchor !== null ? (
+                    {effectivePR !== null ? (
                         <span
                             className={`tabular rounded-full px-3 py-1 text-label font-semibold text-accent ${
                                 pulse ? "pr-pulse motion-reduce:animate-none" : ""
                             }`}
                         >
-                            PR {prAnchor}kg
-                            {prReps !== null ? ` × ${prReps}` : ""}
+                            PR {effectivePR.weight}kg
+                            {effectivePR.reps !== null ? ` × ${effectivePR.reps}` : ""}
                         </span>
                     ) : null}
                 </div>

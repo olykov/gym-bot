@@ -258,6 +258,10 @@ function invalidateElementLists(qc: QueryClient): void {
     void qc.invalidateQueries({ queryKey: ["muscles"] });
     void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
     void qc.invalidateQueries({ queryKey: ["analytics", "top-exercises"] });
+    // Invalidate all hidden-exercise caches so the "Show Hidden" expander appears
+    // immediately after hiding an exercise (GYM-104 #2: the expander was invisible
+    // because the hidden-exercises cache was not cleared after hide/unhide/move ops).
+    void qc.invalidateQueries({ queryKey: ["exercises", "hidden"] });
 }
 
 interface RenameMuscleVars {

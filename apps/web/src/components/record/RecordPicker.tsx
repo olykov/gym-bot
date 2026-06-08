@@ -1008,7 +1008,7 @@ function ShowHiddenExpander({
                 tabIndex={tabIndex}
                 onClick={onToggle}
                 aria-expanded={isOpen}
-                className="press-95 inline-flex min-h-[44px] items-center gap-1.5 text-label text-hint"
+                className="press-95 inline-flex min-h-[44px] items-center gap-2 text-label text-hint"
             >
                 <span
                     aria-hidden
@@ -1020,7 +1020,7 @@ function ShowHiddenExpander({
                 >
                     ›
                 </span>
-                Show hidden {label}
+                {" "}Show hidden {label}
             </button>
             {isOpen ? <div className="mt-2">{children}</div> : null}
         </div>
