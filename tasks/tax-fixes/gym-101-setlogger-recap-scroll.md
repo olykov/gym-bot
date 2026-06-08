@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-101
 title: "apps/web: SetLogger recap DESC + internal scroll (keep logging controls + PR visible; page never scrolls)"
 slug: gym-101-setlogger-recap-scroll
-status: review
+status: done
 priority: high
 type: bug-fix
 labels: [tax-fixes, frontend, design, ux, bug]

@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-102
 title: "Contract+API: list hidden muscles/exercises for the user (powers Show Hidden) + confirm hide-own muscle"
 slug: gym-102-list-hidden-api
-status: review
+status: done
 priority: high
 type: feature
 labels: [tax-fixes, api, api-contract]
