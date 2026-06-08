@@ -63,6 +63,7 @@ class Muscle(_ORM):
     is_global: Optional[bool] = None
     created_by: Optional[int] = None
     is_mine: Optional[bool] = None
+    resolution: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +135,7 @@ class Exercise(_ORM):
     is_global: Optional[bool] = None
     created_by: Optional[int] = None
     is_mine: Optional[bool] = None
+    resolution: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

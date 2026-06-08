@@ -22,8 +22,8 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import exists
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import exists, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -141,41 +141,98 @@ def list_muscles(
 @router.post("/muscles", response_model=schemas.Muscle, tags=["muscles"])
 def create_muscle(
     body: schemas.MuscleCreate,
+    http_response: Response,
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> schemas.Muscle:
-    """Add a private muscle for the authenticated user.
+    """Add a private muscle for the authenticated user (find-or-create-or-unhide).
 
-    Maps to ``add_muscle(name, user_id)``.  Returns existing (global or
-    private) if same name already visible to the user.
+    Key-based lookup via the DB ``app_name_key`` function (GYM-85).  Resolution
+    precedence (the user's VISIBLE set, noting hidden applies only to globals):
+
+    1. Key matches caller's OWN row (``created_by == uid``) → return it,
+       ``resolution=existing``, HTTP 200.
+    2. Key matches a GLOBAL row NOT hidden for the caller → return it,
+       ``resolution=existing``, HTTP 200.
+    3. Key matches a GLOBAL row that IS hidden → silently remove the
+       ``UserHiddenMuscle`` row → return it, ``resolution=unhidden``, HTTP 200.
+    4. No key match → create a new private row, ``resolution=created``, HTTP 201.
 
     Args:
-        body: Muscle name.
+        body: Muscle name (validated + normalized by MuscleCreate).
+        http_response: FastAPI ``Response`` injected to set the status code.
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
-        Existing or newly created muscle.
+        Existing, unhidden, or newly created muscle.
     """
     uid = principal["user_id"]
-    name = body.name.strip()
+    name = body.name  # already normalized by the validator
 
-    existing = (
-        db.query(models.Muscle)
-        .filter(
-            models.Muscle.name == name,
-            (models.Muscle.is_global.is_(True)) | (models.Muscle.created_by == uid),
+    # 1. Own row: same key, same user.
+    own = db.execute(
+        text(
+            "SELECT id FROM muscles "
+            "WHERE created_by = :uid "
+            "  AND name_key = app_name_key(:name) "
+            "LIMIT 1"
+        ),
+        {"uid": uid, "name": name},
+    ).fetchone()
+    if own:
+        muscle = db.query(models.Muscle).filter(models.Muscle.id == own[0]).first()
+        if muscle:
+            muscle.is_mine = True
+            muscle.resolution = "existing"
+            http_response.status_code = 200
+            return muscle
+
+    # 2 & 3. Global row with same key.
+    global_row = db.execute(
+        text(
+            "SELECT id FROM muscles "
+            "WHERE created_by IS NULL "
+            "  AND name_key = app_name_key(:name) "
+            "LIMIT 1"
+        ),
+        {"name": name},
+    ).fetchone()
+    if global_row:
+        global_id = global_row[0]
+        hidden_row = (
+            db.query(models.UserHiddenMuscle)
+            .filter(
+                models.UserHiddenMuscle.user_id == uid,
+                models.UserHiddenMuscle.muscle_id == global_id,
+            )
+            .first()
         )
-        .order_by(models.Muscle.is_global.desc())
-        .first()
-    )
-    if existing:
-        return existing
+        muscle = db.query(models.Muscle).filter(models.Muscle.id == global_id).first()
+        if hidden_row:
+            # Resolution 3: silently unhide.
+            db.delete(hidden_row)
+            db.commit()
+            db.refresh(muscle)
+            muscle.is_mine = False
+            muscle.resolution = "unhidden"
+            http_response.status_code = 200
+            return muscle
+        else:
+            # Resolution 2: already visible global.
+            muscle.is_mine = False
+            muscle.resolution = "existing"
+            http_response.status_code = 200
+            return muscle
 
+    # 4. Create a new private row.
     muscle = models.Muscle(name=name, is_global=False, created_by=uid)
     db.add(muscle)
     db.commit()
     db.refresh(muscle)
+    muscle.is_mine = True
+    muscle.resolution = "created"
+    http_response.status_code = 201
     return muscle
 
 
@@ -214,18 +271,20 @@ def rename_muscle(
             detail="Cannot rename a global or unowned muscle",
         )
 
-    # Pre-check for duplicate name among this user's own muscles.
-    dup = (
-        db.query(models.Muscle)
-        .filter(
-            models.Muscle.name == new_name,
-            models.Muscle.created_by == uid,
-            models.Muscle.is_global.is_(False),
-            models.Muscle.id != muscle_id,
-        )
-        .first()
-    )
-    if dup:
+    # Key-based pre-check: reject if the new key collides with another visible
+    # item in the caller's muscle scope (own rows only; renaming to own current
+    # key is a no-op and is allowed — id != muscle_id filters it out).
+    key_dup = db.execute(
+        text(
+            "SELECT id FROM muscles "
+            "WHERE created_by = :uid "
+            "  AND name_key = app_name_key(:new_name) "
+            "  AND id <> :mid "
+            "LIMIT 1"
+        ),
+        {"uid": uid, "new_name": new_name, "mid": muscle_id},
+    ).fetchone()
+    if key_dup:
         raise HTTPException(
             status_code=409,
             detail=f"You already have a muscle named '{new_name}'",

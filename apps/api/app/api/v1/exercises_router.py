@@ -10,8 +10,8 @@ X-Act-As-User impersonation (the Telegram bot) via ``get_principal``.
 import logging
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import exists
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import exists, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -61,26 +61,41 @@ def list_exercises_by_muscle(
 @router.post("/exercises", response_model=schemas.Exercise, tags=["exercises"])
 def create_exercise(
     body: schemas.ExerciseCreateByName,
+    http_response: Response,
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> schemas.Exercise:
-    """Add a private exercise for the authenticated user.
+    """Add a private exercise for the authenticated user (find-or-create-or-unhide).
 
-    Maps to ``add_exercise(name, muscle_name, user_id)``.  Finds or creates
-    the muscle by name, then finds or creates the exercise.
+    Finds or creates the muscle by name first (name lookup, not key-based),
+    then applies key-based resolution for the exercise (GYM-85):
+
+    Resolution precedence (scoped to the resolved muscle):
+
+    1. Key matches caller's OWN exercise (``created_by == uid``) → return it,
+       ``resolution=existing``, HTTP 200.
+    2. Key matches a GLOBAL exercise NOT hidden for the caller → return it,
+       ``resolution=existing``, HTTP 200.
+    3. Key matches a GLOBAL exercise that IS hidden → silently remove the
+       ``UserHiddenExercise`` row → return it, ``resolution=unhidden``,
+       HTTP 200.
+    4. No key match → create a new private row, ``resolution=created``,
+       HTTP 201.
 
     Args:
         body: Exercise name and muscle name.
+        http_response: FastAPI ``Response`` injected to set the status code.
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
-        Existing or newly created exercise.
+        Existing, unhidden, or newly created exercise.
     """
     uid = principal["user_id"]
     muscle_name = body.muscle_name.strip()
-    exercise_name = body.name.strip()
+    exercise_name = body.name  # already normalized by the validator
 
+    # Resolve or create the owning muscle (by name, not by key).
     muscle = (
         db.query(models.Muscle)
         .filter(
@@ -97,26 +112,82 @@ def create_exercise(
 
     muscle_id = muscle.id
 
-    exercise = (
-        db.query(models.Exercise)
-        .filter(
-            models.Exercise.name == exercise_name,
-            models.Exercise.muscle == muscle_id,
-            models.Exercise.created_by == uid,
+    # 1. Own exercise: same key + same muscle + same user.
+    own = db.execute(
+        text(
+            "SELECT id FROM exercises "
+            "WHERE created_by = :uid "
+            "  AND muscle = :mid "
+            "  AND name_key = app_name_key(:name) "
+            "LIMIT 1"
+        ),
+        {"uid": uid, "mid": muscle_id, "name": exercise_name},
+    ).fetchone()
+    if own:
+        exercise = (
+            db.query(models.Exercise).filter(models.Exercise.id == own[0]).first()
         )
-        .first()
-    )
-    if exercise is None:
-        exercise = models.Exercise(
-            name=exercise_name,
-            muscle=muscle_id,
-            is_global=False,
-            created_by=uid,
-        )
-        db.add(exercise)
+        if exercise:
+            db.commit()  # flush any muscle creation above
+            exercise.is_mine = True
+            exercise.resolution = "existing"
+            http_response.status_code = 200
+            return exercise
 
+    # 2 & 3. Global exercise with same key under the same muscle.
+    global_row = db.execute(
+        text(
+            "SELECT id FROM exercises "
+            "WHERE created_by IS NULL "
+            "  AND muscle = :mid "
+            "  AND name_key = app_name_key(:name) "
+            "LIMIT 1"
+        ),
+        {"mid": muscle_id, "name": exercise_name},
+    ).fetchone()
+    if global_row:
+        global_id = global_row[0]
+        hidden_row = (
+            db.query(models.UserHiddenExercise)
+            .filter(
+                models.UserHiddenExercise.user_id == uid,
+                models.UserHiddenExercise.exercise_id == global_id,
+            )
+            .first()
+        )
+        exercise = (
+            db.query(models.Exercise).filter(models.Exercise.id == global_id).first()
+        )
+        if hidden_row:
+            # Resolution 3: silently unhide.
+            db.delete(hidden_row)
+            db.commit()
+            db.refresh(exercise)
+            exercise.is_mine = False
+            exercise.resolution = "unhidden"
+            http_response.status_code = 200
+            return exercise
+        else:
+            # Resolution 2: already visible global.
+            db.commit()  # flush any muscle creation above
+            exercise.is_mine = False
+            exercise.resolution = "existing"
+            http_response.status_code = 200
+            return exercise
+
+    # 4. Create a new private exercise.
+    exercise = models.Exercise(
+        name=exercise_name,
+        muscle=muscle_id,
+        is_global=False,
+        created_by=uid,
+    )
+    db.add(exercise)
     db.commit()
     db.refresh(exercise)
+    exercise.is_mine = True
+    exercise.resolution = "created"
+    http_response.status_code = 201
     return exercise
 
 
@@ -160,19 +231,26 @@ def rename_exercise(
             detail="Cannot rename a global or unowned exercise",
         )
 
-    # Pre-check for duplicate name under the same muscle for this user.
-    dup = (
-        db.query(models.Exercise)
-        .filter(
-            models.Exercise.name == new_name,
-            models.Exercise.created_by == uid,
-            models.Exercise.is_global.is_(False),
-            models.Exercise.muscle == exercise.muscle,
-            models.Exercise.id != exercise_id,
-        )
-        .first()
-    )
-    if dup:
+    # Key-based pre-check: reject if the new key collides with another visible
+    # item under the same muscle for the caller (own rows only; renaming to
+    # own current key is a no-op — id != exercise_id filters it out).
+    key_dup = db.execute(
+        text(
+            "SELECT id FROM exercises "
+            "WHERE created_by = :uid "
+            "  AND muscle = :mid "
+            "  AND name_key = app_name_key(:new_name) "
+            "  AND id <> :eid "
+            "LIMIT 1"
+        ),
+        {
+            "uid": uid,
+            "mid": exercise.muscle,
+            "new_name": new_name,
+            "eid": exercise_id,
+        },
+    ).fetchone()
+    if key_dup:
         raise HTTPException(
             status_code=409,
             detail=f"You already have an exercise named '{new_name}' under that muscle",
