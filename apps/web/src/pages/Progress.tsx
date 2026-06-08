@@ -19,17 +19,22 @@
  * picked exercise with no logged sets. Dependent queries stay disabled until
  * their inputs exist, so the no-data path fires no extra queries.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { SkeletonChart } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ChipRow, type ChipOption } from "@/components/progress/ChipRow";
-import {
-    ExerciseProgressChart,
-    type ProgressMode,
-} from "@/components/progress/ExerciseProgressChart";
+import type { ProgressMode } from "@/components/progress/ExerciseProgressChart";
+
+// Lazy-load ECharts (~1 MB) so it is excluded from the main bundle and only
+// fetched when the Progress tab is opened for the first time (GYM-45).
+const ExerciseProgressChart = lazy(
+    () => import("@/components/progress/ExerciseProgressChart").then(
+        (m) => ({ default: m.ExerciseProgressChart }),
+    ),
+);
 import {
     useExerciseProgress,
     useTopExercises,
@@ -189,10 +194,12 @@ function ChartArea({
     }
 
     return (
-        <ExerciseProgressChart
-            title={exercise.label}
-            progress={progress.data!}
-            mode={mode}
-        />
+        <Suspense fallback={<SkeletonChart />}>
+            <ExerciseProgressChart
+                title={exercise.label}
+                progress={progress.data!}
+                mode={mode}
+            />
+        </Suspense>
     );
 }

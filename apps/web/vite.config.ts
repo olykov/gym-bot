@@ -5,6 +5,12 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
     plugins: [react()],
+    build: {
+        // ECharts lives in its own async chunk (GYM-45); the main bundle is
+        // ~373 kB. Raise the limit past the echarts chunk so the warning
+        // targets only genuinely unintentional bloat, not this known split.
+        chunkSizeWarningLimit: 1100,
+    },
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),
