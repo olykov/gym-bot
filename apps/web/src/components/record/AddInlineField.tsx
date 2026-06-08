@@ -14,9 +14,13 @@
  * disabled while empty after trim or pending.
  *
  * GYM-82: accepts `initialValue` to pre-fill the field for rename flows.
- * On focus, scrolls the element into view so the keyboard does not cover it.
+ *
+ * GYM-100: the keyboard-inset handling has moved to the slide panels
+ * (RecordPicker) via the --keyboard-pad CSS variable set by BottomSheet.
+ * scrollIntoView on focus was removed — it conflicted with the CSS-var approach
+ * and caused jank by running before visualViewport fired its resize event.
  */
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 interface AddInlineFieldProps {
     placeholder: string;
@@ -49,7 +53,6 @@ export function AddInlineField({
     onCancel,
 }: AddInlineFieldProps) {
     const [name, setName] = useState(initialValue);
-    const inputRef = useRef<HTMLInputElement>(null);
     const trimmed = name.trim();
     const canSubmit = trimmed.length > 0 && !pending;
 
@@ -58,25 +61,16 @@ export function AddInlineField({
         onSubmit(trimmed);
     }
 
-    function handleFocus(): void {
-        // GYM-82: scroll the input into view so the on-screen keyboard does not
-        // cover it. 'center' keeps the field and its submit button visible above
-        // the keyboard on a ~360px device.
-        inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-
     return (
         <div>
             <div className="flex items-stretch gap-2">
                 <input
-                    ref={inputRef}
                     type="text"
                     value={name}
                     autoFocus
                     placeholder={placeholder}
                     maxLength={maxLength}
                     onChange={(e) => setName(e.target.value)}
-                    onFocus={handleFocus}
                     onKeyDown={(e) => {
                         if (e.key === "Enter") {
                             e.preventDefault();

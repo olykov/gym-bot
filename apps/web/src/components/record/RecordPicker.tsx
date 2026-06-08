@@ -527,7 +527,18 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                 <div
                     className="space-y-4"
                     aria-hidden={isExerciseStep}
-                    style={{ width: "50%", minWidth: 0, overflowY: "auto", height: "100%", paddingBottom: "8px", paddingRight: "4px" }}
+                    style={{
+                        width: "50%",
+                        minWidth: 0,
+                        overflowY: "auto",
+                        height: "100%",
+                        // GYM-100: consume --keyboard-pad from the BottomSheet panel so the
+                        // add-muscle field stays visible above the keyboard. Fallback to 8px
+                        // when no keyboard is up. Safe-area bottom ensures content clears the
+                        // device home indicator.
+                        paddingBottom: "calc(max(var(--keyboard-pad, 0px), max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px))) + 8px)",
+                        paddingRight: "4px",
+                    }}
                 >
                     <h2 className="font-display text-title text-text">RECORD</h2>
 
@@ -649,7 +660,17 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                 <div
                     className="space-y-4"
                     aria-hidden={!isExerciseStep}
-                    style={{ width: "50%", minWidth: 0, overflowY: "auto", height: "100%", paddingBottom: "8px", paddingRight: "4px" }}
+                    style={{
+                        width: "50%",
+                        minWidth: 0,
+                        overflowY: "auto",
+                        height: "100%",
+                        // GYM-100: consume --keyboard-pad from the BottomSheet panel so the
+                        // + Exercise add field and submit button are fully visible above the
+                        // keyboard from the moment the field opens, on a ~360px device.
+                        paddingBottom: "calc(max(var(--keyboard-pad, 0px), max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px))) + 8px)",
+                        paddingRight: "4px",
+                    }}
                 >
                     {/* Back to muscles control (in-body; mirrors Phase B's "← Switch exercise"). */}
                     <button

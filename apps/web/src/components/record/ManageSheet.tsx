@@ -8,13 +8,19 @@
  * a contextual menu, not a new screen.
  *
  * Ownership-gated (GYM-80 `is_mine`):
- *   - Own custom item (`is_mine === true`): Rename + Move to another muscle + Delete.
+ *   - Own custom item (`is_mine === true`): Rename + Move to another muscle +
+ *     Hide + Delete. GYM-100: Hide is now also available for own items —
+ *     an own item with history can't be deleted (409 guard), so Hide is the only
+ *     way to declutter it. The full action set: Rename / Move (exercises only) /
+ *     Hide / Delete — always all four, never fewer.
  *     - Rename → inline edit reusing AddInlineField pattern, pre-filled, enforces
  *       maxLength. 409 (dup name) → graceful inline message; 422 → server message.
  *     - Move (exercises only, GYM-90) → muscle list (all visible muscles, excluding
  *       the current one). Picking a target calls PATCH /exercises/{id}/muscle.
  *       On success: close + full invalidation. 409 (name collision in target) →
  *       graceful inline message, stay in move view. 403/404 → graceful error.
+ *     - Hide → PUT /exercises/{id}/hidden or PUT /muscles/{id}/hidden. GYM-99
+ *       now supports hiding own items. On success: close + list invalidation.
  *     - Delete → confirm step (destructive, in-design). On 409 (has history)
  *       offers Hide instead of showing a plain error.
  *   - Global catalog item (`is_mine === false`): Hide only.
@@ -298,6 +304,21 @@ export function ManageSheet({ open, onClose, item }: ManageSheetProps) {
                                         </button>
                                     </>
                                 )}
+                                {/* GYM-100: Hide also for own items — the only way to declutter
+                                    an own item that has logged history (delete returns 409).
+                                    GYM-99 extended PUT /exercises/{id}/hidden + /muscles/{id}/hidden
+                                    to support own items. */}
+                                <div className="h-px bg-hairline" aria-hidden />
+                                <button
+                                    type="button"
+                                    onClick={doHide}
+                                    disabled={hideMuscle.isPending || hideExercise.isPending}
+                                    className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
+                                >
+                                    {hideMuscle.isPending || hideExercise.isPending
+                                        ? "Hiding…"
+                                        : "Hide from my list"}
+                                </button>
                                 <div className="h-px bg-hairline" aria-hidden />
                                 {/* Delete */}
                                 <button

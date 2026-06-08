@@ -109,10 +109,30 @@ export function useCreateExercise() {
     const qc = useQueryClient();
     return useMutation<Exercise, Error, ExerciseCreate>({
         mutationFn: (body) => createExercise(body),
-        onSuccess: (_data, vars) => {
+        onSuccess: (data, vars) => {
             void qc.invalidateQueries({ queryKey: ["muscles"] });
             void qc.invalidateQueries({
                 queryKey: ["analytics", "top-exercises", vars.muscle_name],
+            });
+            // GYM-100 fix #3: after add→resolve (resolution=existing or resolution=unhidden),
+            // the GYM-99 server now correctly returns the exercise's real PR/history instead
+            // of a cached empty context. Invalidate the log-context for the resolved exercise
+            // (by muscle+exercise prefix, covering all dates) so SetLogger re-fetches instead
+            // of serving a 10-min-stale empty result. Use the canonical name the backend
+            // returned (data.name), not the user-typed name, since the resolution may have
+            // matched a differently-cased or trimmed name.
+            void qc.invalidateQueries({
+                queryKey: ["analytics", "log-context", vars.muscle_name, data.name],
+            });
+            // Also invalidate exercise-progress for the canonical name so the Progress chart
+            // is not stale if the user re-adds a previously tracked exercise.
+            void qc.invalidateQueries({
+                queryKey: [
+                    "analytics",
+                    "exercise-progress",
+                    vars.muscle_name,
+                    data.name,
+                ],
             });
         },
     });

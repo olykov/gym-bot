@@ -55,6 +55,12 @@ interface BottomSheetProps {
      * Sheet body. Scrolls internally when the sheet hits its max-height; the
      * caller may pin its own sticky footer (the SAVE) with
      * `position:sticky; bottom:0` so it stays at the panel bottom (§11.4).
+     *
+     * GYM-100: In fixedHeight mode the body region itself does NOT add the
+     * keyboard padding — instead the computed keyboard height is exposed as the
+     * CSS variable `--keyboard-pad` on the panel element so inner scrollable
+     * sub-containers (e.g. RecordPicker slide panels) can consume it directly.
+     * This avoids the height escaping the RecordPicker's overflow:hidden boundary.
      */
     children: React.ReactNode;
 }
@@ -157,6 +163,12 @@ export function BottomSheet({
                                   // = viewport − (safe-area/Telegram content top) − header-h − 24px margin.
                                   // The header-h clearance ensures the picker never overlaps the fixed header.
                                   height: "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - var(--header-h) - 24px)",
+                                  // GYM-100: expose keyboard height as a CSS var so inner slide panels
+                                  // (RecordPicker) can apply it as their paddingBottom. The body region
+                                  // of a fixedHeight sheet does NOT add keyboardPad itself because the
+                                  // RecordPicker's overflow:hidden boundary traps the padding outside
+                                  // the panels' scroll containers, making scrollIntoView ineffective.
+                                  ["--keyboard-pad" as string]: `${keyboardPad}px`,
                               }
                             : {
                                   maxHeight:
@@ -174,17 +186,23 @@ export function BottomSheet({
                         tall editor, and a caller's sticky footer stays pinned
                         (§11.4, GYM-54). When the sheet is fixedHeight the body
                         is also flex-col so flex children (e.g. RecordPicker) can
-                        fill the available space with their own overflow handling. */}
+                        fill the available space with their own overflow handling.
+                        GYM-100: for fixedHeight sheets the keyboard padding is NOT
+                        applied here — it is set as --keyboard-pad on the panel
+                        element and consumed directly by inner scroll containers. */}
                     <div
                         className={`min-h-0 flex-1 overflow-y-auto px-4 ${fixedHeight ? "flex flex-col" : ""}`}
-                        style={{
-                            // GYM-82: when the keyboard is visible, add its height to the
-                            // bottom padding so the focused add-input scrolls above it.
-                            // The base padding accounts for safe-area + a small gap.
-                            paddingBottom: keyboardPad > 0
-                                ? `${keyboardPad + 12}px`
-                                : "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",
-                        }}
+                        style={
+                            fixedHeight
+                                ? undefined
+                                : {
+                                      // Non-fixedHeight sheets: add keyboard height to paddingBottom
+                                      // so the focused input scrolls above the keyboard.
+                                      paddingBottom: keyboardPad > 0
+                                          ? `${keyboardPad + 12}px`
+                                          : "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",
+                                  }
+                        }
                     >
                         {children}
                     </div>
