@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-58
 title: "Analytics in the user's timezone (streak, activity grid, day boundaries)"
 slug: gym-58-user-timezone-analytics
-status: backlog
+status: in_progress
 priority: low
 type: feature
 labels: [phase-5, api]
@@ -11,7 +11,7 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-05T00:00:00Z
-start_date: null
+start_date: 2026-06-08T23:10:00Z
 finish_date: null
 updated: 2026-06-05T00:00:00Z
 epic: phase-5
