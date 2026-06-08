@@ -22,10 +22,16 @@ import {
     type TrainingDayDetail,
     type TrainingUpdate,
 } from "@/api/training";
+import { DEVICE_TZ } from "@/lib/timezone";
 
-/** Query key for one window of the day list (consistent with activity's key). */
+/**
+ * Query key for one window of the day list (consistent with activity's key).
+ *
+ * DEVICE_TZ is included so that a timezone change (across reloads) produces a
+ * cache miss and the server regroups days in the correct local timezone.
+ */
 export function daysKey(from: string, to: string) {
-    return ["training", "days", from, to] as const;
+    return ["training", "days", from, to, DEVICE_TZ ?? "UTC"] as const;
 }
 /** Query key for one day's detail. */
 export function dayKey(date: string) {
@@ -40,11 +46,15 @@ export function dayKey(date: string) {
  * no blank flash on infinite-scroll load-more (GYM-53 #4). Only the very first
  * load (no prior data) shows skeletons; `isPlaceholderData` flags the in-flight
  * widen so the page never renders a full skeleton over the kept list.
+ *
+ * DEVICE_TZ is forwarded so that day-boundary grouping respects the user's
+ * local timezone (e.g. a session at 23:00 Asia/Tbilisi lands on the correct
+ * local date rather than the next UTC day).
  */
 export function useTrainingDays(from: string, to: string) {
     return useQuery<TrainingDay[]>({
         queryKey: daysKey(from, to),
-        queryFn: ({ signal }) => fetchTrainingDays(from, to, signal),
+        queryFn: ({ signal }) => fetchTrainingDays(from, to, signal, DEVICE_TZ),
         placeholderData: keepPreviousData,
     });
 }

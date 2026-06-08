@@ -24,23 +24,34 @@ import {
     type TopExercise,
     type TopMuscle,
 } from "@/api/analytics";
+import { DEVICE_TZ } from "@/lib/timezone";
 
 /** Pull-all sentinel for the exercise picker (every exercise of a muscle). */
 const TOP_EXERCISES_LIMIT = 200;
 
-/** Dashboard summary numbers. */
+/**
+ * Dashboard summary numbers.
+ *
+ * Includes DEVICE_TZ in the query key so that a timezone change (rare but
+ * possible across reloads) produces a cache miss and re-fetches correctly.
+ */
 export function useSummary() {
     return useQuery<AnalyticsSummary>({
-        queryKey: ["analytics", "summary"],
-        queryFn: ({ signal }) => fetchSummary(signal),
+        queryKey: ["analytics", "summary", DEVICE_TZ ?? "UTC"],
+        queryFn: ({ signal }) => fetchSummary(signal, DEVICE_TZ),
     });
 }
 
-/** Activity grid for a date window (the 26-week MVP window, see ActivityGrid). */
+/**
+ * Activity grid for a date window (the 26-week MVP window, see ActivityGrid).
+ *
+ * Includes DEVICE_TZ in the query key so that a timezone change produces a
+ * cache miss and the server recomputes day boundaries in the correct timezone.
+ */
 export function useActivity(from: string, to: string) {
     return useQuery<ActivityDay[]>({
-        queryKey: ["analytics", "activity", from, to],
-        queryFn: ({ signal }) => fetchActivity(from, to, signal),
+        queryKey: ["analytics", "activity", from, to, DEVICE_TZ ?? "UTC"],
+        queryFn: ({ signal }) => fetchActivity(from, to, signal, DEVICE_TZ),
     });
 }
 

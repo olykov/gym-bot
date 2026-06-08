@@ -23,13 +23,20 @@ export type TrainingCreate = Schemas["TrainingCreate"];
  *
  * @param from - inclusive start date (YYYY-MM-DD).
  * @param to - inclusive end date (YYYY-MM-DD).
+ * @param signal - optional AbortSignal.
+ * @param tz - optional IANA timezone name. When provided, day boundaries are
+ *   computed in that timezone so a session logged near midnight lands on the
+ *   correct local calendar day.
  */
 export function fetchTrainingDays(
     from: string,
     to: string,
     signal?: AbortSignal,
+    tz?: string,
 ): Promise<TrainingDay[]> {
-    const qs = new URLSearchParams({ from, to }).toString();
+    const params: Record<string, string> = { from, to };
+    if (tz) params.tz = tz;
+    const qs = new URLSearchParams(params).toString();
     return apiRequest<TrainingDay[]>(`/training/days?${qs}`, { signal });
 }
 

@@ -26,9 +26,22 @@ export type MuscleRename = Schemas["MuscleRename"];
 export type ExerciseRename = Schemas["ExerciseRename"];
 export type ExerciseMove = Schemas["ExerciseMove"];
 
-/** GET /analytics/summary — the four dashboard numbers (scoped to the caller). */
-export function fetchSummary(signal?: AbortSignal): Promise<AnalyticsSummary> {
-    return apiRequest<AnalyticsSummary>("/analytics/summary", { signal });
+/**
+ * GET /analytics/summary — the four dashboard numbers (scoped to the caller).
+ *
+ * @param tz - optional IANA timezone name (e.g. "Asia/Tbilisi"). When
+ *   provided, streak and weekly buckets are computed in that timezone.
+ *   Omit to keep the original UTC behaviour.
+ */
+export function fetchSummary(
+    signal?: AbortSignal,
+    tz?: string,
+): Promise<AnalyticsSummary> {
+    const params: Record<string, string> = {};
+    if (tz) params.tz = tz;
+    const qs = new URLSearchParams(params).toString();
+    const url = qs ? `/analytics/summary?${qs}` : "/analytics/summary";
+    return apiRequest<AnalyticsSummary>(url, { signal });
 }
 
 /**
@@ -36,13 +49,19 @@ export function fetchSummary(signal?: AbortSignal): Promise<AnalyticsSummary> {
  *
  * @param from - inclusive start date (YYYY-MM-DD).
  * @param to - inclusive end date (YYYY-MM-DD).
+ * @param signal - optional AbortSignal.
+ * @param tz - optional IANA timezone name. When provided, day boundaries are
+ *   computed in that timezone instead of UTC.
  */
 export function fetchActivity(
     from: string,
     to: string,
     signal?: AbortSignal,
+    tz?: string,
 ): Promise<ActivityDay[]> {
-    const qs = new URLSearchParams({ from, to }).toString();
+    const params: Record<string, string> = { from, to };
+    if (tz) params.tz = tz;
+    const qs = new URLSearchParams(params).toString();
     return apiRequest<ActivityDay[]>(`/analytics/activity?${qs}`, { signal });
 }
 
