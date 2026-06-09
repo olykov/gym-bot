@@ -15,7 +15,7 @@ start_date: null
 finish_date: null
 updated: 2026-06-08T08:00:00Z
 epic: tax-i18n
-depends_on: [GYM-87, GYM-92]
+depends_on: [GYM-108]
 blocks: [GYM-94]
 related: []
 commits: []
@@ -32,10 +32,13 @@ backlog_ref: ""
 The add-exercise dropdown needs ranked canonical candidates as the user types. Per ADR 0001 (cheap layers
 before AI).
 
-## Scope (layers): contract + API
-- Search endpoint: input a query (and optionally a muscle) → ranked canonical candidates matched by
-  name_key exact → alias hit → pg_trgm fuzzy (typos). Return canonical_id, display name in the user's
-  language, muscle. Muscle-scoped when called from within a muscle.
+## Scope (layers): contract + API. Per ADR 0003 (Channel B).
+- New `GET /exercises/search?q=&muscle_id=&lang=&limit=` → ranked canonical candidates matched by
+  name_key exact → prefix → `exercise_alias` hit (lang-aware) → `pg_trgm` fuzzy (typos). Return
+  canonical exercise id, display name, muscle. Muscle-scoped when called from within a muscle, else
+  whole catalog. `lang` comes from GYM-108 (Telegram language_code).
+- Requires `CREATE EXTENSION IF NOT EXISTS pg_trgm` — migration `0007` (auto-applies on deploy via GYM-107).
+- DECOUPLED from the seed: works over the 122 English canonical names with ZERO aliases; GYM-92 enriches.
 - No embeddings here (that is GYM-96, the AI phase). pg_trgm only.
 
 ## Acceptance
