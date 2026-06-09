@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-107
 title: "Deploy: apply Alembic migrations automatically (alembic upgrade head)"
 slug: gym-107-auto-migrate-on-deploy
-status: in_progress
+status: review
 priority: high
 type: chore
 labels: [tech-debt, infra, db]
@@ -13,7 +13,7 @@ reporter: oleksii
 created: 2026-06-10T00:00:00Z
 start_date: 2026-06-10T00:00:00Z
 finish_date: null
-updated: 2026-06-10T00:00:00Z
+updated: 2026-06-10T00:30:00Z
 epic: tech-debt
 depends_on: []
 blocks: [GYM-92]
@@ -69,3 +69,11 @@ SQLAlchemy 2.0.23. Cannot be tested locally (no ansible/prod) — real validatio
 which applies the already-committed `0005`/`0006` (canonical schema; additive, empty, unused by current
 code; `0006.exercise_alias` is lang-aware and is exactly what tax-i18n needs). Holding push for the
 operator's conscious OK to apply that schema to prod.
+
+### 2026-06-10T00:30:00Z — deploy success, awaiting prod verification
+Operator OK'd applying 0005/0006. Pushed `1220a45`; deploy run 27234332502 = **success**. Migration
+task ran rc=0 in the correct order (ship db → DB/Redis up → bootstrap app_rw → alembic upgrade head →
+app up). Reported `ok` not `changed`: `changed_when` checks stdout but alembic logs "Running upgrade"
+to **stderr** — cosmetic only (rc=0 = success). FOLLOW-UP: change `changed_when` to read stderr; fold
+into the next (tax-i18n) deploy rather than a cosmetic-only redeploy. Set to `review` pending operator
+confirmation that prod `alembic_version` = `0006_canonical_alias` (cannot SSH prod under this task).
