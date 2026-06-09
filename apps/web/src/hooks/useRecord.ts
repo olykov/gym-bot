@@ -36,9 +36,11 @@ import {
     moveExercise,
     renameExercise,
     renameMuscle,
+    searchExercises,
     unhideExercise,
     unhideMuscle,
     type Exercise,
+    type ExerciseCandidate,
     type ExerciseCreate,
     type ExerciseMove,
     type ExerciseRename,
@@ -500,5 +502,44 @@ export function useUnhideExercise() {
             void qc.invalidateQueries({ queryKey: ["analytics", "top-exercises"] });
             void qc.invalidateQueries({ queryKey: ["exercises", "hidden", vars.muscleName] });
         },
+    });
+}
+
+// ── GYM-94: Exercise search (ADR 0003 Channel B) ─────────────────────────────
+
+/** Re-export for consumers (ExerciseSearchField). */
+export type { ExerciseCandidate };
+
+/**
+ * GET /exercises/search — debounced ranked candidate hook for the
+ * search-and-pick dropdown (GYM-94).
+ *
+ * Fires only when `q` is non-empty (after trim) and `muscleId` is present,
+ * so the query is always scoped and never fans out on the empty path (ARCH §2).
+ * Short staleTime (30 s) so typing produces fresh results; gcTime kept short
+ * so stale candidate arrays don't accumulate in memory mid-session.
+ *
+ * @param q - the debounced search query (raw user input, trimmed by the hook).
+ * @param muscleId - numeric id of the selected muscle (scope required for GYM-94).
+ * @param lang - resolved locale code from getLocale() / useLocale() (GYM-108).
+ * @param limit - max candidates to return (default 8 for the dropdown).
+ */
+export function useExerciseSearch(
+    q: string,
+    muscleId: number | null,
+    lang: string,
+    limit = 8,
+) {
+    const trimmed = q.trim();
+    return useQuery<ExerciseCandidate[]>({
+        queryKey: ["exercises", "search", muscleId, lang, trimmed, limit],
+        queryFn: ({ signal }) =>
+            searchExercises(trimmed, muscleId ?? undefined, lang, limit, signal),
+        enabled: trimmed.length > 0 && muscleId !== null,
+        staleTime: 30_000,
+        gcTime: 60_000,
+        // Avoid flashing a stale list for a new query — keep previous data visible
+        // as a placeholder while the fresh request is in-flight.
+        placeholderData: (prev) => prev,
     });
 }

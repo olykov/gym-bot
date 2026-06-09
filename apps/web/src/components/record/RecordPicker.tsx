@@ -47,6 +47,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { AddInlineField } from "./AddInlineField";
+import { ExerciseSearchField } from "./ExerciseSearchField";
 import { ManageSheet } from "./ManageSheet";
 import { useMuscles, useTopMuscles, useTopExercises, useExercises } from "@/hooks/useAnalytics";
 import { useTrainingDay } from "@/hooks/useTraining";
@@ -511,7 +512,35 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                 }
                                 onSubmit={submitMuscle}
                             />
+                        ) : selectedMuscleId !== null ? (
+                            /* GYM-94: search-and-pick in the empty-new-user path.
+                               Only when the muscle id is resolved (cache refreshed
+                               after the create mutation) so the API call is scoped. */
+                            <ExerciseSearchField
+                                muscleName={selectedMuscle}
+                                muscleId={selectedMuscleId}
+                                pending={createExercise.isPending}
+                                error={
+                                    createExercise.isError
+                                        ? "Couldn't add that — try again."
+                                        : null
+                                }
+                                onPick={(exerciseName) => {
+                                    setResolveHint(null);
+                                    onPick({
+                                        muscleName: selectedMuscle,
+                                        exerciseName,
+                                    });
+                                }}
+                                onCreate={submitExercise}
+                                onCancel={() => {
+                                    onMuscleChange(null);
+                                    setResolveHint(null);
+                                }}
+                            />
                         ) : (
+                            /* Fallback: muscle was just created but id not yet in
+                               cache — use the plain add-inline until muscles reload. */
                             <AddInlineField
                                 placeholder={`Exercise in ${selectedMuscle}`}
                                 actionLabel="Add"
@@ -806,23 +835,36 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                         </div>
                     )}
 
-                    {/* Add an exercise inline (§12.2). */}
+                    {/* GYM-94: search-and-pick (add exercise).
+                        The ExerciseSearchField replaces the old bare AddInlineField:
+                        typing shows ranked canonical candidates first; free-text create
+                        is the last row (last resort). Picking a candidate calls onPick
+                        directly (same path as tapping a tile). Creating calls
+                        submitExercise (existing POST /exercises path, unchanged). */}
                     {adding === "exercise" ? (
-                        <AddInlineField
-                            placeholder={`New exercise in ${selectedMuscle ?? ""}`}
-                            actionLabel="Add"
-                            maxLength={EXERCISE_NAME_MAX}
+                        <ExerciseSearchField
+                            muscleName={selectedMuscle ?? ""}
+                            muscleId={selectedMuscleId ?? 0}
                             pending={createExercise.isPending}
                             error={
                                 createExercise.isError
                                     ? "Couldn't add that — try again."
                                     : null
                             }
-                            onSubmit={submitExercise}
+                            onPick={(exerciseName) => {
+                                setAdding(null);
+                                setResolveHint(null);
+                                onPick({
+                                    muscleName: selectedMuscle!,
+                                    exerciseName,
+                                });
+                            }}
+                            onCreate={submitExercise}
                             onCancel={() => {
                                 setAdding(null);
                                 setResolveHint(null);
                             }}
+                            tabIndex={isExerciseStep ? 0 : -1}
                         />
                     ) : (
                         <button

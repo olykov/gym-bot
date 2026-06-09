@@ -25,6 +25,7 @@ export type ExerciseCreate = Schemas["ExerciseCreate"];
 export type MuscleRename = Schemas["MuscleRename"];
 export type ExerciseRename = Schemas["ExerciseRename"];
 export type ExerciseMove = Schemas["ExerciseMove"];
+export type ExerciseCandidate = Schemas["ExerciseCandidate"];
 
 /**
  * GET /analytics/summary — the four dashboard numbers (scoped to the caller).
@@ -262,4 +263,32 @@ export function unhideMuscle(muscleId: number): Promise<void> {
  */
 export function unhideExercise(exerciseId: number): Promise<void> {
     return apiRequest<void>(`/exercises/${exerciseId}/hidden`, { method: "DELETE" });
+}
+
+/**
+ * GET /exercises/search?q=&muscle_id=&lang=&limit= — ranked exercise candidates
+ * for the search-and-pick dropdown (GYM-94, ADR 0003 Channel B).
+ *
+ * Returns candidates ordered best-match-first. Scoped to a single muscle when
+ * `muscleId` is provided; otherwise the whole catalog is searched.
+ *
+ * @param q - the user's typed search query.
+ * @param muscleId - optional muscle scope.
+ * @param lang - resolved locale (ISO-639-1) from getLocale()/GYM-108.
+ * @param limit - max candidates to return.
+ * @param signal - optional AbortSignal.
+ */
+export function searchExercises(
+    q: string,
+    muscleId?: number,
+    lang?: string,
+    limit?: number,
+    signal?: AbortSignal,
+): Promise<ExerciseCandidate[]> {
+    const params: Record<string, string> = { q };
+    if (muscleId !== undefined) params.muscle_id = String(muscleId);
+    if (lang) params.lang = lang;
+    if (limit !== undefined) params.limit = String(limit);
+    const qs = new URLSearchParams(params).toString();
+    return apiRequest<ExerciseCandidate[]>(`/exercises/search?${qs}`, { signal });
 }
