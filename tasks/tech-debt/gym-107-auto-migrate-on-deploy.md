@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-107
 title: "Deploy: apply Alembic migrations automatically (alembic upgrade head)"
 slug: gym-107-auto-migrate-on-deploy
-status: review
+status: done
 priority: high
 type: chore
 labels: [tech-debt, infra, db]
@@ -12,8 +12,8 @@ model: null
 reporter: oleksii
 created: 2026-06-10T00:00:00Z
 start_date: 2026-06-10T00:00:00Z
-finish_date: null
-updated: 2026-06-10T00:30:00Z
+finish_date: 2026-06-10T00:45:00Z
+updated: 2026-06-10T00:45:00Z
 epic: tech-debt
 depends_on: []
 blocks: [GYM-92]
@@ -77,3 +77,8 @@ app up). Reported `ok` not `changed`: `changed_when` checks stdout but alembic l
 to **stderr** — cosmetic only (rc=0 = success). FOLLOW-UP: change `changed_when` to read stderr; fold
 into the next (tax-i18n) deploy rather than a cosmetic-only redeploy. Set to `review` pending operator
 confirmation that prod `alembic_version` = `0006_canonical_alias` (cannot SSH prod under this task).
+
+### 2026-06-10T00:45:00Z — done (verified on prod)
+Operator granted read-only SSH. Verified `gymbot_db`: `alembic_version` = **`0006_canonical_alias`**;
+tables `exercise_alias`, `user_exercise_override`, `user_muscle_override` present; `exercise_alias`
+carries the `lang` column. Auto-migrate proven end-to-end. Closing done (commit c6b3b8b).
