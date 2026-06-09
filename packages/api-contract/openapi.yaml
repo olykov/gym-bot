@@ -434,6 +434,70 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /exercises/search:
+    get:
+      tags: [exercises]
+      summary: Search canonical exercise candidates by name and aliases
+      description: >
+        Ranked candidate search over canonical exercise names and their aliases
+        (`exercise_alias`, Channel B of ADR 0003), for the add-exercise
+        search-and-pick dropdown (GYM-94). Matches `q` and ranks candidates by:
+        exact `name_key` -> prefix on `name_key` -> alias hit (lang-aware on
+        `exercise_alias.lang`) -> `pg_trgm` fuzzy (typos). Scoped to a single
+        muscle when `muscle_id` is given, otherwise the whole catalog. Works with
+        zero aliases (over the canonical English names via `name_key`); aliases
+        only enrich the ranking. `lang` is the caller's resolved locale (GYM-108,
+        Telegram `language_code`). No embeddings here (that is GYM-96).
+      operationId: searchExercises
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: The search query (the user's typed text).
+          schema:
+            type: string
+            minLength: 1
+        - name: muscle_id
+          in: query
+          required: false
+          description: >
+            Scope candidates to this muscle. When omitted, the whole catalog is searched.
+          schema:
+            type: integer
+        - name: lang
+          in: query
+          required: false
+          description: >
+            ISO-639-1 locale (e.g. `ru`) for lang-aware alias matching, resolved by
+            the client from the Telegram language_code (GYM-108). When omitted, only
+            the canonical `name_key` is matched.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of candidates to return.
+          schema:
+            type: integer
+            default: 8
+            maximum: 20
+            minimum: 1
+        - $ref: '#/components/parameters/ActAsUser'
+      responses:
+        '200':
+          description: Ranked candidate exercises, best match first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExerciseCandidate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /exercises/hidden:
     get:
       tags: [exercises]
@@ -1635,6 +1699,39 @@ components:
             existing hidden item was silently unhidden; 'existing' = the item
             already existed and visible (no duplicate created). Absent/null on
             list and read responses.
+
+    ExerciseCandidate:
+      type: object
+      description: >
+        A ranked canonical exercise candidate returned by `GET /exercises/search`.
+        Identity and name fields mirror the `Exercise` schema (`id`, `name`,
+        `muscle`); `muscle_name` denormalizes the owning muscle so the dropdown
+        does not have to join. `match_reason` and `score` describe why and how
+        strongly the candidate matched (higher `score` = better).
+      required: [id, name, muscle, muscle_name, match_reason, score]
+      properties:
+        id:
+          type: integer
+          description: Canonical exercise id (mirrors Exercise.id).
+        name:
+          type: string
+          description: Display name of the exercise (mirrors Exercise.name).
+        muscle:
+          type: integer
+          description: Owning muscle id (mirrors Exercise.muscle).
+        muscle_name:
+          type: string
+          description: Owning muscle name, denormalized for display.
+        match_reason:
+          type: string
+          enum: [exact, prefix, alias, fuzzy]
+          description: >
+            Why the candidate matched: 'exact' = exact name_key, 'prefix' =
+            name_key prefix, 'alias' = matched a (lang-aware) exercise_alias,
+            'fuzzy' = pg_trgm similarity (typo tolerance).
+        score:
+          type: number
+          description: Ranking score; higher is a better match.
 
     ExerciseCreate:
       type: object
