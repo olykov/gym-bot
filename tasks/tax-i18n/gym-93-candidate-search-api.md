@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-93
 title: "API: candidate search over canonical names + aliases (name_key + synonym + pg_trgm fuzzy), muscle-scoped"
 slug: gym-93-candidate-search-api
-status: in_progress
+status: done
 priority: medium
 type: feature
 labels: [taxonomy, api, api-contract]
@@ -12,14 +12,16 @@ model: null
 reporter: oleksii
 created: 2026-06-08T08:00:00Z
 start_date: 2026-06-09T21:25:52Z
-finish_date: null
-updated: 2026-06-09T21:25:52Z
+finish_date: 2026-06-10T00:00:00Z
+updated: 2026-06-10T00:00:00Z
 epic: tax-i18n
 depends_on: [GYM-108]
 blocks: [GYM-94]
 related: []
-commits: [1551ee09b052abfd353ce82d3e6b8e316a979a2b]
-tests: []
+commits:
+  - 1551ee09b052abfd353ce82d3e6b8e316a979a2b
+tests:
+  - apps/api/tests/test_gym93_exercise_search.py
 design_reports: []
 review_reports: []
 review: {}
@@ -42,7 +44,7 @@ before AI).
 - No embeddings here (that is GYM-96, the AI phase). pg_trgm only.
 
 ## Acceptance
-- [ ] Search returns ranked canonical candidates (key/alias/fuzzy) with i18n names; muscle filter works;
+- [x] Search returns ranked canonical candidates (key/alias/fuzzy) with i18n names; muscle filter works;
       tests + suite green.
 
 ## Comments
@@ -77,3 +79,32 @@ Clients regenerated via `make gen` (validate + python + typescript). Python mode
 `ExerciseCandidate` + `MatchReason` StrEnum committed in `clients/python/gym_api_client/models.py`.
 TS types regenerate to `clients/typescript/schema.ts` (gitignored): `operations["searchExercises"]`
 and `components["schemas"]["ExerciseCandidate"]` for apps/web. TS typechecks clean.
+
+### 2026-06-10 — endpoint + migration implemented (core-api-engineer)
+
+Server-side implementation complete on branch `i18n/gym-93-search`.
+
+**Migration 0007** (`packages/db/alembic/versions/0007_pg_trgm.py`):
+- `CREATE EXTENSION IF NOT EXISTS pg_trgm` (idempotent; requires superuser — Alembic runs as myuser).
+- `CREATE INDEX IF NOT EXISTS idx_exercises_name_key_trgm ON exercises USING gin (name_key gin_trgm_ops)`.
+- `CREATE INDEX IF NOT EXISTS idx_exercise_alias_name_key_trgm ON exercise_alias USING gin (name_key gin_trgm_ops)`.
+- Chains after `0006_canonical_alias`. Idempotent `upgrade()`, proper `downgrade()`.
+
+**Endpoint** (`apps/api/app/api/v1/exercises_router.py`):
+- `GET /exercises/search` with the same session/RLS/GUC plumbing as all other exercise endpoints.
+- Uses a single CTE query (`_SEARCH_SQL`) with four UNION ALL tiers; DISTINCT ON keeps the best
+  tier per exercise id; final ORDER BY (tier rank, score DESC, name) then LIMIT.
+- SQL uses `CAST(:param AS type)` form (not `::type` casts) to avoid psycopg2 parameter-parsing
+  conflicts with `::` after parameter substitution.
+- Fuzzy threshold: **0.3** (pg_trgm default). Balances typo tolerance vs. false positives for
+  5–15 char exercise name catalog.
+- Muscle filter and lang filter both use NULL-safe `CAST(:param AS type) IS NULL OR ...` pattern.
+
+**Schema**: `ExerciseCandidate` added to `apps/api/app/schemas/schemas.py`.
+
+**Tests** (`apps/api/tests/test_gym93_exercise_search.py`): 14 integration tests covering all
+four tiers, muscle filter, limit, empty result, caller's own custom exercise searchability, RLS
+isolation (other user's private exercise not visible), lang filter exclusion, and 401.
+
+**Suite result**: 399 passed, 0 failed, 37 warnings (all pre-existing deprecation warnings).
+DB was up (Docker postgres:16 ephemeral container via conftest); integration tests ran, not skipped.
