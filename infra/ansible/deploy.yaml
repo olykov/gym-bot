@@ -4,7 +4,7 @@
   become: yes
   vars:
     work_dir: /opt/gym-bot
-  
+
   tasks:
     - name: Ensure home directory exists
       tags: ["app"]
@@ -15,7 +15,7 @@
       with_items:
         - "{{ work_dir }}"
         - "{{ work_dir }}/db_data"
-    
+
     - name: Prepare environment variables
       tags: ["app", "env"]
       ansible.builtin.copy:
@@ -51,14 +51,14 @@
           API_BASE_URL=http://admin_backend:8000/api/v1
           APP_DB_USER={{ lookup('env', 'APP_DB_USER') | default('app_rw', true) }}
           APP_DB_PASSWORD={{ lookup('env', 'APP_DB_PASSWORD') }}
-    
+
     - name: Prepare sa.json
       tags: ["app"]
       ansible.builtin.copy:
         dest: "{{ work_dir }}/sa.json"
         content: |
           {{ lookup('env', 'SA') }}
-    
+
     - name: Ensure init.sql exists
       tags: ["app"]
       ansible.builtin.copy:
@@ -71,27 +71,35 @@
         src: "{{inventory_dir}}/../../packages/db/bootstrap/create_app_role.sql"
         dest: "{{ work_dir }}/create_app_role.sql"
 
+    - name: Ship packages/db (alembic env + versions) for the on-deploy migration
+      # Mounted read-only into the throwaway migration container below. Trailing
+      # slash copies the directory CONTENTS into {{ work_dir }}/db.
+      tags: ["app", "migrate"]
+      ansible.builtin.copy:
+        src: "{{inventory_dir}}/../../packages/db/"
+        dest: "{{ work_dir }}/db/"
+
     - name: Ensure docker-compose.yml is updated
       tags: ["app"]
       ansible.builtin.template:
         src: "{{inventory_dir}}/../../docker-compose.yaml"
         dest: "{{ work_dir }}/docker-compose.yml"
       register: _docker_compose
-    
-    - name: Ensure app containers are running
-      # pull: always fetches new images; compose recreates only containers
-      # whose image or config changed. Stateful services (gymbot_db,
-      # gymbot_redis) use pinned images that do not change between app
-      # deploys, so they are left untouched — no DB/Redis downtime.
-      tags: ["app"]
+
+    # --- Stateful services first, so migrations run against a live DB BEFORE the
+    #     new app code starts. On steady-state deploys this is a no-op (DB/Redis
+    #     are already up); it matters on a cold/first deploy.
+    - name: Ensure DB and Redis are up (before migrations)
+      tags: ["app", "migrate"]
       community.docker.docker_compose_v2:
         project_src: "{{ work_dir }}"
-        pull: always
+        services:
+          - gymbot_db
+          - gymbot_redis
         state: present
-      register: _docker_compose
 
     - name: Wait for gymbot_db to accept connections
-      tags: ["app"]
+      tags: ["app", "migrate"]
       ansible.builtin.command: >
         docker exec gymbot_db pg_isready -U "{{ lookup('env', 'DB_USER') }}" -d "{{ lookup('env', 'DB_NAME') }}"
       register: _pg_ready
@@ -103,9 +111,10 @@
     - name: Bootstrap app_rw role (idempotent)
       # Runs as the superuser (myuser/DB_USER); creates the role NOSUPERUSER
       # NOBYPASSRLS if absent, then rotates its password to APP_DB_PASSWORD.
-      # Safe to re-run on every deploy — see packages/db/bootstrap/create_app_role.sql.
+      # Must run BEFORE migrations — migrations GRANT privileges to app_rw, so
+      # the role has to exist. Safe to re-run on every deploy.
       # APP_DB_PASSWORD is never written to disk; passed only via env.
-      tags: ["app"]
+      tags: ["app", "migrate"]
       ansible.builtin.shell: >
         docker exec -i gymbot_db psql
         -U "{{ lookup('env', 'DB_USER') }}"
@@ -115,3 +124,47 @@
       changed_when: true
       no_log: true
 
+    - name: Apply database migrations (alembic upgrade head)
+      # Ephemeral, --rm container on the core-infra network. Runs as the DB
+      # SUPERUSER (DB_* from .env via --env-file → alembic env.py assembles the
+      # URL as myuser; DATABASE_URL is forced empty so an app_rw URL can never
+      # win precedence). Security properties:
+      #   - the password is NEVER on the command line / in `ps` (only --env-file)
+      #   - the alembic env is mounted READ-ONLY (:ro)
+      #   - the container is destroyed immediately (--rm), no privileged flags
+      #   - SQLAlchemy masks the password (***) in any connection error
+      # Ordering: AFTER app_rw bootstrap, BEFORE the app containers start, so new
+      # code never sees an un-migrated schema. Idempotent: a no-op when at head.
+      # A non-zero exit fails the deploy, leaving the previous app version running.
+      tags: ["app", "migrate"]
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - --network=core-infra
+          - --env-file={{ work_dir }}/.env
+          - --env=DATABASE_URL=
+          - --env=DB_HOST=gymbot_db
+          - --env=PYTHONDONTWRITEBYTECODE=1
+          - --volume={{ work_dir }}/db:/db:ro
+          - --workdir=/db
+          - python:3.11-slim
+          - sh
+          - -lc
+          - pip install --no-cache-dir -q -r requirements.txt && alembic upgrade head
+      register: _migrate
+      changed_when: "'Running upgrade' in (_migrate.stdout | default(''))"
+
+    - name: Ensure app containers are running
+      # pull: always fetches new images; compose recreates only containers
+      # whose image or config changed. Stateful services (gymbot_db,
+      # gymbot_redis) use pinned images that do not change between app
+      # deploys, so they are left untouched — no DB/Redis downtime.
+      # Runs LAST: the app starts only after migrations have succeeded.
+      tags: ["app"]
+      community.docker.docker_compose_v2:
+        project_src: "{{ work_dir }}"
+        pull: always
+        state: present
+      register: _docker_compose
