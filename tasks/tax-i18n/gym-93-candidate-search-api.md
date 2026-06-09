@@ -18,10 +18,7 @@ epic: tax-i18n
 depends_on: [GYM-108]
 blocks: [GYM-94]
 related: []
-commits:
-  - 1551ee09b052abfd353ce82d3e6b8e316a979a2b
-  - 9a4f22d669db9d3ebbdd09e369a1fe64d7b21037
-  - 4c9ab5953d730882a9f14db7af46a29ee8020390
+commits: [1551ee09b052abfd353ce82d3e6b8e316a979a2b, 9a4f22d669db9d3ebbdd09e369a1fe64d7b21037, 4c9ab5953d730882a9f14db7af46a29ee8020390]
 tests:
   - apps/api/tests/test_gym93_exercise_search.py
 design_reports: []
