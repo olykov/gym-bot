@@ -8,7 +8,7 @@ All routes accept EITHER a user JWT (Mini App) OR a service token +
 X-Act-As-User impersonation (the Telegram bot) via ``get_principal``.
 """
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import exists, text
@@ -22,9 +22,206 @@ from app.schemas import schemas
 from app.services.resolve import resolve_muscle_id
 from app.services.visibility import visible_exercises_for_muscle, visible_muscles
 
+# ---------------------------------------------------------------------------
+# Tiered search SQL for GET /exercises/search (GYM-93).
+#
+# Candidate pool: exercises visible to the caller under RLS (global canonical
+# + the caller's own customs — consistent with listExercisesByMuscle scope)
+# plus alias hits from exercise_alias (global catalog, lang-aware).
+#
+# Tiers (highest score → lowest), one row per exercise id (DISTINCT ON keeps
+# the best tier per id):
+#   tier 1 (exact)  score 1.0 — name_key = app_name_key(:q) exact match
+#   tier 2 (prefix) score 0.8 — name_key LIKE app_name_key(:q) || '%'
+#   tier 3 (alias)  score 0.6 — exercise_alias.name_key matches exact/prefix
+#                                with optional lang filter
+#   tier 4 (fuzzy)  score similarity() — pg_trgm similarity > 0.3
+#
+# Fuzzy threshold 0.3: the pg_trgm default, chosen for typo tolerance on
+# 5–15 char exercise names while keeping false positives low.
+# ---------------------------------------------------------------------------
+_SEARCH_SQL = """
+WITH q_key AS (
+    -- Normalize the query once; re-used in every tier.
+    SELECT public.app_name_key(:q) AS k
+),
+candidates AS (
+    -- Tier 1: exact name_key match on exercises visible to this caller.
+    -- score 1.0; only exercises where e.muscle = :muscle_id when scoped.
+    SELECT
+        e.id,
+        e.name,
+        e.muscle,
+        m.name AS muscle_name,
+        1                AS tier,
+        CAST(1.0 AS float) AS score,
+        'exact'          AS match_reason
+    FROM exercises e
+    JOIN muscles m ON m.id = e.muscle
+    CROSS JOIN q_key
+    WHERE e.name_key = q_key.k
+      AND (CAST(:muscle_id AS int) IS NULL OR e.muscle = CAST(:muscle_id AS int))
+
+    UNION ALL
+
+    -- Tier 2: prefix match on name_key (excludes exact match rows).
+    -- score 0.8.
+    SELECT
+        e.id,
+        e.name,
+        e.muscle,
+        m.name AS muscle_name,
+        2                  AS tier,
+        CAST(0.8 AS float) AS score,
+        'prefix'           AS match_reason
+    FROM exercises e
+    JOIN muscles m ON m.id = e.muscle
+    CROSS JOIN q_key
+    WHERE e.name_key LIKE q_key.k || '%'
+      AND e.name_key <> q_key.k
+      AND (CAST(:muscle_id AS int) IS NULL OR e.muscle = CAST(:muscle_id AS int))
+
+    UNION ALL
+
+    -- Tier 3: alias hit (lang-aware when :lang is provided).
+    -- Joins exercise_alias on canonical_id = exercises.id; alias.name_key
+    -- matches exact or prefix; lang-filtered when :lang is not NULL.
+    -- score 0.6.
+    SELECT
+        e.id,
+        e.name,
+        e.muscle,
+        m.name AS muscle_name,
+        3                  AS tier,
+        CAST(0.6 AS float) AS score,
+        'alias'            AS match_reason
+    FROM exercise_alias a
+    JOIN exercises e ON e.id = a.canonical_id
+    JOIN muscles m   ON m.id = e.muscle
+    CROSS JOIN q_key
+    WHERE (a.name_key = q_key.k OR a.name_key LIKE q_key.k || '%')
+      AND (CAST(:lang AS text) IS NULL OR a.lang = CAST(:lang AS text))
+      AND (CAST(:muscle_id AS int) IS NULL OR e.muscle = CAST(:muscle_id AS int))
+
+    UNION ALL
+
+    -- Tier 4: fuzzy match via pg_trgm similarity on exercises.name_key.
+    -- score = similarity value (> 0.3 threshold).
+    SELECT
+        e.id,
+        e.name,
+        e.muscle,
+        m.name                          AS muscle_name,
+        4                               AS tier,
+        similarity(e.name_key, q_key.k) AS score,
+        'fuzzy'                         AS match_reason
+    FROM exercises e
+    JOIN muscles m ON m.id = e.muscle
+    CROSS JOIN q_key
+    WHERE similarity(e.name_key, q_key.k) > 0.3
+      AND (CAST(:muscle_id AS int) IS NULL OR e.muscle = CAST(:muscle_id AS int))
+),
+ranked AS (
+    -- Keep the best tier per exercise id (DISTINCT ON keeps first row per id
+    -- after ordering by tier ASC, score DESC within each id group).
+    SELECT DISTINCT ON (id)
+        id,
+        name,
+        muscle,
+        muscle_name,
+        match_reason,
+        score
+    FROM candidates
+    ORDER BY id, tier ASC, score DESC
+)
+SELECT id, name, muscle, muscle_name, match_reason, score
+FROM ranked
+ORDER BY
+    CASE match_reason
+        WHEN 'exact'  THEN 1
+        WHEN 'prefix' THEN 2
+        WHEN 'alias'  THEN 3
+        WHEN 'fuzzy'  THEN 4
+    END,
+    score DESC,
+    name
+LIMIT :lim
+"""
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get(
+    "/exercises/search",
+    response_model=List[schemas.ExerciseCandidate],
+    tags=["exercises"],
+)
+def search_exercises(
+    q: str,
+    muscle_id: Optional[int] = None,
+    lang: Optional[str] = None,
+    limit: int = 8,
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> List[schemas.ExerciseCandidate]:
+    """Search canonical exercise candidates with tiered ranking (GYM-93).
+
+    Ranks candidates from exercises visible to the caller under RLS plus alias
+    hits from ``exercise_alias``.  Returns up to ``limit`` results, best first.
+
+    Tiers (highest to lowest priority):
+        ``exact``  — ``exercises.name_key = app_name_key(:q)``; score 1.0.
+        ``prefix`` — ``exercises.name_key LIKE app_name_key(:q) || '%'``; score 0.8.
+        ``alias``  — hit in ``exercise_alias`` (lang-aware when ``lang`` provided); score 0.6.
+        ``fuzzy``  — ``similarity(exercises.name_key, app_name_key(:q)) > 0.3``; score = similarity.
+
+    One result row per exercise id (best tier kept).  Empty result set = ``[]``
+    (no 404).  ``muscle_id`` scopes the search to a single muscle when provided.
+
+    Args:
+        q: Search query (user's typed text; minLength 1 enforced by FastAPI).
+        muscle_id: Optional muscle scope; omit to search the whole catalog.
+        lang: Optional ISO-639-1 locale for alias-tier filtering (e.g. ``'ru'``).
+        limit: Maximum results to return (default 8, max 20).
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session with RLS GUC context pre-set.
+
+    Returns:
+        Ordered list of ``ExerciseCandidate`` items, best match first (may be empty).
+
+    Raises:
+        HTTPException: 400 when ``q`` is empty (minLength guard).
+        HTTPException: 401 when the caller is not authenticated.
+    """
+    if not q or not q.strip():
+        raise HTTPException(status_code=400, detail="q must not be empty")
+
+    # Clamp limit to contract bounds (1..20).
+    limit = max(1, min(20, limit))
+
+    rows = db.execute(
+        text(_SEARCH_SQL),
+        {
+            "q": q,
+            "muscle_id": muscle_id,
+            "lang": lang,
+            "lim": limit,
+        },
+    ).fetchall()
+
+    return [
+        schemas.ExerciseCandidate(
+            id=row[0],
+            name=row[1],
+            muscle=row[2],
+            muscle_name=row[3],
+            match_reason=row[4],
+            score=float(row[5]),
+        )
+        for row in rows
+    ]
 
 
 @router.get(

@@ -143,6 +143,23 @@ class Exercise(_ORM):
     resolution: Optional[str] = None
 
 
+class ExerciseCandidate(BaseModel):
+    """Ranked candidate returned by GET /exercises/search (GYM-93).
+
+    Mirrors the ``ExerciseCandidate`` schema in openapi.yaml.  Identity and
+    name fields mirror ``Exercise`` (``id``, ``name``, ``muscle``);
+    ``muscle_name`` denormalizes the owning muscle for the dropdown.
+    ``match_reason`` and ``score`` describe the ranking tier.
+    """
+
+    id: int
+    name: str
+    muscle: int
+    muscle_name: str
+    match_reason: str  # 'exact' | 'prefix' | 'alias' | 'fuzzy'
+    score: float
+
+
 # ---------------------------------------------------------------------------
 # User
 # ---------------------------------------------------------------------------
