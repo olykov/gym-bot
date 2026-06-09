@@ -14,6 +14,21 @@ export function isTelegramEnv(): boolean {
     return Boolean(WebApp.initData);
 }
 
+/**
+ * The raw Telegram language_code from the launching user, if available.
+ *
+ * Returns `undefined` when running outside Telegram (local dev / browser) or
+ * when the WebApp user object is not present. Consumers must handle `undefined`
+ * — the locale resolver maps it to the default locale. See ADR 0003 / GYM-108.
+ */
+export function getTelegramLanguageCode(): string | undefined {
+    try {
+        return WebApp.initDataUnsafe?.user?.language_code;
+    } catch {
+        return undefined;
+    }
+}
+
 /** Raw initData query string for the Mini App auth round-trip (spec §4). */
 export function getInitData(): string {
     return WebApp.initData ?? "";
