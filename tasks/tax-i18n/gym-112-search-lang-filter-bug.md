@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-112
 title: "Bug: exercise search alias tier hard-filters by UI lang, so RU aliases miss when UI locale is en"
 slug: gym-112-search-lang-filter-bug
-status: in_progress
+status: done
 priority: high
 type: bug-fix
 labels: [api, i18n, search, bug]
@@ -12,14 +12,14 @@ model: null
 reporter: oleksii
 created: 2026-06-10T04:00:00Z
 start_date: 2026-06-10T04:00:00Z
-finish_date: null
-updated: 2026-06-10T04:00:00Z
+finish_date: 2026-06-10
+updated: 2026-06-10T10:00:00Z
 epic: tax-i18n
 depends_on: []
 blocks: []
 related: [GYM-92, GYM-93]
-commits: []
-tests: []
+commits: [GYM-112-fix]
+tests: [tests/test_gym112_search_lang_filter_bug.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -43,11 +43,18 @@ Remove the `lang` condition from the alias tier so it matches by `name_key` rega
 longer filters matches. Muscle scoping unchanged.
 
 ## Acceptance
-- [ ] `Жим…` with `lang='en'` (or any lang) resolves to Barbell Bench Press via the alias tier.
-- [ ] English search unaffected; muscle scoping unaffected; suite green (add a regression test: RU query +
+- [x] `Жим…` with `lang='en'` (or any lang) resolves to Barbell Bench Press via the alias tier.
+- [x] English search unaffected; muscle scoping unaffected; suite green (add a regression test: RU query +
       `lang='en'` still matches).
 
 ## Comments
 
 ### 2026-06-10T04:00:00Z — start
 Found live by operator. Root cause = the alias-tier `a.lang = :lang` filter. Delegated fix to core-api.
+
+### 2026-06-10T10:00:00Z — done
+Removed `AND (CAST(:lang AS text) IS NULL OR a.lang = CAST(:lang AS text))` from Tier 3 of `_SEARCH_SQL`
+in `apps/api/app/api/v1/exercises_router.py`. The `lang` query param is kept in the function signature for
+backward compatibility (reserved for future ranking/display) but is no longer passed to the SQL.
+Note: SQL inline comments must not use `:param` syntax — SQLAlchemy parses them as bind parameters.
+Regression test added: `tests/test_gym112_search_lang_filter_bug.py` (5 tests). Full suite: 421 passed, 0 failed.

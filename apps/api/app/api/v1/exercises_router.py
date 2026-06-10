@@ -33,8 +33,9 @@ from app.services.visibility import visible_exercises_for_muscle, visible_muscle
 # the best tier per id):
 #   tier 1 (exact)  score 1.0 — name_key = app_name_key(:q) exact match
 #   tier 2 (prefix) score 0.8 — name_key LIKE app_name_key(:q) || '%'
-#   tier 3 (alias)  score 0.6 — exercise_alias.name_key matches exact/prefix
-#                                with optional lang filter
+#   tier 3 (alias)  score 0.6 — exercise_alias.name_key matches exact/prefix;
+#                                matches ANY alias lang (UI locale does NOT gate
+#                                recall — GYM-112 fix: removed a.lang = :lang)
 #   tier 4 (fuzzy)  score similarity() — pg_trgm similarity > 0.3
 #
 # Fuzzy threshold 0.3: the pg_trgm default, chosen for typo tolerance on
@@ -83,10 +84,11 @@ candidates AS (
 
     UNION ALL
 
-    -- Tier 3: alias hit (lang-aware when :lang is provided).
+    -- Tier 3: alias hit — matches any alias regardless of lang (GYM-112).
+    -- The lang guard has been removed; aliases are alternate names a user may
+    -- type in any language and UI locale must not gate recall.
     -- Joins exercise_alias on canonical_id = exercises.id; alias.name_key
-    -- matches exact or prefix; lang-filtered when :lang is not NULL.
-    -- score 0.6.
+    -- matches exact or prefix. score 0.6.
     SELECT
         e.id,
         e.name,
@@ -100,7 +102,6 @@ candidates AS (
     JOIN muscles m   ON m.id = e.muscle
     CROSS JOIN q_key
     WHERE (a.name_key = q_key.k OR a.name_key LIKE q_key.k || '%')
-      AND (CAST(:lang AS text) IS NULL OR a.lang = CAST(:lang AS text))
       AND (CAST(:muscle_id AS int) IS NULL OR e.muscle = CAST(:muscle_id AS int))
 
     UNION ALL
@@ -174,7 +175,7 @@ def search_exercises(
     Tiers (highest to lowest priority):
         ``exact``  — ``exercises.name_key = app_name_key(:q)``; score 1.0.
         ``prefix`` — ``exercises.name_key LIKE app_name_key(:q) || '%'``; score 0.8.
-        ``alias``  — hit in ``exercise_alias`` (lang-aware when ``lang`` provided); score 0.6.
+        ``alias``  — hit in ``exercise_alias`` (any lang; UI locale does not gate recall); score 0.6.
         ``fuzzy``  — ``similarity(exercises.name_key, app_name_key(:q)) > 0.3``; score = similarity.
 
     One result row per exercise id (best tier kept).  Empty result set = ``[]``
@@ -183,7 +184,8 @@ def search_exercises(
     Args:
         q: Search query (user's typed text; minLength 1 enforced by FastAPI).
         muscle_id: Optional muscle scope; omit to search the whole catalog.
-        lang: Optional ISO-639-1 locale for alias-tier filtering (e.g. ``'ru'``).
+        lang: Optional ISO-639-1 locale; accepted for backward compatibility but no
+            longer filters alias matches (GYM-112). Reserved for future ranking/display.
         limit: Maximum results to return (default 8, max 20).
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session with RLS GUC context pre-set.
@@ -201,12 +203,14 @@ def search_exercises(
     # Clamp limit to contract bounds (1..20).
     limit = max(1, min(20, limit))
 
+    # Note: `lang` param is accepted (backward compat / future ranking) but is no
+    # longer passed to the SQL — the alias tier now matches regardless of lang
+    # (GYM-112).
     rows = db.execute(
         text(_SEARCH_SQL),
         {
             "q": q,
             "muscle_id": muscle_id,
-            "lang": lang,
             "lim": limit,
         },
     ).fetchall()

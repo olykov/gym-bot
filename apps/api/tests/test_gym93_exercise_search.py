@@ -321,10 +321,15 @@ class TestExerciseSearchTiers:
         assert len(alias_hits) > 0, "Expected alias hit without lang filter"
         assert any(it["id"] == seed["global_ex_alias"] for it in alias_hits)
 
-    def test_lang_filter_excludes_other_languages(self, gym93_client):
-        """Querying the EN alias with lang='ru' should NOT match (lang mismatch)."""
+    def test_lang_param_does_not_filter_alias_hits(self, gym93_client):
+        """GYM-112: lang param no longer filters alias recall; EN alias matches with lang='ru'.
+
+        After GYM-112 the alias tier ignores :lang — aliases are alternate names a user
+        may type in any language.  Querying the EN alias name with lang='ru' must still
+        resolve the exercise via the alias tier.
+        """
         client, seed = gym93_client
-        # 'Gym93 Romanian DL' is the EN alias; requesting with lang='ru' should not hit it.
+        # 'Gym93 Romanian DL' is an EN alias. After GYM-112, lang='ru' must NOT exclude it.
         resp = client.get(
             "/api/v1/exercises/search",
             params={"q": "Gym93 Romanian", "lang": "ru"},
@@ -333,10 +338,11 @@ class TestExerciseSearchTiers:
         assert resp.status_code == 200, resp.text
         items = resp.json()
         alias_hits = [it for it in items if it["match_reason"] == "alias"]
-        # The EN alias should not appear when lang='ru'
-        assert all(it["id"] != seed["global_ex_alias"] or it["match_reason"] != "alias"
-                   for it in alias_hits), (
-            "EN alias should not be returned when lang='ru'"
+        # EN alias should now be returned even when lang='ru'
+        en_alias_ids = {it["id"] for it in alias_hits}
+        assert seed["global_ex_alias"] in en_alias_ids, (
+            f"EN alias exercise must be returned via alias tier regardless of lang param; "
+            f"got alias_hits: {alias_hits}"
         )
 
     def test_fuzzy_match_returns_fuzzy_reason(self, gym93_client):
