@@ -1,0 +1,129 @@
+# GYM-92 — RU alias DRAFT for the CURATED canonical exercise catalog (Channel B, ADR 0003).
+#
+# Purpose: one good Russian alias per canonical exercise so RU search resolves
+#          ("жим лёжа" -> Bench Press). Feeds a FUTURE migration 0009 that seeds
+#          exercise_alias(canonical_id, alias_name, lang='ru') with ON CONFLICT DO NOTHING.
+#          This file is a REVIEWABLE DRAFT — pending operator review. NOT seeded yet.
+#
+# Scope: targets ONLY the 98 rows with action==KEEP in canonical_curation.tsv
+#        (post-curation: ADR 0004, migration 0008). DEMOTE / MERGE / id 337 are out of scope.
+#        Authoritative English names = the `canonical_name` column of the KEEP rows.
+#
+# Format: id <TAB> english_canonical <TAB> russian_alias <TAB> source
+#   source = wger  -> sourced from wger.de community RU translation (CC-BY-SA)
+#   source = hand  -> hand-translated using standard Russian gym terminology
+#
+# wger attribution: wger Workout Manager data is CC-BY-SA 4.0 (https://wger.de).
+#   NOTE: wger's Russian catalog coverage is effectively empty for our set — only 10 RU
+#   exercise translations exist site-wide (none a confident match to our 98 specific
+#   machine/barbell/cable lifts). All 98 below are therefore hand-translated.
+#
+# Brand/abbrev terms kept Latin where that is the Russian gym standard:
+#   Smith -> «в Смите», Hammer, EZ-гриф, JM.
+#
+# --- ABS ---
+71	Ab Crunch Machine	Скручивания в тренажёре	hand
+77	Incline Sit-Up	Подъём корпуса на наклонной скамье	hand
+# --- BACK ---
+38	Assisted Chin-Up	Подтягивания в гравитроне	hand
+345	Bent-Over Barbell Row	Тяга штанги в наклоне	hand
+58	Barbell Shrug	Шраги со штангой	hand
+3	Close-Grip Lat Pulldown	Тяга верхнего блока узким хватом	hand
+34	One-Arm Dumbbell Row	Тяга гантели одной рукой в наклоне	hand
+76	Chest-Supported Dumbbell Row	Тяга гантелей лёжа на наклонной скамье	hand
+348	Dumbbell Shrug	Шраги с гантелями	hand
+47	Iso-Lateral Front Lat Pulldown	Вертикальная тяга к груди в Hammer	hand
+53	Machine Pullover	Пуловер в тренажёре	hand
+352	Back Extension	Гиперэкстензия	hand
+5	Iso-Lateral Low Row	Нижняя горизонтальная тяга в Hammer	hand
+35	Iso-Lateral Row	Горизонтальная тяга в Hammer	hand
+4	Lat Pulldown	Тяга верхнего блока	hand
+240	Neutral-Grip Lat Pulldown	Тяга верхнего блока нейтральным хватом	hand
+33	Parallel-Grip Lat Pulldown	Тяга верхнего блока параллельным хватом	hand
+57	Cable Pullover	Пуловер на верхнем блоке	hand
+355	Pull-Up	Подтягивания	hand
+147	Machine Row	Горизонтальная тяга в тренажёре	hand
+6	Seated Cable Row (Close Grip)	Тяга горизонтального блока узким хватом	hand
+37	Seated Cable Row (Neutral Grip)	Тяга горизонтального блока нейтральным хватом	hand
+46	Seated Cable Row (Wide Grip)	Тяга горизонтального блока широким хватом	hand
+369	T-Bar Row	Т-образная тяга	hand
+17	Wide-Grip Lat Pulldown	Тяга верхнего блока широким хватом	hand
+# --- BICEPS ---
+23	EZ-Bar Curl	Подъём на бицепс с EZ-грифом	hand
+32	Barbell Curl	Подъём штанги на бицепс	hand
+75	Cable Curl (Rope)	Сгибание на бицепс на блоке с канатом	hand
+371	Dumbbell Curl (No Supination)	Подъём гантелей на бицепс без супинации	hand
+11	Dumbbell Curl (Supinated)	Подъём гантелей на бицепс с супинацией	hand
+363	Dumbbell Hammer Curl	Молотки с гантелями	hand
+10	Cross-Body Hammer Curl	Молотки с гантелями поперёк корпуса	hand
+72	Dumbbell Preacher Curl	Сгибание на бицепс на скамье Скотта с гантелью	hand
+335	Machine Preacher Curl	Сгибание на бицепс в тренажёре Скотта	hand
+127	Reverse Barbell Curl	Подъём штанги на бицепс обратным хватом	hand
+# --- CHEST ---
+7	Barbell Bench Press	Жим штанги лёжа	hand
+20	Incline Barbell Bench Press	Жим штанги лёжа на наклонной скамье	hand
+8	Incline Dumbbell Bench Press	Жим гантелей лёжа на наклонной скамье	hand
+31	Incline Smith Machine Press	Жим в Смите на наклонной скамье	hand
+54	Cable Chest Press (Machine)	Жим от груди в тренажёре	hand
+30	Dumbbell Bench Press	Жим гантелей лёжа	hand
+44	Decline Chest Press (Machine)	Жим от груди в тренажёре вниз	hand
+43	Flat Chest Press (Machine)	Жим от груди в тренажёре	hand
+21	Incline Chest Press (Machine)	Жим от груди в тренажёре под наклоном	hand
+9	Low Cable Crossover	Сведение рук в кроссовере снизу	hand
+22	Pec Deck (Machine Fly)	Сведение рук в тренажёре «бабочка»	hand
+36	High Cable Crossover	Сведение рук в кроссовере сверху	hand
+# --- FOREARMS ---
+61	Barbell Reverse Wrist Curl	Разгибание запястий со штангой	hand
+16	Barbell Wrist Curl	Сгибание запястий со штангой	hand
+340	Dumbbell Reverse Wrist Curl	Разгибание запястий с гантелями	hand
+285	Dumbbell Wrist Curl	Сгибание запястий с гантелями	hand
+# --- LEGS ---
+373	Bulgarian Split Squat	Болгарские приседания	hand
+29	Calf Raise (Machine)	Подъём на носки в тренажёре	hand
+56	Standing Calf Raise	Подъём на носки стоя	hand
+52	Hip Abduction (Machine)	Отведение бёдер в тренажёре	hand
+51	Hip Adduction (Machine)	Сведение бёдер в тренажёре	hand
+358	Barbell Hip Thrust	Ягодичный мостик со штангой	hand
+357	Machine Hip Thrust	Ягодичный мостик в тренажёре	hand
+50	Hyperextension (45-Degree)	Наклонная гиперэкстензия (45°)	hand
+28	Lying Leg Curl	Сгибание ног лёжа	hand
+69	Seated Leg Curl	Сгибание ног сидя	hand
+365	Standing Leg Curl	Сгибание ноги стоя	hand
+25	Leg Extension	Разгибание ног в тренажёре	hand
+367	Cable Leg Press	Жим ногами на блоке	hand
+64	Leg Press	Жим ногами	hand
+73	Seated Leg Press	Горизонтальный жим ногами сидя	hand
+342	Smith Machine Lunge	Выпады в Смите	hand
+49	Romanian Deadlift (Barbell)	Румынская тяга со штангой	hand
+62	Romanian Deadlift (Dumbbell)	Румынская тяга с гантелями	hand
+370	Romanian Deadlift (Smith)	Румынская тяга в Смите	hand
+376	Cable Glute Kickback	Махи ногой назад на блоке	hand
+375	Glute Kickback (Machine)	Махи ногой назад в тренажёре	hand
+63	Hack Squat	Гакк-приседания	hand
+346	Belt Squat (Machine)	Приседания с поясом в тренажёре	hand
+341	Smith Machine Squat	Приседания в Смите	hand
+374	Dumbbell Sumo Deadlift	Становая тяга сумо с гантелью	hand
+372	Smith Machine Sumo Deadlift	Становая тяга сумо в Смите	hand
+# --- SHOULDERS ---
+70	Cable Lateral Raise	Махи в стороны на блоке	hand
+66	Cable Rear Delt Fly	Разведение на задние дельты на блоке	hand
+14	Dumbbell Lateral Raise	Махи гантелями в стороны	hand
+24	Bent-Over Dumbbell Rear Delt Fly	Разведение гантелей в наклоне на задние дельты	hand
+13	Dumbbell Shoulder Press	Жим гантелей сидя	hand
+65	Face Pull	Тяга к лицу	hand
+68	Lateral Raise (Machine)	Махи в стороны в тренажёре	hand
+42	Reverse Pec Deck (Rear Delt Fly)	Обратная «бабочка» на задние дельты	hand
+41	Shoulder Press (Machine)	Жим над головой в тренажёре	hand
+12	Smith Machine Shoulder Press	Жим над головой в Смите	hand
+15	Upright Row	Протяжка	hand
+# --- TRICEPS ---
+74	Close-Grip Bench Press	Жим лёжа узким хватом	hand
+18	Skull Crusher (Lying Triceps Extension)	Французский жим	hand
+359	Smith Machine JM Press	JM-жим в Смите	hand
+336	Triceps Dip Machine	Отжимания на трицепс в тренажёре	hand
+19	Overhead Cable Triceps Extension	Французский жим стоя на блоке	hand
+354	Overhead Dumbbell Triceps Extension	Французский жим стоя с гантелью	hand
+59	Single-Arm Triceps Pushdown	Разгибание на трицепс на блоке одной рукой	hand
+1	Rope Triceps Pushdown	Разгибание на трицепс на блоке с канатом	hand
+2	Straight-Bar Triceps Pushdown	Разгибание на трицепс на блоке с прямой рукоятью	hand
+39	V-Bar Triceps Pushdown	Разгибание на трицепс на блоке с V-образной рукоятью	hand
