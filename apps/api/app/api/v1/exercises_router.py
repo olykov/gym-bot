@@ -23,23 +23,29 @@ from app.services.resolve import resolve_muscle_id
 from app.services.visibility import visible_exercises_for_muscle, visible_muscles
 
 # ---------------------------------------------------------------------------
-# Tiered search SQL for GET /exercises/search (GYM-93).
+# Tiered search SQL for GET /exercises/search (GYM-93, GYM-113).
 #
 # Candidate pool: exercises visible to the caller under RLS (global canonical
 # + the caller's own customs — consistent with listExercisesByMuscle scope)
 # plus alias hits from exercise_alias (global catalog, lang-aware).
 #
-# Tiers (highest score → lowest), one row per exercise id (DISTINCT ON keeps
-# the best tier per id):
-#   tier 1 (exact)  score 1.0 — name_key = app_name_key(:q) exact match
-#   tier 2 (prefix) score 0.8 — name_key LIKE app_name_key(:q) || '%'
-#   tier 3 (alias)  score 0.6 — exercise_alias.name_key matches exact/prefix;
-#                                matches ANY alias lang (UI locale does NOT gate
-#                                recall — GYM-112 fix: removed a.lang = :lang)
-#   tier 4 (fuzzy)  score similarity() — pg_trgm similarity > 0.3
+# Tiers (highest to lowest), one row per exercise id (DISTINCT ON dedup):
+#   tier 1 (exact)    score 1.0  — name_key = app_name_key(:q)
+#   tier 2 (prefix)   score 0.8  — name_key LIKE app_name_key(:q) || '%'
+#   tier 3 (contains) score 0.5  — name_key LIKE '%' || app_name_key(:q) || '%'
+#                                   (excludes exact/prefix rows); match_reason
+#                                   'prefix' — a direct name hit; same silent
+#                                   badge as prefix, no new enum value (GYM-113)
+#   tier 4 (alias)    score 0.6  — exercise_alias.name_key contains the query
+#                                   substring; matches ANY alias lang (GYM-112)
+#   tier 5 (fuzzy)    score sim  — pg_trgm similarity > 0.3
 #
-# Fuzzy threshold 0.3: the pg_trgm default, chosen for typo tolerance on
-# 5–15 char exercise names while keeping false positives low.
+# Fuzzy threshold 0.3: chosen for typo tolerance on 5-15 char exercise names.
+#
+# match_reason enum stays exact|prefix|alias|fuzzy (contract unchanged).
+# The contains tier emits match_reason='prefix' (direct name hit, same UX).
+# Final ORDER BY uses match_reason so contains rows (score 0.5) naturally
+# sort after real prefix rows (score 0.8) within the 'prefix' bucket.
 # ---------------------------------------------------------------------------
 _SEARCH_SQL = """
 WITH q_key AS (
@@ -48,15 +54,15 @@ WITH q_key AS (
 ),
 candidates AS (
     -- Tier 1: exact name_key match on exercises visible to this caller.
-    -- score 1.0; only exercises where e.muscle = :muscle_id when scoped.
+    -- score 1.0.
     SELECT
         e.id,
         e.name,
         e.muscle,
         m.name AS muscle_name,
-        1                AS tier,
+        1                  AS tier,
         CAST(1.0 AS float) AS score,
-        'exact'          AS match_reason
+        'exact'            AS match_reason
     FROM exercises e
     JOIN muscles m ON m.id = e.muscle
     CROSS JOIN q_key
@@ -65,8 +71,7 @@ candidates AS (
 
     UNION ALL
 
-    -- Tier 2: prefix match on name_key (excludes exact match rows).
-    -- score 0.8.
+    -- Tier 2: prefix match on name_key (excludes exact rows). score 0.8.
     SELECT
         e.id,
         e.name,
@@ -84,36 +89,61 @@ candidates AS (
 
     UNION ALL
 
-    -- Tier 3: alias hit — matches any alias regardless of lang (GYM-112).
-    -- The lang guard has been removed; aliases are alternate names a user may
-    -- type in any language and UI locale must not gate recall.
-    -- Joins exercise_alias on canonical_id = exercises.id; alias.name_key
-    -- matches exact or prefix. score 0.6.
+    -- Tier 3 (GYM-113): substring/contains match on name_key.
+    -- Catches queries that are a word in the middle or end of the name
+    -- (e.g. 'Press' matching 'Barbell Bench Press', 'Cable Chest Press').
+    -- Excludes rows already found by exact or prefix tiers.
+    -- match_reason='prefix': direct name hit; same silent UX badge; no new
+    -- enum value so the API contract is unchanged. score 0.5 (below prefix 0.8,
+    -- above alias 0.6 in tier order but placed here so alias can still win per
+    -- id when the exercise has no direct-name match).
     SELECT
         e.id,
         e.name,
         e.muscle,
         m.name AS muscle_name,
         3                  AS tier,
+        CAST(0.5 AS float) AS score,
+        'prefix'           AS match_reason
+    FROM exercises e
+    JOIN muscles m ON m.id = e.muscle
+    CROSS JOIN q_key
+    WHERE e.name_key LIKE '%' || q_key.k || '%'
+      AND e.name_key <> q_key.k
+      AND e.name_key NOT LIKE q_key.k || '%'
+      AND (CAST(:muscle_id AS int) IS NULL OR e.muscle = CAST(:muscle_id AS int))
+
+    UNION ALL
+
+    -- Tier 4: alias hit — any alias whose name_key contains the query substring,
+    -- regardless of lang (GYM-112: lang filter removed; GYM-113: extended from
+    -- exact/prefix to full substring match on alias.name_key).
+    -- score 0.6.
+    SELECT
+        e.id,
+        e.name,
+        e.muscle,
+        m.name AS muscle_name,
+        4                  AS tier,
         CAST(0.6 AS float) AS score,
         'alias'            AS match_reason
     FROM exercise_alias a
     JOIN exercises e ON e.id = a.canonical_id
     JOIN muscles m   ON m.id = e.muscle
     CROSS JOIN q_key
-    WHERE (a.name_key = q_key.k OR a.name_key LIKE q_key.k || '%')
+    WHERE a.name_key LIKE '%' || q_key.k || '%'
       AND (CAST(:muscle_id AS int) IS NULL OR e.muscle = CAST(:muscle_id AS int))
 
     UNION ALL
 
-    -- Tier 4: fuzzy match via pg_trgm similarity on exercises.name_key.
+    -- Tier 5: fuzzy match via pg_trgm similarity on exercises.name_key.
     -- score = similarity value (> 0.3 threshold).
     SELECT
         e.id,
         e.name,
         e.muscle,
         m.name                          AS muscle_name,
-        4                               AS tier,
+        5                               AS tier,
         similarity(e.name_key, q_key.k) AS score,
         'fuzzy'                         AS match_reason
     FROM exercises e
@@ -167,16 +197,19 @@ def search_exercises(
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> List[schemas.ExerciseCandidate]:
-    """Search canonical exercise candidates with tiered ranking (GYM-93).
+    """Search canonical exercise candidates with tiered ranking (GYM-93, GYM-113).
 
     Ranks candidates from exercises visible to the caller under RLS plus alias
     hits from ``exercise_alias``.  Returns up to ``limit`` results, best first.
 
     Tiers (highest to lowest priority):
-        ``exact``  — ``exercises.name_key = app_name_key(:q)``; score 1.0.
-        ``prefix`` — ``exercises.name_key LIKE app_name_key(:q) || '%'``; score 0.8.
-        ``alias``  — hit in ``exercise_alias`` (any lang; UI locale does not gate recall); score 0.6.
-        ``fuzzy``  — ``similarity(exercises.name_key, app_name_key(:q)) > 0.3``; score = similarity.
+        ``exact``    — ``exercises.name_key = app_name_key(:q)``; score 1.0.
+        ``prefix``   — ``exercises.name_key LIKE app_name_key(:q) || '%'``; score 0.8.
+        ``contains`` — ``exercises.name_key LIKE '%' || app_name_key(:q) || '%'`` (mid/end word);
+                       score 0.5; emitted as match_reason ``'prefix'`` (no contract change, GYM-113).
+        ``alias``    — substring hit in ``exercise_alias`` (any lang; UI locale does not gate
+                       recall — GYM-112, extended to full substring in GYM-113); score 0.6.
+        ``fuzzy``    — ``similarity(exercises.name_key, app_name_key(:q)) > 0.3``; score = sim.
 
     One result row per exercise id (best tier kept).  Empty result set = ``[]``
     (no 404).  ``muscle_id`` scopes the search to a single muscle when provided.
