@@ -4,6 +4,13 @@ This document covers the prod cutover for Phase 4 RLS (GYM-11/GYM-34):
 the one-time `alembic stamp`, the `app_rw` role bootstrap, and the full
 rollback procedure.
 
+> **Update (GYM-107, 2026-06-10): migrations now AUTO-APPLY on deploy.**
+> The deploy (`infra/ansible/deploy.yaml`) runs `alembic upgrade head` as the DB
+> superuser (myuser) on every deploy, before the app starts — so a new revision
+> reaches prod just by merging to `main`. No manual `alembic upgrade head` step is
+> needed for routine migrations. The manual commands below remain valid as a
+> fallback / for the historical RLS cutover.
+
 ---
 
 ## Required GitHub Actions secret
