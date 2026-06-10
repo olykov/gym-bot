@@ -15,7 +15,7 @@ start_date: null
 finish_date: null
 updated: 2026-06-08T08:00:00Z
 epic: tax-i18n
-depends_on: [GYM-108]
+depends_on: [GYM-110]
 blocks: []
 related: []
 commits: []
