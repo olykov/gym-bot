@@ -18,8 +18,8 @@ epic: tax-i18n
 depends_on: []
 blocks: []
 related: [GYM-92, GYM-93]
-commits: [GYM-112-fix]
-tests: [tests/test_gym112_search_lang_filter_bug.py]
+commits: [9f4aa63]
+tests: [apps/api/tests/test_gym112_search_lang_filter_bug.py]
 design_reports: []
 review_reports: []
 review: {}
