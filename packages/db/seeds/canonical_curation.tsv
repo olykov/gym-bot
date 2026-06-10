@@ -1,0 +1,157 @@
+# GYM — canonical catalog curation worksheet (DRAFT v3, operator review round 3).
+# Columns: muscle <TAB> id <TAB> current_name <TAB> action <TAB> canonical_name <TAB> note
+# action:
+#   KEEP   = stays public canonical (renamed to canonical_name)
+#   DEMOTE = move to operator's personal list (is_global=false, created_by=operator), keep a clean name
+#   MERGE  = repoint this exercise's training rows into the id named in the note, THEN delete this exercise
+# Set counts (sets/users) shown in notes for MERGE rows — all single-user (operator), low risk.
+# Counts + merge-map at bottom.
+#
+# === ABS ===
+ABS	71	Abdominal machine	KEEP	Ab Crunch Machine
+ABS	77	Incline bench sit ups	KEEP	Incline Sit-Up
+# === Back ===
+Back	38	Assist chin	KEEP	Assisted Chin-Up
+Back	345	Barbell row	KEEP	Bent-Over Barbell Row
+Back	58	Barbell shrugs	KEEP	Barbell Shrug
+Back	3	Close-grip lat pulldown	KEEP	Close-Grip Lat Pulldown
+Back	34	Dumbbell row	KEEP	One-Arm Dumbbell Row
+Back	76	Dumbbell row incline	KEEP	Chest-Supported Dumbbell Row
+Back	348	Dumbbell shrugs	KEEP	Dumbbell Shrug
+Back	47	Hammer front pulldown	KEEP	Iso-Lateral Front Lat Pulldown	r1: vertical iso-lateral lat pulldown, 2 handles
+Back	53	Hammer pullover	KEEP	Machine Pullover	r1: keep+rename
+Back	352	Hyperextension (back)	KEEP	Back Extension	r1: named distinct from #50 to avoid dup
+Back	5	Iso lateral low row	KEEP	Iso-Lateral Low Row
+Back	353	Iso lateral low row (traps)	DEMOTE	Iso-Lateral Low Row (Traps)	r1: demote but rename for personal
+Back	35	Iso lateral row	KEEP	Iso-Lateral Row
+Back	4	Lat pulldown machine	KEEP	Lat Pulldown
+Back	67	Lats cable	DEMOTE	Half-Kneeling Single-Arm Cable Row	r1: kneeling cable, pull handle to lat with elbow
+Back	240	Neutral-grip pulldown	KEEP	Neutral-Grip Lat Pulldown
+Back	33	Power-grip pulldown	KEEP	Parallel-Grip Lat Pulldown
+Back	57	Pullover	KEEP	Cable Pullover	r1: cable pullover (lat bar on crossover)
+Back	355	Pull ups	KEEP	Pull-Up
+Back	147	Row machine	KEEP	Machine Row
+Back	6	Seated close-grip row	KEEP	Seated Cable Row (Close Grip)
+Back	37	Seated neutral grip row	KEEP	Seated Cable Row (Neutral Grip)
+Back	356	Seated single arm row	DEMOTE	Seated Single-Arm Cable Row	r1: niche one-arm copy of #6 -> personal
+Back	46	Seated wide grip row	KEEP	Seated Cable Row (Wide Grip)
+Back	369	T-Bar row lats	KEEP	T-Bar Row
+Back	366	T-Bar row upper back	DEMOTE	T-Bar Row (Upper Back)	r1: demote but rename for personal
+Back	17	Wide-grip lat pulldown	KEEP	Wide-Grip Lat Pulldown
+# === Biceps ===
+Biceps	26	Barbell brachialis curls	MERGE	-> 127	r2: MERGE into 127 then DELETE 26 (59 sets/1 user)
+Biceps	23	Bicep curl barbell EZ bar	KEEP	EZ-Bar Curl
+Biceps	32	Bicep curl barbell straight bar	KEEP	Barbell Curl
+Biceps	75	Biceps curl cable rope	KEEP	Cable Curl (Rope)
+Biceps	27	Biceps curl dumbbell standing	DEMOTE	Standing Dumbbell Curl	r1: demote to personal
+Biceps	371	Biceps curl dumbbell straight	KEEP	Dumbbell Curl (No Supination)	r1: like #11 but without supination
+Biceps	11	Biceps curl dumbbell supinated	KEEP	Dumbbell Curl (Supinated)
+Biceps	55	Drag curl cable single arm	DEMOTE	Single-Arm Cable Drag Curl	niche
+Biceps	363	Dumbbell brachialis curls	KEEP	Dumbbell Hammer Curl	r1: straight-up hammer curl (not cross-body #10)
+Biceps	10	Hammer curl cross body	KEEP	Cross-Body Hammer Curl
+Biceps	72	Preacher curl dumbbell	KEEP	Dumbbell Preacher Curl
+Biceps	335	Preacher curl machine	KEEP	Machine Preacher Curl
+Biceps	127	Reverse curl barbell	KEEP	Reverse Barbell Curl	r2: MERGE TARGET (absorbs 26)
+Biceps	362	Side pressure dumbbell	DEMOTE	Side Pressure (Dumbbell)	r2: MERGE TARGET (absorbs 351); personal; 0 sets
+# === Chest ===
+Chest	7	Bench press	KEEP	Barbell Bench Press
+Chest	338	Bench press dumbbell	MERGE	-> 30	r2: flat DB press = dup of #30; MERGE into 30 then DELETE 338 (4 sets)
+Chest	20	Bench press incline barbell	KEEP	Incline Barbell Bench Press
+Chest	8	Bench press incline dumbbell	KEEP	Incline Dumbbell Bench Press
+Chest	31	Bench press incline smith	KEEP	Incline Smith Machine Press
+Chest	54	Chest press machine	KEEP	Cable Chest Press (Machine)	r2: MERGE TARGET (absorbs 347); cable chest press
+Chest	347	Chest press machine (2)	MERGE	-> 54	r2: dup; MERGE into 54 then DELETE 347 (3 sets)
+Chest	30	Dumbbell press flat bench	KEEP	Dumbbell Bench Press	r2: flat DB press; MERGE TARGET (absorbs 338); 8 sets
+Chest	44	Hammer decline	KEEP	Decline Chest Press (Machine)
+Chest	43	Hammer flat	KEEP	Flat Chest Press (Machine)	r1: distinct from #54 cable
+Chest	21	Hammer incline	KEEP	Incline Chest Press (Machine)
+Chest	9	Lower chest cable crossover	KEEP	Low Cable Crossover
+Chest	22	Peck Deck	KEEP	Pec Deck (Machine Fly)
+Chest	36	Upper chest cable crossover	KEEP	High Cable Crossover
+# === Forearms ===
+Forearms	61	Barbell reverse wrist curl	KEEP	Barbell Reverse Wrist Curl
+Forearms	16	Barbell wrist curl	KEEP	Barbell Wrist Curl
+Forearms	290	Brachioradialis hammer curls	DEMOTE	Brachioradialis Curl	niche
+Forearms	60	Cable over back wrist curl	DEMOTE	Cable Wrist Curl (Behind Back)	niche cable variant
+Forearms	360	Cable over bench wrist curl	DEMOTE	Cable Wrist Curl (Over Bench)	niche cable variant
+Forearms	344	Cable reverse wrist curl	DEMOTE	Cable Reverse Wrist Curl	niche cable variant
+Forearms	361	Cable Wrist Curl with Thick Grip	DEMOTE	Cable Wrist Curl (Thick Grip)	personal/niche
+Forearms	340	Dumbbell reverse wrist curl	KEEP	Dumbbell Reverse Wrist Curl
+Forearms	285	Dumbbell wrist curl	KEEP	Dumbbell Wrist Curl
+Forearms	350	Pronator plates	DEMOTE	Pronation (Plate)	personal/ambiguous — name TBD
+Forearms	349	Pronator rope	DEMOTE	Pronation (Cable)	personal/ambiguous — name TBD
+Forearms	343	Side pressure - cable	DEMOTE	Side Pressure (Cable)	personal/ambiguous — name TBD
+Forearms	351	Side pressure - dumbbell	MERGE	-> 362	r2: dup of #362; MERGE into 362 then DELETE 351 (0 sets)
+# === Legs ===
+Legs	48	Bulgarian split squats	DEMOTE	Bulgarian Split Squat (Barbell)	r2: holds 58 barbell sets -> personal barbell variant (rename-swap)
+Legs	373	Bulgarian split squats dumbbell	KEEP	Bulgarian Split Squat	r2: canonical dumbbell default; MERGE TARGET (absorbs 40)
+Legs	29	Calf raise machine	KEEP	Calf Raise (Machine)
+Legs	56	Calf stand on riser	KEEP	Standing Calf Raise
+Legs	52	Hip abductor	KEEP	Hip Abduction (Machine)
+Legs	51	Hip adductor	KEEP	Hip Adduction (Machine)
+Legs	358	Hip thrust	KEEP	Barbell Hip Thrust
+Legs	357	Hip thrust machine	KEEP	Machine Hip Thrust
+Legs	50	Hyperextension	KEEP	Hyperextension (45-Degree)
+Legs	28	Leg curl machine lying	KEEP	Lying Leg Curl
+Legs	69	Leg curl machine seated	KEEP	Seated Leg Curl
+Legs	365	Leg curl machine standing	KEEP	Standing Leg Curl
+Legs	25	Leg extension	KEEP	Leg Extension
+Legs	367	Leg press cable	KEEP	Cable Leg Press	r3: KEEP — 160 sets from another user (343459661); cannot demote someone else's used exercise
+Legs	64	Leg press linear	KEEP	Leg Press
+Legs	73	Leg press seated	KEEP	Seated Leg Press
+Legs	342	Lunges smith	KEEP	Smith Machine Lunge
+Legs	49	RDL barbell	KEEP	Romanian Deadlift (Barbell)
+Legs	62	RDL dumbbell	KEEP	Romanian Deadlift (Dumbbell)
+Legs	370	RDL smith	KEEP	Romanian Deadlift (Smith)
+Legs	376	Rear kickback cable	KEEP	Cable Glute Kickback
+Legs	375	Rear kickback machine	KEEP	Glute Kickback (Machine)
+Legs	40	Smith Bulgarian split squats	MERGE	-> 373	r2: MERGE into 373 (dumbbell canonical) then DELETE 40 (3 sets)
+Legs	63	Squat hack machine	KEEP	Hack Squat
+Legs	346	Squat hammer belt	KEEP	Belt Squat (Machine)	r1: belt-squat machine on platform (also does RDL)
+Legs	341	Squat smith machine	KEEP	Smith Machine Squat
+Legs	374	Sumo deadlift dumbbell	KEEP	Dumbbell Sumo Deadlift
+Legs	372	Sumo deadlift smith	KEEP	Smith Machine Sumo Deadlift	r1: keep, common variation
+# === Shoulders ===
+Shoulders	70	Cable lateral raises	KEEP	Cable Lateral Raise
+Shoulders	66	Cable rear delt fly 45	KEEP	Cable Rear Delt Fly
+Shoulders	339	Cable rope lateral delt rows	DEMOTE	Cable Rope Lateral Raise	r2: your exercise (9 sets) -> personal, confirmed keep
+Shoulders	14	Dumbbell lateral raises	KEEP	Dumbbell Lateral Raise
+Shoulders	24	Dumbbell rear raises	KEEP	Bent-Over Dumbbell Rear Delt Fly
+Shoulders	13	Dumbbell shoulders press	KEEP	Dumbbell Shoulder Press
+Shoulders	65	Face-pulls	KEEP	Face Pull
+Shoulders	68	Lateral raise machine	KEEP	Lateral Raise (Machine)
+Shoulders	42	Rear delts fly	KEEP	Reverse Pec Deck (Rear Delt Fly)
+Shoulders	41	Shoulder press machine	KEEP	Shoulder Press (Machine)
+Shoulders	12	Smith barbell shoulders press	KEEP	Smith Machine Shoulder Press
+Shoulders	15	Upright row	KEEP	Upright Row
+# === Triceps ===
+Triceps	74	Close-grip bench press	KEEP	Close-Grip Bench Press
+Triceps	18	French press	KEEP	Skull Crusher (Lying Triceps Extension)
+Triceps	359	JM press smith	KEEP	Smith Machine JM Press	r1: keep, gaining popularity
+Triceps	336	Seated dip machine	KEEP	Triceps Dip Machine
+Triceps	19	Triceps extension cable overhead	KEEP	Overhead Cable Triceps Extension
+Triceps	354	Triceps extension dumbbell overhead	KEEP	Overhead Dumbbell Triceps Extension
+Triceps	368	Triceps extension reverse one arm	DEMOTE	Single-Arm Reverse Triceps Extension	niche variant
+Triceps	59	Triceps pushdown cable one arm	KEEP	Single-Arm Triceps Pushdown
+Triceps	1	Triceps pushdown rope	KEEP	Rope Triceps Pushdown
+Triceps	2	Triceps pushdown rope straight bar	KEEP	Straight-Bar Triceps Pushdown	r1: just a straight-bar pushdown (rope was a mistake)
+Triceps	39	Triceps pushdown v-bar	KEEP	V-Bar Triceps Pushdown
+#
+# === COUNTS (v3.1) ===
+# KEEP = 98   DEMOTE = 18   MERGE = 5   (total 121)
+# Pre-flight (prod, read-only): no KEEP collisions; no DEMOTE collisions vs operator's existing personal;
+# operator users.id = 2107709598; junk id 337 = 0 sets -> DELETE; 367 kept (160 sets from user 343459661).
+#
+# === MERGE MAP (repoint training, then delete source) ===
+#   26  -> 127   (Reverse Barbell Curl)          59 sets
+#   347 -> 54    (Cable Chest Press Machine)      3 sets
+#   351 -> 362   (Side Pressure Dumbbell)         0 sets
+#   338 -> 30    (Dumbbell Bench Press, flat)     4 sets
+#   40  -> 373   (Bulgarian Split Squat, dumbbell) 3 sets
+#
+# === BULGARIAN reshuffle (rename-swap, no bulk data move) ===
+#   373 -> "Bulgarian Split Squat"          KEEP   (canonical = dumbbell default; holds its 4 sets + 40's 3)
+#   48  -> "Bulgarian Split Squat (Barbell)" DEMOTE (keeps its 58 barbell sets, personal)
+#   (operator asked to "move data into 48"; this rename-swap reaches the same end state without moving 58 sets — CONFIRM)
+#
+# === Still personal, real name TBD: 350, 349, 343 (and 362 survivor) ===
