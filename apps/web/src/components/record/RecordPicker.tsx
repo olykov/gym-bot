@@ -258,6 +258,21 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
     // This is now the tile source. top-exercises provides frequency for ordering only.
     const fullExercises = useExercises(selectedMuscleId);
 
+    // GYM-114: set of exercise ids the user already owns for this muscle.
+    // Union of VISIBLE exercises (fullExercises) + HIDDEN exercises (hiddenExercises)
+    // so the search dropdown can mark already-owned candidates with a ✓.
+    // Both queries are already live on the exercise step (no new requests needed).
+    const ownedExerciseIds = useMemo((): Set<number> => {
+        const ids = new Set<number>();
+        for (const ex of fullExercises.data ?? []) {
+            ids.add(ex.id);
+        }
+        for (const ex of hiddenExercises.data ?? []) {
+            ids.add(ex.id);
+        }
+        return ids;
+    }, [fullExercises.data, hiddenExercises.data]);
+
     // GYM-83: frequency map (exercise name → frequency) built from top-exercises.
     const frequencyMap = useMemo((): Map<string, number> => {
         const map = new Map<string, number>();
@@ -537,6 +552,7 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                     onMuscleChange(null);
                                     setResolveHint(null);
                                 }}
+                                ownedIds={ownedExerciseIds}
                             />
                         ) : (
                             /* Fallback: muscle was just created but id not yet in
@@ -865,6 +881,7 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
                                 setResolveHint(null);
                             }}
                             tabIndex={isExerciseStep ? 0 : -1}
+                            ownedIds={ownedExerciseIds}
                         />
                     ) : (
                         <button

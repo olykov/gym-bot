@@ -24,13 +24,10 @@
  *    placeholder, 12px radius token, 44px min-height.
  *  - Candidate rows: `--bg` surface, hairline border, `--secondary-bg` hover/press
  *    state (press-95). Name in Sora 400 `--text`; muscle label in Sora `--hint`
- *    when cross-muscle (muscle_id omitted). A subtle `--hint` match-reason badge
- *    (exact / alias / fuzzy) for the first ~3 results to give the user confidence.
- *    Match-reason badge: 'exact' and 'prefix' are NEVER shown (they look like any
- *    normal name match and adding a badge would be noise); 'alias' → "also known as";
- *    'fuzzy' → small `--hint` italic "(typo match)" to reassure the user they didn't
- *    mistype. Shown only when `q.trim().length >= 2` (single-char matches are not
- *    informative enough to badge).
+ *    when cross-muscle (muscle_id omitted).
+ *    GYM-114: already-owned exercises (id present in `ownedIds`) are shown with a
+ *    checkmark (✓) on the right and their name in `--hint` (dimmed). New exercises
+ *    render normally. The old match-reason badge (aka / ~) is removed entirely.
  *  - Create row: dashed hairline, `--hint` text with `--accent` emphasis on the
  *    typed name; sits AFTER candidates as a clear last-resort affordance.
  *  - The list is `max-h-[256px] overflow-y-auto` so it never pushes the sheet out
@@ -40,7 +37,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EXERCISE_NAME_MAX } from "@/validation";
-import { useExerciseSearch, type ExerciseCandidate } from "@/hooks/useRecord";
+import { useExerciseSearch } from "@/hooks/useRecord";
 import { useLocale } from "@/i18n/locale";
 
 /** Debounce interval in ms (per GYM-94 spec: ~250ms). */
@@ -72,19 +69,14 @@ interface ExerciseSearchFieldProps {
     onCancel: () => void;
     /** tabIndex forwarded to the input (mirrors RecordPicker's step-based tabIndex). */
     tabIndex?: number;
-}
-
-/**
- * Small badge rendered beside a candidate to explain *why* it matched.
- * Only shown for 'alias' and 'fuzzy' (not 'exact'/'prefix' — those are obvious).
- */
-function MatchBadge({ reason }: { reason: ExerciseCandidate["match_reason"] }) {
-    if (reason === "exact" || reason === "prefix") return null;
-    return (
-        <span className="ml-2 shrink-0 text-[11px] italic text-hint">
-            {reason === "alias" ? "aka" : "~"}
-        </span>
-    );
+    /**
+     * GYM-114: set of exercise ids the user already has in the current muscle
+     * (visible + hidden). Candidates whose id is in this set are shown with a
+     * checkmark (✓) and a dimmed name; new exercises render normally. When
+     * omitted (e.g. the empty-new-user path where fullExercises is not yet
+     * loaded) every candidate renders as "new" — a safe, conservative fallback.
+     */
+    ownedIds?: Set<number>;
 }
 
 export function ExerciseSearchField({
@@ -96,6 +88,7 @@ export function ExerciseSearchField({
     onCreate,
     onCancel,
     tabIndex = 0,
+    ownedIds,
 }: ExerciseSearchFieldProps) {
     const locale = useLocale();
 
@@ -124,8 +117,6 @@ export function ExerciseSearchField({
 
     const candidates = search.data ?? [];
     const showList = trimmedQ.length > 0;
-    // Only show badge hints when query is long enough to be meaningful.
-    const showBadges = trimmedQ.length >= 2;
 
     function handlePick(name: string): void {
         onPick(name);
@@ -229,25 +220,39 @@ export function ExerciseSearchField({
                         </div>
                     ) : null}
 
-                    {/* Candidates — ranked best-first. */}
-                    {candidates.map((c) => (
-                        <button
-                            key={c.id}
-                            type="button"
-                            role="option"
-                            aria-selected={false}
-                            tabIndex={tabIndex}
-                            onClick={() => handlePick(c.name)}
-                            className="press-95 flex min-h-[44px] w-full items-center gap-2 border-b border-hairline px-3 py-2 text-left last:border-b-0 active:bg-secondary-bg"
-                        >
-                            <span className="min-w-0 flex-1 truncate text-base text-text" title={c.name}>
-                                {c.name}
-                            </span>
-                            {showBadges ? (
-                                <MatchBadge reason={c.match_reason} />
-                            ) : null}
-                        </button>
-                    ))}
+                    {/* Candidates — ranked best-first.
+                        GYM-114: owned exercises (id in ownedIds) show a ✓ on the
+                        right and a dimmed name (--hint token). New exercises render
+                        with --text (normal). Picking either behaves identically. */}
+                    {candidates.map((c) => {
+                        const isOwned = ownedIds != null && ownedIds.has(c.id);
+                        return (
+                            <button
+                                key={c.id}
+                                type="button"
+                                role="option"
+                                aria-selected={isOwned}
+                                tabIndex={tabIndex}
+                                onClick={() => handlePick(c.name)}
+                                className="press-95 flex min-h-[44px] w-full items-center gap-2 border-b border-hairline px-3 py-2 text-left last:border-b-0 active:bg-secondary-bg"
+                            >
+                                <span
+                                    className={`min-w-0 flex-1 truncate text-base ${isOwned ? "text-hint" : "text-text"}`}
+                                    title={c.name}
+                                >
+                                    {c.name}
+                                </span>
+                                {isOwned ? (
+                                    <span
+                                        aria-hidden
+                                        className="ml-2 shrink-0 text-[13px] text-hint"
+                                    >
+                                        ✓
+                                    </span>
+                                ) : null}
+                            </button>
+                        );
+                    })}
 
                     {/* "No suggestions" hint — only shown when search finished with no results. */}
                     {!search.isFetching && !search.isError && candidates.length === 0 && debouncedQ.trim() ? (
