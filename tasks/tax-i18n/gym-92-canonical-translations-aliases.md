@@ -18,7 +18,7 @@ epic: tax-i18n
 depends_on: [GYM-110]
 blocks: []
 related: []
-commits: [b033952]
+commits: [76292b3]
 tests: ["apps/api/tests/test_gym92_ru_aliases.py"]
 design_reports: []
 review_reports: []
@@ -116,5 +116,5 @@ real `GET /exercises/search` under `app_rw` + RLS — query `Жим штанги
   → id 7, name 'Barbell Bench Press', match_reason 'alias'.
 - Full suite: **416 passed, 0 skipped, 0 failed** (Docker up).
 
-Branch `i18n/gym-92-ru-seed`, commit `b033952`. NOT merged to main / not applied
+Branch `i18n/gym-92-ru-seed`, commit `76292b3`. NOT merged to main / not applied
 to prod (migrations are applied MANUALLY on prod per the RUNBOOK).
