@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-114
 title: "Search UX: drop match-reason badge; show a check + dimmed text for exercises already in the user's list"
 slug: gym-114-search-owned-checkmark
-status: in_progress
+status: done
 priority: high
 type: feature
 labels: [frontend, design, ux, search, i18n]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-10T05:30:00Z
 start_date: 2026-06-10T05:30:00Z
-finish_date: null
+finish_date: 2026-06-10T00:00:00Z
 updated: 2026-06-10T05:30:00Z
 epic: tax-i18n
 depends_on: []
 blocks: []
 related: [GYM-94, GYM-113]
-commits: []
+commits: [896f4e4]
 tests: []
 design_reports: []
 review_reports: []
@@ -45,11 +45,38 @@ user ALREADY HAS in the current muscle's list (so they see at a glance what's ne
   visible list and note the gap (do not add a backend/contract change without flagging it first).
 
 ## Acceptance
-- [ ] No `aka`/`~` badges in search results.
-- [ ] Candidates already in the muscle's list show a ✓ + dimmed name; new ones render normally.
-- [ ] Record flow unchanged; design tokens only; build + typecheck green; frontend-design plugin used.
+- [x] No `aka`/`~` badges in search results.
+- [x] Candidates already in the muscle's list show a ✓ + dimmed name; new ones render normally.
+- [x] Record flow unchanged; design tokens only; build + typecheck green; frontend-design plugin used.
 
 ## Comments
 
 ### 2026-06-10T05:30:00Z — start
 Operator request (post search-quality fixes GYM-112/113). Delegated to frontend-design-engineer.
+
+### 2026-06-10T00:00:00Z — done (SHA 896f4e4)
+Branch: i18n/gym-114-owned-check
+
+**What changed:**
+- `ExerciseSearchField`: removed `MatchBadge` component and `showBadges` variable entirely.
+  Added `ownedIds?: Set<number>` prop. Candidate rows: when candidate `id` is in `ownedIds`,
+  name renders as `text-hint` (the `--hint` Telegram token = muted/dimmed) and a plain `✓`
+  glyph (Unicode U+2713) appears on the right as a `text-hint` span at 13px. When not owned,
+  name renders as `text-text` with no trailing mark. `aria-selected={isOwned}` on each row.
+- `RecordPicker`: added `ownedExerciseIds` useMemo that unions `fullExercises.data` (visible
+  exercises) + `hiddenExercises.data` (hidden exercises, already fetched by `useHiddenExercises`)
+  into a `Set<number>` keyed by exercise id. Passed as `ownedIds` to both `ExerciseSearchField`
+  call sites (main exercise step + empty-new-user path). No new queries — both data sources
+  were already loaded before the search field opens.
+
+**Hidden exercises:** INCLUDED. `hiddenExercises` is fetched by `useHiddenExercises(selectedMuscle)`
+which is already live in RecordPicker. The ownedExerciseIds set unions both visible and hidden
+exercise ids, so a hidden exercise will also get the ✓ + dim treatment in search.
+
+**Token used for dim:** `text-hint` class → CSS variable `--hint` (Telegram themeParams, adapts
+to light/dark automatically). No raw hex used anywhere.
+
+**Check glyph:** Unicode `✓` (U+2713), rendered as plain text in a `shrink-0 text-[13px] text-hint` span.
+The Tailwind `text-[13px]` is a one-off size class appropriate for a small indicator glyph.
+
+**Green gate:** `tsc && vite build` passed clean — zero type errors, zero warnings, 2.79s build.
