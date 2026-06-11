@@ -18,7 +18,7 @@ epic: tech-debt
 depends_on: []
 blocks: []
 related: [GYM-105]
-commits: [fix/gym-115-continue-stale]
+commits: ["7db3cd6"]
 tests: []
 design_reports: []
 review_reports: []
