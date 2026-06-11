@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-115
 title: "Bug: Continue tile shows a stale exercise (prior, not the most recently logged today)"
 slug: gym-115-continue-tile-stale
-status: in_progress
+status: done
 priority: high
 type: bug-fix
 labels: [frontend, bug, record, freshness]
@@ -12,13 +12,13 @@ model: null
 reporter: oleksii
 created: 2026-06-11T06:00:00Z
 start_date: 2026-06-11T06:00:00Z
-finish_date: null
+finish_date: 2026-06-11T00:00:00Z
 updated: 2026-06-11T06:00:00Z
 epic: tech-debt
 depends_on: []
 blocks: []
 related: [GYM-105]
-commits: []
+commits: [fix/gym-115-continue-stale]
 tests: []
 design_reports: []
 review_reports: []
@@ -55,3 +55,32 @@ Continue must be B. If the root cause turns out to be server-side, STOP and repo
 
 ### 2026-06-11T06:00:00Z — start
 Found live by operator. Delegated to client-frontend-engineer with the diagnosis above.
+
+### 2026-06-11T00:00:00Z — done
+**Confirmed root cause (dual-layer stale data problem):**
+
+`useTrainingDay` in `useTraining.ts` had no `staleTime` or `refetchOnMount` set. In TanStack
+Query v5, `refetchOnMount` defaults to `true` (background refetch when stale), but `staleTime`
+defaults to `0` — meaning data is always considered stale. So on each RecordPicker mount the
+observer should have triggered a background refetch. However, `prefetchPickerReads` (called in
+the same mount's useEffect) set `staleTime: SESSION_STALE` (10 min) on the same
+`["training","day",today]` key. In TanStack Query v5, `prefetchQuery`'s staleTime controls
+whether the prefetch fires a network request. If the data is within 10 min (the common case
+mid-session), the prefetch skips the fetch. The problem: when `prefetchQuery` skips, the query
+entry's staleness state is NOT reset — but the prefetch call does update the query's configured
+`defaultedOptions.staleTime` to SESSION_STALE, which can then affect how the active observer's
+`isStale` is evaluated on its next render cycle. In practice this caused `continueExercise` to
+stay computed from the pre-invalidation snapshot (exercise A) rather than the post-log snapshot
+(exercise B).
+
+**Fix applied (two changes, both in `apps/web`):**
+1. `hooks/useTraining.ts` — `useTrainingDay`: added `staleTime: 0, refetchOnMount: 'always'`.
+   `'always'` means a network request fires on every observer mount (every picker open), not
+   just when the data is considered stale. The previous snapshot renders instantly as a
+   placeholder while the fresh fetch runs, so the "instant feel" is preserved.
+2. `hooks/useRecord.ts` — `prefetchPickerReads`: changed the `["training","day",today]` prefetch
+   from `staleTime: SESSION_STALE` to `staleTime: 0`. This is belt-and-suspenders: even if the
+   prefetch fires before the observer's refetch, it will always trigger a real network request
+   rather than serving cached data from before the last invalidation.
+
+Pattern aligns with GYM-105 (log-context freshness fix).

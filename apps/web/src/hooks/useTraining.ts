@@ -63,11 +63,21 @@ export function useTrainingDays(from: string, to: string) {
     });
 }
 
-/** One day's grouped exercises + sets (§11.3). */
+/**
+ * One day's grouped exercises + sets (§11.3).
+ *
+ * GYM-115: staleTime:0 + refetchOnMount:'always' so every observer mount (i.e.
+ * every picker open) fires a fresh GET /training/day request. This ensures the
+ * Continue tile reflects the truly-latest exercise rather than a 10-min-old
+ * prefetch snapshot. gcTime is kept at default so the previous snapshot renders
+ * as a placeholder while the fresh fetch runs — instant feel preserved.
+ */
 export function useTrainingDay(date: string) {
     return useQuery<TrainingDayDetail>({
         queryKey: dayKey(date),
         queryFn: ({ signal }) => fetchTrainingDay(date, signal),
+        staleTime: 0,
+        refetchOnMount: "always",
     });
 }
 

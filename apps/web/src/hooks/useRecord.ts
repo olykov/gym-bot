@@ -197,9 +197,11 @@ export function useCreateTraining(today: string) {
 
 /**
  * Warm the picker reads on sheet open (spec §12.5 perf): the muscle tiles
- * (`top-muscles`) and today's training (the Continue tile). Long staleTime so
- * the first paint after open is instant. Fired only when the sheet opens — never
- * on app mount (ARCH §2).
+ * (`top-muscles`) and today's training (the Continue tile). Long staleTime for
+ * top-muscles (frequency data is stable mid-session). The day key uses staleTime:0
+ * so it always re-fetches — this is belt-and-suspenders with the useTrainingDay
+ * refetchOnMount:'always' fix (GYM-115): the prefetch staleTime can never shadow
+ * invalidated day data and cause the Continue tile to show a stale exercise.
  */
 export function prefetchPickerReads(qc: QueryClient, today: string): void {
     void qc.prefetchQuery({
@@ -211,7 +213,7 @@ export function prefetchPickerReads(qc: QueryClient, today: string): void {
     void qc.prefetchQuery({
         queryKey: ["training", "day", today],
         queryFn: ({ signal }) => fetchTrainingDay(today, signal),
-        staleTime: SESSION_STALE,
+        staleTime: 0,
         gcTime: SESSION_GC,
     });
 }
