@@ -1996,7 +1996,7 @@ components:
     TrainingSet:
       type: object
       description: A single recorded set within a training day's exercise.
-      required: [training_id, set, weight, reps]
+      required: [training_id, set, weight, reps, is_pr]
       properties:
         training_id:
           type: string
@@ -2007,6 +2007,12 @@ components:
           type: number
         reps:
           type: number
+        is_pr:
+          type: boolean
+          description: >-
+            True when this set holds the caller's current all-time max weight for its
+            exercise (a standing personal record), per GYM-141. Server-computed; not
+            'was a PR when logged'.
 
     TrainingDayExercise:
       type: object

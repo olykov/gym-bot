@@ -303,12 +303,17 @@ class TrainingSet(BaseModel):
     """A single recorded set within a training day's exercise.
 
     Matches ``TrainingSet`` in packages/api-contract/openapi.yaml.
+
+    ``is_pr`` (GYM-141) is True when this set's weight equals the caller's
+    current all-time max weight for the exercise (a standing personal record).
+    Server-computed; ties (including same-day) flag all matching sets.
     """
 
     training_id: str
     set: int
     weight: float
     reps: float
+    is_pr: bool
 
 
 class TrainingDayExercise(BaseModel):

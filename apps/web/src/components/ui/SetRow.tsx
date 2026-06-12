@@ -3,6 +3,12 @@
  * every set in the day detail. Leading `Set {n}` (Sora --hint), trailing
  * `{weight}kg × {reps}` (Bebas-leaning, tabular-nums so rows align). ≥44px tall.
  *
+ * GYM-141: when `set.is_pr` is true, a <StatChip> "PR" badge renders beside the
+ * set figure — identical visual language to the DayCard day-level PR badge (GYM-136)
+ * so the user connects "this day has a PR" → "THIS set is it". The chip gets a
+ * single subtle accent-pulse on appear (spec §9.4), behind prefers-reduced-motion.
+ * Non-PR rows are unaffected (no layout shift).
+ *
  * Interactions:
  *  - tap the row → opens the editor (`onEdit`) with a light impact haptic;
  *  - swipe-left → reveals a single --accent Delete action (`onDelete`). Swipe
@@ -17,6 +23,7 @@ import { useT } from "@/i18n/catalog";
 import { hapticImpact } from "@/telegram/webapp";
 import type { TrainingSet } from "@/api/training";
 import { SetFigure } from "./SetFigure";
+import { StatChip } from "./StatCard";
 
 interface SetRowProps {
     set: TrainingSet;
@@ -114,7 +121,18 @@ export function SetRow({ set, onEdit, onDelete }: SetRowProps) {
                 <span className="text-label uppercase tracking-wide text-hint">
                     {t("set.n", { n: set.set })}
                 </span>
-                <SetFigure weight={set.weight} reps={set.reps} />
+                {/* GYM-141: trailing cluster — figure + optional PR chip. The chip
+                    mirrors DayCard's day-level badge (GYM-136, same StatChip) so
+                    "this day has a PR" → "THIS set is it" reads as one language.
+                    shrink-0 keeps the figure from compressing on a narrow column. */}
+                <div className="flex shrink-0 items-center gap-2">
+                    <SetFigure weight={set.weight} reps={set.reps} />
+                    {set.is_pr ? (
+                        <StatChip className="animate-pr-pulse motion-reduce:animate-none">
+                            {t("pr")}
+                        </StatChip>
+                    ) : null}
+                </div>
             </div>
         </div>
     );

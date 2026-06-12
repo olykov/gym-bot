@@ -193,41 +193,73 @@ def get_training_day(
     muscle and exercise names denormalized.  Returns an empty exercises list
     for a day with no training — never a 404 for the empty case.
 
+    GYM-141: each set carries ``is_pr`` — True when the set's weight equals
+    the caller's current all-time max weight for that exercise (standing PR).
+    Ties flag all sets (including same-day ties).  Computed via a CTE that
+    aggregates the caller's full history; zero extra round-trips.
+
+    GYM-142 (variant A): exercise groups are ordered by recency — the most
+    recently logged exercise first (DESC by MAX(t.date) within the day).
+    Sets within an exercise remain in ascending set-number order.  The recency
+    signal is the ``date`` TIMESTAMP column (set to server UTC at insert time).
+
     Args:
         day_date: Calendar date to fetch.
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
-        ``TrainingDayDetail`` with exercises grouped by exercise_id, each
-        containing its ordered list of sets.
+        ``TrainingDayDetail`` with exercises grouped by exercise_id, ordered
+        most-recently-logged first, each with its ascending set list.
     """
     uid = principal["user_id"]
     dt_from = datetime(day_date.year, day_date.month, day_date.day)
     dt_to = dt_from + timedelta(days=1)
 
+    # GYM-141: pr CTE computes the caller's all-time max weight per exercise
+    # (full history, not windowed) so is_pr reflects the CURRENT standing record.
+    # GYM-142: ex_recency CTE captures the latest timestamp per exercise on this
+    # day so the outer ORDER BY can place the most-recently-logged exercise first.
     rows = db.execute(
         text("""
+            WITH pr AS (
+                SELECT exercise_id, MAX(weight) AS max_weight
+                FROM training
+                WHERE user_id = :uid
+                GROUP BY exercise_id
+            ),
+            ex_recency AS (
+                SELECT exercise_id, MAX(date) AS last_logged
+                FROM training
+                WHERE user_id = :uid
+                  AND date >= :dt_from
+                  AND date  < :dt_to
+                GROUP BY exercise_id
+            )
             SELECT
-                t.id           AS training_id,
+                t.id                             AS training_id,
                 t.set,
                 t.weight,
                 t.reps,
                 t.exercise_id,
-                e.name         AS exercise_name,
-                m.name         AS muscle_name
+                e.name                           AS exercise_name,
+                m.name                           AS muscle_name,
+                (t.weight = pr.max_weight)       AS is_pr
             FROM training t
-            JOIN exercises e ON e.id = t.exercise_id
-            JOIN muscles   m ON m.id = t.muscle_id
+            JOIN exercises  e  ON e.id  = t.exercise_id
+            JOIN muscles    m  ON m.id  = t.muscle_id
+            JOIN pr            ON pr.exercise_id = t.exercise_id
+            JOIN ex_recency er ON er.exercise_id = t.exercise_id
             WHERE t.user_id = :uid
               AND t.date >= :dt_from
               AND t.date  < :dt_to
-            ORDER BY e.name, t.set
+            ORDER BY er.last_logged DESC, t.set ASC
         """),
         {"uid": uid, "dt_from": dt_from, "dt_to": dt_to},
     ).fetchall()
 
-    # Group by exercise_id preserving order of first appearance.
+    # Group by exercise_id preserving order of first appearance (recency order
+    # comes from the SQL ORDER BY er.last_logged DESC).
     exercise_map: Dict[int, schemas.TrainingDayExercise] = {}
     for row in rows:
         eid = row.exercise_id
@@ -244,6 +276,7 @@ def get_training_day(
                 set=row.set,
                 weight=float(row.weight),
                 reps=float(row.reps),
+                is_pr=bool(row.is_pr),
             )
         )
 

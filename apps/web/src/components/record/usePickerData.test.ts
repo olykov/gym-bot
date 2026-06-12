@@ -39,6 +39,8 @@ function mkExercise(
             set: i + 1,
             weight: 60,
             reps: 10,
+            // GYM-141: is_pr defaults false in test fixtures.
+            is_pr: false,
         })),
     };
 }
@@ -100,7 +102,7 @@ describe("deriveContinueExercise", () => {
                 exercise_name: "Abdominal Curl",
                 muscle_name: "Abs",
                 sets: [
-                    { training_id: "ffffffffffffffffffffffffffffffff", set: 1, weight: 50, reps: 12 },
+                    { training_id: "ffffffffffffffffffffffffffffffff", set: 1, weight: 50, reps: 12, is_pr: false },
                 ],
             },
             {
@@ -108,7 +110,7 @@ describe("deriveContinueExercise", () => {
                 exercise_name: "Bench Press",
                 muscle_name: "Chest",
                 sets: [
-                    { training_id: "00000000000000000000000000000000", set: 1, weight: 80, reps: 5 },
+                    { training_id: "00000000000000000000000000000000", set: 1, weight: 80, reps: 5, is_pr: false },
                 ],
             },
         ];

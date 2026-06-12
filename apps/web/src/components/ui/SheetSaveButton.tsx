@@ -1,32 +1,27 @@
 /**
- * The one in-sheet sticky Save button (spec §11.4 / §12.3). Pinned to the bottom
- * of a <BottomSheet>'s scroll viewport above the fixed BottomNav — so it never
- * scrolls away, is never obscured by the nav, and is never clipped. This is the
- * deliberate replacement for the native Telegram MainButton, which overlaid the
- * WebApp viewport bottom and clipped the sheet's lowest field on real devices
- * (GYM-54).
+ * The one in-sheet Save button (spec §11.4 / §12.3).
  *
- * GYM-140: The sticky offset is `var(--nav-h)` (not 0) because the fixed
- * BottomNav (~61px) is always visible while these sheets are open, and a
- * `bottom:0` anchor would place the button's bottom edge at the viewport bottom
- * — under the nav. `bottom: var(--nav-h)` keeps the button's lower edge above
- * the nav top. The scroll container's paddingBottom also reserves this space so
- * content below the button is not cut off by the nav area.
+ * GYM-143-v2 model: SetEditor and MoveSetPanel use a content-sized
+ * BottomSheet (height:auto, max-height bounded). SheetSaveButton is placed
+ * in the natural flow right after the last field — the sheet hugs the content
+ * so there is no dead space, and the panel's bottom edge is already positioned
+ * above the BottomNav via the wrapper. No sticky, no mt-auto, no nav offset.
  *
- * Shared by the History set editor (§11.4) and the record-flow SetLogger (§12.3)
- * so there is exactly ONE sticky-Save style. Accent fill per §9.3, disabled when
- * the form is invalid/pending. The -mx-4/px-4 cancel the sheet body's horizontal
- * padding so the bar spans the panel; the --bg backdrop hides content scrolling
- * under it. An optional `pulse` flag fires the §9.4 single accent flare (PR-beat
- * celebration) — instant, no library, off under prefers-reduced-motion.
+ * In SetLogger (§12.3) the button lives in a `shrink-0` controls region at
+ * the bottom of a fixedHeight flex column — the fixedHeight sheet's wrapper
+ * is also above the nav, so the controls are visible. The mt-6 top margin
+ * provides visual breathing room between the last stepper and SAVE in both
+ * contexts.
+ *
+ * Shared model: one component, one style. Accent fill per §9.3, disabled when
+ * the form is invalid/pending. The -mx-4/px-4 cancel the sheet body's
+ * horizontal padding so the bar spans the full panel width. The --bg backdrop
+ * prevents content bleeding through when the sheet scrolls.
  *
  * GYM-131 #3: the optional `success` payload swaps the content to a check
- * glyph (inline SVG, not emoji) + the caller's "Saved set n" label for the
- * --dur-save-morph window, with a 1.0→1.02→1.0 scale on the inner span only
- * (no layout shift — the button height is fixed). The button stays fully
- * interactive during the morph; `success.nonce` keys the span so a rapid
- * double-save remounts it and restarts the animation cleanly. Reduced
- * motion: no scale (content still swaps — it is feedback, not motion).
+ * glyph + "Saved set n" label for the --dur-save-morph window, 1.0→1.02→1.0
+ * scale on the inner span (no layout shift). `success.nonce` keys the span
+ * so consecutive saves restart the animation cleanly. Reduced motion: no scale.
  */
 
 /** Transient success content (GYM-131) — see useSaveChoreography. */
@@ -56,8 +51,7 @@ export function SheetSaveButton({
 }: SheetSaveButtonProps) {
     return (
         <div
-            className="sticky z-10 -mx-4 mt-6 bg-bg px-4 pb-1 pt-3"
-            style={{ bottom: "var(--nav-h)" }}
+            className="-mx-4 shrink-0 bg-bg px-4 pb-1 pt-3 mt-6"
         >
             <button
                 type="button"

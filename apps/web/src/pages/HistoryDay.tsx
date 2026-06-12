@@ -185,6 +185,11 @@ export function HistoryDay() {
                 </Card>
             ))}
 
+            {/* GYM-143-v2: content-sized sheet (height:auto, max-height bounded).
+               The BottomSheet wrapper is positioned above the BottomNav so
+               SAVE / MOVE SET are always fully visible — no fixedHeight needed.
+               For short content (2 steppers) the sheet hugs it: no dead space,
+               SAVE sits directly under REPS. */}
             <BottomSheet
                 open={target !== null}
                 onClose={closeEditor}

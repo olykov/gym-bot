@@ -12,6 +12,18 @@
  * current values. Uses useMoveSet (which optimistically removes the set from the
  * source day cache, then invalidates both days on settle).
  *
+ * GYM-143-v2 (content-sized model):
+ * - Root div is plain flex-col — NO flex-1 / min-h-0 needed. The parent
+ *   BottomSheet is content-sized (height:auto, max-height bounded via wrapper
+ *   positioning above the nav). The sheet naturally grows to hug the content.
+ * - Fields region is a plain flex-col; the body div in BottomSheet is
+ *   overflow-y-auto and hits max-height if content is too tall — then the
+ *   whole body scrolls. MOVE SET is outside the inner fields div so it stays
+ *   visible at the panel's natural bottom.
+ * - Date input: w-full min-w-0 on both wrapper and input prevents the native
+ *   date widget from overflowing the right edge of the container on iOS/Android
+ *   (retained from GYM-143 v1 — the intrinsic min-content width override).
+ *
  * Errors:
  *   409 → "That slot is already taken — pick a different day or exercise."
  *   422/404 → "Couldn't move — check your selection."
@@ -120,7 +132,9 @@ export function MoveSetPanel({
         );
     }
 
-    // Exercise-picker sub-steps.
+    // Exercise-picker sub-steps. With content-sized BottomSheet, these render
+    // as plain flex-col blocks; the BottomSheet body (overflow-y:auto) handles
+    // scrolling when the list exceeds the available height.
     if (step === "muscles") {
         return (
             <MusclePicker
@@ -148,82 +162,98 @@ export function MoveSetPanel({
     }
 
     // Main move panel.
+    // GYM-143-v2: plain flex-col — no flex-1/min-h-0. The sheet (content-sized)
+    // grows to hug this block. SheetSaveButton sits naturally after the fields.
     return (
-        <div>
-            {/* Section label */}
-            <p className="mb-4 text-label uppercase tracking-wide text-hint">
-                {t("move.title")}
-            </p>
-
-            {/* Date field */}
-            <div className="mb-4">
-                <label
-                    htmlFor="move-date"
-                    className="text-label uppercase tracking-wide text-hint"
-                >
-                    {t("move.day")}
-                </label>
-                <input
-                    id="move-date"
-                    type="date"
-                    value={targetDate}
-                    onChange={(e) => setTargetDate(e.target.value)}
-                    className="mt-2 min-h-[44px] w-full rounded-md border border-hairline bg-secondary-bg px-3 text-base text-text outline-none focus:border-accent"
-                />
-            </div>
-
-            {/* Exercise picker row */}
-            <div className="mb-4">
-                <p className="mb-2 text-label uppercase tracking-wide text-hint">
-                    {t("label.exercise")}
+        <div className="flex flex-col">
+            {/* Fields block — no overflow:auto here; the BottomSheet body
+               handles scrolling if the whole content exceeds max-height. */}
+            <div className="flex flex-col">
+                {/* Section label */}
+                <p className="mb-4 text-label uppercase tracking-wide text-hint">
+                    {t("move.title")}
                 </p>
-                <button
-                    type="button"
-                    onClick={() => setStep("muscles")}
-                    className="press-95 flex min-h-[44px] w-full items-center justify-between gap-3 rounded-md border border-hairline bg-secondary-bg px-3 text-left"
-                >
-                    <span className="min-w-0 flex-1 truncate text-base text-text">
-                        {targetExercise
-                            ? `${targetExercise} (${muscle(targetMuscle ?? "")})`
-                            : t("move.exerciseChange", { exercise: exerciseName })}
-                    </span>
-                    <span aria-hidden className="shrink-0 text-hint">
-                        ›
-                    </span>
-                </button>
-                {targetExercise ? (
+
+                {/* Date field — GYM-143: w-full min-w-0 on wrapper + input
+                   prevents the native date widget from overflowing the right
+                   edge of the container on iOS/Android. box-sizing:border-box
+                   is set globally by Tailwind preflight but `min-w-0` is the
+                   critical addition — it overrides the input's intrinsic
+                   min-content width so `w-full` can constrain it correctly. */}
+                <div className="mb-4 w-full min-w-0">
+                    <label
+                        htmlFor="move-date"
+                        className="text-label uppercase tracking-wide text-hint"
+                    >
+                        {t("move.day")}
+                    </label>
+                    <input
+                        id="move-date"
+                        type="date"
+                        value={targetDate}
+                        onChange={(e) => setTargetDate(e.target.value)}
+                        className="mt-2 min-h-[44px] w-full min-w-0 rounded-md border border-hairline bg-secondary-bg px-3 text-base text-text outline-none focus:border-accent"
+                    />
+                </div>
+
+                {/* Exercise picker row */}
+                <div className="mb-4">
+                    <p className="mb-2 text-label uppercase tracking-wide text-hint">
+                        {t("label.exercise")}
+                    </p>
                     <button
                         type="button"
-                        onClick={() => {
-                            setTargetMuscle(null);
-                            setTargetExercise(null);
-                        }}
-                        className="press-95 mt-1 text-label text-hint"
+                        onClick={() => setStep("muscles")}
+                        className="press-95 flex min-h-[44px] w-full items-center justify-between gap-3 rounded-md border border-hairline bg-secondary-bg px-3 text-left"
                     >
-                        {t("move.clearExercise")}
+                        <span className="min-w-0 flex-1 truncate text-base text-text">
+                            {targetExercise
+                                ? `${targetExercise} (${muscle(targetMuscle ?? "")})`
+                                : t("move.exerciseChange", { exercise: exerciseName })}
+                        </span>
+                        <span aria-hidden className="shrink-0 text-hint">
+                            ›
+                        </span>
                     </button>
+                    {targetExercise ? (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTargetMuscle(null);
+                                setTargetExercise(null);
+                            }}
+                            className="press-95 mt-1 text-label text-hint"
+                        >
+                            {t("move.clearExercise")}
+                        </button>
+                    ) : null}
+                </div>
+
+                {error ? (
+                    <div
+                        aria-live="polite"
+                        className="mb-4 rounded-md border border-hairline bg-secondary-bg px-3 py-2"
+                    >
+                        <p className="text-label text-accent">{error}</p>
+                    </div>
                 ) : null}
+
+                {/* Cancel row — flex items-center justify-center for reliable
+                   vertical centering on all Android WebViews (GYM-140). */}
+                <button
+                    type="button"
+                    onClick={onCancel}
+                    className="press-95 mb-2 flex min-h-[44px] w-full items-center justify-center rounded-md border border-hairline bg-bg text-base text-text"
+                >
+                    {t("common.cancel")}
+                </button>
             </div>
 
-            {error ? (
-                <div
-                    aria-live="polite"
-                    className="mb-4 rounded-md border border-hairline bg-secondary-bg px-3 py-2"
-                >
-                    <p className="text-label text-accent">{error}</p>
-                </div>
-            ) : null}
-
-            {/* Cancel row — GYM-140: flex items-center justify-center ensures
-               the text is vertically centered on all Android WebViews. */}
-            <button
-                type="button"
-                onClick={onCancel}
-                className="press-95 mb-2 flex min-h-[44px] w-full items-center justify-center rounded-md border border-hairline bg-bg text-base text-text"
-            >
-                {t("common.cancel")}
-            </button>
-
+            {/* MOVE SET footer — outside the fields block so it always appears
+               right after the last field with no dead space.
+               GYM-143-v2: because the sheet is content-sized and the wrapper is
+               positioned above the nav, this button is guaranteed to be visible
+               without any sticky trick or nav-offset. */}
             <SheetSaveButton
                 label={moveSet.isPending ? t("move.moving") : t("move.moveSet")}
                 onClick={submit}
@@ -263,12 +293,14 @@ function MusclePicker({ onBack, onPick }: MusclePickerProps) {
         });
     }, [muscles.data, frequencyMap]);
 
+    // GYM-143-v2: plain flex-col, no flex-1/min-h-0. The BottomSheet body
+    // scrolls this whole block if it exceeds max-height.
     return (
-        <div>
+        <div className="flex flex-col">
             <button
                 type="button"
                 onClick={onBack}
-                className="press-95 -ml-1 mb-3 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
+                className="press-95 -ml-1 mb-3 inline-flex shrink-0 min-h-[44px] items-center gap-1 px-1 text-base text-hint"
             >
                 ← {t("common.back")}
             </button>
@@ -343,12 +375,13 @@ function ExercisePicker({ muscleName, onBack, onPick }: ExercisePickerProps) {
         });
     }, [fullExercises.data, frequencyMap]);
 
+    // GYM-143-v2: plain flex-col, no flex-1/min-h-0.
     return (
-        <div>
+        <div className="flex flex-col">
             <button
                 type="button"
                 onClick={onBack}
-                className="press-95 -ml-1 mb-3 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
+                className="press-95 -ml-1 mb-3 inline-flex shrink-0 min-h-[44px] items-center gap-1 px-1 text-base text-hint"
             >
                 ← {muscle(muscleName)}
             </button>

@@ -1,0 +1,437 @@
+"""Integration tests for GYM-141 (is_pr per set) and GYM-142 (recency order).
+
+GYM-141 — is_pr per set:
+  - A set at the exercise's all-time max weight has is_pr=True.
+  - A lighter set has is_pr=False.
+  - Ties (multiple sets at the same max weight, including same-day) all flag.
+  - A PR on a different day still flags today's set if it equals the standing max.
+  - Cross-user isolation: user A's max does not bleed into user B's flags.
+
+GYM-142 — recency order:
+  - The day's exercise groups are returned most-recently-logged first
+    (DESC by MAX(training.date) within the day).
+  - Sets within each exercise group are still in ascending set-number order.
+
+All tests use the session-scoped ``db_setup`` fixture (ephemeral postgres:16).
+"""
+
+import os
+import sys
+import uuid
+from datetime import date, datetime, timedelta
+from typing import Generator
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from tests.conftest import USER_A_ID, USER_B_ID, _APP_ROLE, _APP_ROLE_PASSWORD
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _service_headers(user_id: int) -> dict:
+    """Build service-token auth headers for the given user.
+
+    Args:
+        user_id: Telegram user id to impersonate.
+
+    Returns:
+        Header dict with X-Service-Token and X-Act-As-User.
+    """
+    return {
+        "X-Service-Token": "test_bot_service_token_rls",
+        "X-Act-As-User": str(user_id),
+    }
+
+
+def _ensure_env_defaults() -> None:
+    """Populate mandatory env vars before importing the FastAPI app."""
+    os.environ.setdefault("DB_USER", "postgres")
+    os.environ.setdefault("DB_PASSWORD", "testpw")
+    os.environ.setdefault("DB_HOST", "127.0.0.1")
+    os.environ.setdefault("DB_PORT", "5432")
+    os.environ.setdefault("DB_NAME", "gymtest")
+    os.environ.setdefault("JWT_SECRET", "test_jwt_secret_for_rls_tests_only")
+    os.environ.setdefault("ADMIN_USER", "admin")
+    os.environ.setdefault("ADMIN_PASSWORD", "adminpw")
+    os.environ.setdefault("BOT_SERVICE_TOKEN", "test_bot_service_token_rls")
+    os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost")
+    os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6399/1")
+
+
+def _insert_training(
+    superuser_url: str,
+    uid: int,
+    muscle_id: int,
+    exercise_id: int,
+    set_num: int,
+    when: datetime,
+    weight: float = 60.0,
+    reps: float = 5.0,
+) -> str:
+    """Insert one training row as superuser; return its hex id.
+
+    Args:
+        superuser_url: SQLAlchemy URL with superuser credentials.
+        uid: User id for the row.
+        muscle_id: Muscle id.
+        exercise_id: Exercise id.
+        set_num: Set number.
+        when: Timestamp to store in the ``date`` column.
+        weight: Weight value (default 60 kg).
+        reps: Reps value (default 5).
+
+    Returns:
+        The training id (32-char hex string).
+    """
+    tid = uuid.uuid4().hex[:32]
+    eng = create_engine(superuser_url, poolclass=NullPool)
+    with eng.connect() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO training
+                    (id, date, user_id, muscle_id, exercise_id, set, weight, reps)
+                VALUES (:tid, :when, :uid, :mid, :eid, :s, :w, :r)
+                ON CONFLICT DO NOTHING
+            """),
+            {
+                "tid": tid,
+                "when": when,
+                "uid": uid,
+                "mid": muscle_id,
+                "eid": exercise_id,
+                "s": set_num,
+                "w": weight,
+                "r": reps,
+            },
+        )
+        conn.commit()
+    eng.dispose()
+    return tid
+
+
+def _delete_training_direct(superuser_url: str, *tids: str) -> None:
+    """Delete training rows by id as superuser (test cleanup).
+
+    Args:
+        superuser_url: Superuser URL.
+        *tids: One or more training ids to delete.
+    """
+    eng = create_engine(superuser_url, poolclass=NullPool)
+    with eng.connect() as conn:
+        for tid in tids:
+            conn.execute(text("DELETE FROM training WHERE id = :tid"), {"tid": tid})
+        conn.commit()
+    eng.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Module-scoped test client (reuses conftest ephemeral DB)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def day_detail_client(db_setup) -> Generator[TestClient, None, None]:
+    """Build a TestClient wired to the ephemeral test DB.
+
+    Args:
+        db_setup: Session-scoped fixture from conftest providing the test DB.
+
+    Yields:
+        A configured TestClient with RLS GUC wiring.
+    """
+    app_rw_url = db_setup["app_rw_url"]
+    from urllib.parse import urlparse
+    parsed = urlparse(app_rw_url)
+    os.environ["APP_DB_USER"] = _APP_ROLE
+    os.environ["APP_DB_PASSWORD"] = _APP_ROLE_PASSWORD
+    os.environ["DB_HOST"] = parsed.hostname or "127.0.0.1"
+    os.environ["DB_PORT"] = str(parsed.port or 5432)
+    os.environ["DB_NAME"] = parsed.path.lstrip("/")
+    _ensure_env_defaults()
+
+    from app.core.config import get_settings
+    get_settings.cache_clear()
+
+    import app.core.database as db_module
+    from app.core.database import _set_rls_gucs
+
+    test_engine = create_engine(app_rw_url, poolclass=NullPool)
+    test_session_local = sessionmaker(
+        autocommit=False, autoflush=False, bind=test_engine
+    )
+    event.listen(test_session_local, "after_begin", _set_rls_gucs)
+
+    original_session_local = db_module.SessionLocal
+    db_module.SessionLocal = test_session_local
+
+    from main import app
+    client = TestClient(app, raise_server_exceptions=False)
+    yield client
+
+    db_module.SessionLocal = original_session_local
+    test_engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# GYM-141 — is_pr per set
+# ---------------------------------------------------------------------------
+
+class TestIsPrFlag:
+    """GET /training/day/{date} correctly sets is_pr on each set."""
+
+    def test_set_at_alltime_max_is_pr_true(self, day_detail_client, db_setup):
+        """A set whose weight equals the all-time max for that exercise is is_pr=True."""
+        superuser_url = db_setup["superuser_url"]
+        seed = db_setup["seed"]
+        today_noon = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
+
+        # Insert a set at a NEW higher weight (120 kg > conftest seed 100 kg).
+        tid = _insert_training(
+            superuser_url, USER_A_ID,
+            seed["priv_muscle_a"], seed["priv_ex_a"],
+            set_num=10, when=today_noon, weight=120.0, reps=5.0,
+        )
+        try:
+            resp = day_detail_client.get(
+                f"/api/v1/training/day/{datetime.utcnow().date()}",
+                headers=_service_headers(USER_A_ID),
+            )
+            assert resp.status_code == 200, resp.text
+            exercises = resp.json()["exercises"]
+            sets = next(
+                ex["sets"] for ex in exercises
+                if ex["exercise_id"] == seed["priv_ex_a"]
+            )
+            pr_set = next(s for s in sets if s["weight"] == 120.0)
+            assert pr_set["is_pr"] is True, f"Expected is_pr=True for 120 kg set: {pr_set}"
+        finally:
+            _delete_training_direct(superuser_url, tid)
+
+    def test_lighter_set_is_pr_false(self, day_detail_client, db_setup):
+        """A set below the all-time max has is_pr=False."""
+        superuser_url = db_setup["superuser_url"]
+        seed = db_setup["seed"]
+        today_noon = datetime.utcnow().replace(hour=12, minute=1, second=0, microsecond=0)
+
+        # Insert a set at 50 kg while the existing conftest seed has 100 kg as max.
+        tid = _insert_training(
+            superuser_url, USER_A_ID,
+            seed["priv_muscle_a"], seed["priv_ex_a"],
+            set_num=11, when=today_noon, weight=50.0, reps=10.0,
+        )
+        try:
+            resp = day_detail_client.get(
+                f"/api/v1/training/day/{datetime.utcnow().date()}",
+                headers=_service_headers(USER_A_ID),
+            )
+            assert resp.status_code == 200, resp.text
+            exercises = resp.json()["exercises"]
+            sets = next(
+                ex["sets"] for ex in exercises
+                if ex["exercise_id"] == seed["priv_ex_a"]
+            )
+            light_set = next(s for s in sets if s["weight"] == 50.0)
+            assert light_set["is_pr"] is False, (
+                f"Expected is_pr=False for 50 kg set: {light_set}"
+            )
+        finally:
+            _delete_training_direct(superuser_url, tid)
+
+    def test_ties_all_flagged(self, day_detail_client, db_setup):
+        """Multiple sets at the all-time max weight are ALL is_pr=True (ties)."""
+        superuser_url = db_setup["superuser_url"]
+        seed = db_setup["seed"]
+        # Conftest seed inserts set=1 and set=2 both at 100 kg for USER_A on today.
+        # The all-time max for priv_ex_a is 100 kg (no heavier sets exist at this
+        # point in the test run order, assuming test_set_at_alltime_max cleaned up).
+        resp = day_detail_client.get(
+            f"/api/v1/training/day/{datetime.utcnow().date()}",
+            headers=_service_headers(USER_A_ID),
+        )
+        assert resp.status_code == 200, resp.text
+        exercises = resp.json()["exercises"]
+        sets = next(
+            ex["sets"] for ex in exercises
+            if ex["exercise_id"] == seed["priv_ex_a"]
+        )
+        # Both seed sets are at 100 kg — both must be is_pr=True.
+        for s in sets:
+            assert s["is_pr"] is True, (
+                f"Tie set at 100 kg must have is_pr=True: {s}"
+            )
+
+    def test_pr_on_different_day_flags_todays_equal_set(
+        self, day_detail_client, db_setup
+    ):
+        """If a PR was set on a different day, today's set at the same weight is flagged."""
+        superuser_url = db_setup["superuser_url"]
+        seed = db_setup["seed"]
+        # Insert a heavier set on a past day.
+        past_day = datetime.utcnow() - timedelta(days=5)
+        past_tid = _insert_training(
+            superuser_url, USER_A_ID,
+            seed["priv_muscle_a"], seed["priv_ex_a"],
+            set_num=20, when=past_day, weight=150.0, reps=1.0,
+        )
+        # Insert a today set at the same 150 kg.
+        today_noon = datetime.utcnow().replace(hour=12, minute=2, second=0, microsecond=0)
+        today_tid = _insert_training(
+            superuser_url, USER_A_ID,
+            seed["priv_muscle_a"], seed["priv_ex_a"],
+            set_num=21, when=today_noon, weight=150.0, reps=1.0,
+        )
+        try:
+            resp = day_detail_client.get(
+                f"/api/v1/training/day/{datetime.utcnow().date()}",
+                headers=_service_headers(USER_A_ID),
+            )
+            assert resp.status_code == 200, resp.text
+            exercises = resp.json()["exercises"]
+            sets = next(
+                ex["sets"] for ex in exercises
+                if ex["exercise_id"] == seed["priv_ex_a"]
+            )
+            today_set = next(s for s in sets if s["weight"] == 150.0)
+            assert today_set["is_pr"] is True, (
+                f"Today's set at standing-max weight must be is_pr=True: {today_set}"
+            )
+        finally:
+            _delete_training_direct(superuser_url, past_tid, today_tid)
+
+    def test_cross_user_pr_isolation(self, day_detail_client, db_setup):
+        """User A's all-time max does not affect user B's is_pr computation."""
+        superuser_url = db_setup["superuser_url"]
+        seed = db_setup["seed"]
+        # Conftest seed: USER_A priv_ex_a has 100 kg sets; USER_B priv_ex_b has 80 kg.
+        # Both should see is_pr=True on their own sets (each is their own max).
+        today = datetime.utcnow().date()
+
+        resp_b = day_detail_client.get(
+            f"/api/v1/training/day/{today}",
+            headers=_service_headers(USER_B_ID),
+        )
+        assert resp_b.status_code == 200, resp_b.text
+        exercises_b = resp_b.json()["exercises"]
+        sets_b = next(
+            ex["sets"] for ex in exercises_b
+            if ex["exercise_id"] == seed["priv_ex_b"]
+        )
+        # USER_B's sets at 80 kg are their all-time max → must all be is_pr=True.
+        for s in sets_b:
+            assert s["is_pr"] is True, (
+                f"B's set at own max weight must be is_pr=True: {s}"
+            )
+
+    def test_is_pr_field_present_in_response(self, day_detail_client, db_setup):
+        """Every set in the response carries the is_pr boolean field."""
+        resp = day_detail_client.get(
+            f"/api/v1/training/day/{datetime.utcnow().date()}",
+            headers=_service_headers(USER_A_ID),
+        )
+        assert resp.status_code == 200, resp.text
+        for ex in resp.json()["exercises"]:
+            for s in ex["sets"]:
+                assert "is_pr" in s, f"is_pr missing from set: {s}"
+                assert isinstance(s["is_pr"], bool), (
+                    f"is_pr must be bool, got {type(s['is_pr'])}: {s}"
+                )
+
+
+# ---------------------------------------------------------------------------
+# GYM-142 — recency ordering of exercise groups
+# ---------------------------------------------------------------------------
+
+class TestRecencyOrder:
+    """GET /training/day/{date} returns exercises most-recently-logged first."""
+
+    def test_two_exercises_ordered_by_recency(self, day_detail_client, db_setup):
+        """An exercise logged later in the day appears before one logged earlier."""
+        superuser_url = db_setup["superuser_url"]
+        seed = db_setup["seed"]
+        today = datetime.utcnow().date()
+
+        # Insert two sets for the global exercise at an EARLIER time today.
+        earlier = datetime(today.year, today.month, today.day, 8, 0, 0)
+        later = datetime(today.year, today.month, today.day, 10, 0, 0)
+
+        global_ex_id = seed["global_ex_id"]
+        global_muscle_id = seed["global_muscle_id"]
+
+        tid_early1 = _insert_training(
+            superuser_url, USER_A_ID, global_muscle_id, global_ex_id,
+            set_num=1, when=earlier, weight=70.0, reps=8.0,
+        )
+        # priv_ex_a sets are inserted at NOW() in conftest (roughly "now"),
+        # but we need a controlled timestamp for the private exercise too.
+        # Insert a fresh set for priv_ex_a at LATER timestamp.
+        tid_late1 = _insert_training(
+            superuser_url, USER_A_ID,
+            seed["priv_muscle_a"], seed["priv_ex_a"],
+            set_num=30, when=later, weight=100.0, reps=5.0,
+        )
+        try:
+            resp = day_detail_client.get(
+                f"/api/v1/training/day/{today}",
+                headers=_service_headers(USER_A_ID),
+            )
+            assert resp.status_code == 200, resp.text
+            exercises = resp.json()["exercises"]
+            exercise_ids = [ex["exercise_id"] for ex in exercises]
+
+            # priv_ex_a was logged LATER → must appear before global_ex_id.
+            idx_priv = exercise_ids.index(seed["priv_ex_a"])
+            idx_global = exercise_ids.index(global_ex_id)
+            assert idx_priv < idx_global, (
+                f"priv_ex_a (later) must precede global_ex_id (earlier). "
+                f"Order: {exercise_ids}"
+            )
+        finally:
+            _delete_training_direct(superuser_url, tid_early1, tid_late1)
+
+    def test_sets_within_exercise_still_ascending(self, day_detail_client, db_setup):
+        """Sets within each exercise group are still in ascending set-number order."""
+        resp = day_detail_client.get(
+            f"/api/v1/training/day/{datetime.utcnow().date()}",
+            headers=_service_headers(USER_A_ID),
+        )
+        assert resp.status_code == 200, resp.text
+        for ex in resp.json()["exercises"]:
+            set_nums = [s["set"] for s in ex["sets"]]
+            assert set_nums == sorted(set_nums), (
+                f"Sets within exercise '{ex['exercise_name']}' must be ascending: "
+                f"{set_nums}"
+            )
+
+    def test_single_exercise_day_returns_correctly(self, day_detail_client, db_setup):
+        """A day with only one exercise returns that exercise with correct is_pr."""
+        superuser_url = db_setup["superuser_url"]
+        seed = db_setup["seed"]
+        past_day = datetime.utcnow() - timedelta(days=30)
+        past_date = past_day.date()
+
+        tid = _insert_training(
+            superuser_url, USER_A_ID,
+            seed["priv_muscle_a"], seed["priv_ex_a"],
+            set_num=1, when=past_day, weight=100.0, reps=5.0,
+        )
+        try:
+            resp = day_detail_client.get(
+                f"/api/v1/training/day/{past_date}",
+                headers=_service_headers(USER_A_ID),
+            )
+            assert resp.status_code == 200, resp.text
+            data = resp.json()
+            assert len(data["exercises"]) == 1
+            ex = data["exercises"][0]
+            assert ex["exercise_id"] == seed["priv_ex_a"]
+            assert len(ex["sets"]) == 1
+            assert "is_pr" in ex["sets"][0]
+        finally:
+            _delete_training_direct(superuser_url, tid)

@@ -39,10 +39,23 @@ export function StatCard({ value, label, accent = false, chip }: StatCardProps) 
     );
 }
 
-/** The accent PR chip (spec §10.2 / §9.4). Subtle, --accent-weak fill. */
-export function StatChip({ children }: { children: ReactNode }) {
+interface StatChipProps {
+    children: ReactNode;
+    /** Optional extra classes (e.g. an appear animation from the caller). */
+    className?: string;
+}
+
+/** The accent PR chip (spec §10.2 / §9.4). Subtle, --accent-weak fill.
+ *
+ * GYM-141: accepts an optional `className` so callers can attach a one-shot
+ * appear animation (the SetRow PR chip) without coupling animation details
+ * to this primitive.
+ */
+export function StatChip({ children, className }: StatChipProps) {
     return (
-        <span className="rounded-full bg-accent-weak px-2 py-[2px] text-label font-semibold uppercase text-accent">
+        <span
+            className={`rounded-full bg-accent-weak px-2 py-[2px] text-label font-semibold uppercase text-accent${className ? ` ${className}` : ""}`}
+        >
             {children}
         </span>
     );

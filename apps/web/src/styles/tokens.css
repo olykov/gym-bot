@@ -224,3 +224,17 @@
 @utility z-sheet-nested {
     z-index: var(--z-sheet-nested);
 }
+
+/* GYM-141: PR chip appear animation — single accent pulse on mount (spec §9.4).
+ * Scale 0.88 → 1.08 → 1 over ~320ms, opacity 0 → 1. One shot, not looping.
+ * Consumed as `animate-pr-pulse`; callers guard with `motion-reduce:animate-none`.
+ */
+@keyframes pr-pulse {
+    0%   { opacity: 0; transform: scale(0.88); }
+    55%  { opacity: 1; transform: scale(1.08); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@utility animate-pr-pulse {
+    animation: pr-pulse 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}

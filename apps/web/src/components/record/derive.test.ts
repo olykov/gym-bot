@@ -24,7 +24,8 @@ import {
 } from "./derive";
 
 function srv(set: number, weight: number, reps: number): TrainingSet {
-    return { training_id: `t-${set}`, set, weight, reps };
+    // GYM-141: is_pr defaults false in test fixtures; tests that care set it explicitly.
+    return { training_id: `t-${set}`, set, weight, reps, is_pr: false };
 }
 
 function ses(set: number, weight: number, reps: number): SessionSet {

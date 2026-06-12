@@ -16,15 +16,31 @@
  * springs back. The body region is NOT part of the drag zone, so internal
  * scroll is never intercepted.
  *
- * Fit (GYM-54): the panel is capped at a `max-height` of roughly
- * `viewport − top-safe-inset − a margin` and is a flex column. The `children`
- * region scrolls internally (`overflow-y:auto`) so the sheet NEVER clips — a
- * tall editor scrolls inside the panel instead of running off-screen. The
- * caller's own sticky footer (the in-sheet SAVE, `position:sticky; bottom:0`)
- * therefore stays pinned to the bottom of the scroll viewport and is never
- * clipped. This replaces the native Telegram MainButton, which overlaid the
- * WebApp viewport bottom and clipped the sheet's lowest field on real devices
- * (§11.4). The body's bottom padding clears the device/Telegram bottom inset.
+ * Positioning (GYM-143-v2 root fix): ALL sheets are anchored ABOVE the
+ * BottomNav. The wrapper's bottom = --nav-h + safe-area-bottom so the
+ * panel's lowest pixel sits at the nav's top edge. This means no content
+ * (including the SAVE / MOVE SET footer) ever falls behind the fixed nav bar.
+ *
+ * Two height models (GYM-143-v2):
+ *
+ * 1. fixedHeight=true (RecordSheet / RecordPicker — GYM-74):
+ *    The panel has a FIXED height so Phase A ↔ Phase B never causes a height
+ *    jump. Height fills the available vertical space from 24px below the
+ *    header/top-inset down to the nav top. Body is flex-col so inner regions
+ *    distribute the space (recap scrolls; controls are shrink-0 at the bottom).
+ *
+ * 2. Content-sized / default (SetEditor, MoveSetPanel, ManageSheet):
+ *    The panel hugs its content (height: auto). Bounded by max-height = same
+ *    formula as fixedHeight — panel cannot overlap the header. For short content
+ *    the sheet is compact and the footer sits directly under the last field with
+ *    NO dead space. For tall content the panel hits max-height; the body scrolls
+ *    internally; the footer remains visible at the panel's natural bottom edge
+ *    (which is already above the nav via the wrapper positioning).
+ *
+ * GYM-100 / keyboard: fixedHeight sheets expose keyboard height as
+ * --keyboard-pad on the panel for inner slide panels (RecordPicker). Content-
+ * sized sheets absorb keyboard height as paddingBottom on the body — no nav
+ * clearance needed since the wrapper already clears the nav.
  */
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/i18n/catalog";
@@ -41,6 +57,26 @@ const FOCUSABLE_SELECTOR =
     'select:not([disabled]), textarea:not([disabled]), ' +
     '[tabindex]:not([tabindex="-1"])';
 
+/**
+ * The nav + safe-area-bottom clearance applied to the wrapper's bottom
+ * (GYM-143-v2). Positions ALL sheets above the BottomNav.
+ */
+const NAV_CLEAR =
+    "calc(var(--nav-h) + max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)))";
+
+/**
+ * Max usable sheet height: from 24px below the header/top-inset to the nav top
+ * (accounting for bottom safe area). Used as `height` for fixedHeight and
+ * `max-height` for content-sized sheets.
+ */
+const SHEET_MAX_HEIGHT =
+    "calc(100dvh" +
+    " - max(env(safe-area-inset-top), var(--tg-content-top, 0px))" +
+    " - var(--header-h)" +
+    " - var(--nav-h)" +
+    " - max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px))" +
+    " - 24px)";
+
 interface BottomSheetProps {
     open: boolean;
     onClose: () => void;
@@ -48,9 +84,13 @@ interface BottomSheetProps {
     titleId?: string;
     /**
      * When true the sheet is given a FIXED height (not just a max-height) so
-     * the panel never jumps between content states. The height is computed to
-     * sit below the fixed AppShell header and above the safe-area bottom so
-     * it never overlaps either chrome bar (spec §12.2 GYM-74).
+     * the panel never jumps between content states. The height fills the
+     * available vertical space between the AppShell header and the BottomNav
+     * (spec §12.2 GYM-74). Use for the record sheet (Phase A ↔ Phase B).
+     *
+     * Default (false): the panel is CONTENT-SIZED (height: auto) bounded by
+     * max-height. Short sheets (SetEditor, MoveSetPanel) hug their content;
+     * no dead space; the footer sits right under the last field with no gap.
      */
     fixedHeight?: boolean;
     /**
@@ -69,8 +109,8 @@ interface BottomSheetProps {
     layer?: "sheet" | "sheet-nested";
     /**
      * Sheet body. Scrolls internally when the sheet hits its max-height; the
-     * caller may pin its own sticky footer (the SAVE) with
-     * `position:sticky; bottom:0` so it stays at the panel bottom (§11.4).
+     * caller places its own footer after the scroll region so it is always
+     * visible regardless of content height.
      *
      * GYM-100: In fixedHeight mode the body region itself does NOT add the
      * keyboard padding — instead the computed keyboard height is exposed as the
@@ -209,14 +249,16 @@ export function BottomSheet({
                 style={scrimStyle}
             />
 
-            {/* Panel: bottom-anchored, container-width. A flex column capped at
-                ~viewport − top-safe-inset − margin so it never grows past the
-                screen; the body region scrolls internally so nothing is ever
-                clipped, and a caller's sticky footer stays pinned (GYM-54).
-                When fixedHeight=true the height is fixed (not max) so the panel
-                never jumps between content states — it sits strictly below the
-                AppShell header (GYM-74). */}
-            <div className="absolute inset-x-0 bottom-0 flex justify-center">
+            {/* Wrapper: anchored ABOVE the BottomNav (GYM-143-v2 root fix).
+                bottom = --nav-h + safe-area-bottom so the panel's lowest pixel
+                sits at the nav's top edge. The drag gesture translates the panel
+                element via panelStyle (not this wrapper) so positioning is stable
+                during drags. The scrim is a sibling of this wrapper (inside the
+                fixed overlay) so it covers the full viewport including the nav. */}
+            <div
+                className="absolute inset-x-0 flex justify-center"
+                style={{ bottom: NAV_CLEAR }}
+            >
                 <div
                     ref={panelRef}
                     role="dialog"
@@ -227,23 +269,26 @@ export function BottomSheet({
                     style={{
                         ...(fixedHeight
                             ? {
-                                  // Fixed height: sits strictly below the AppShell header AND
-                                  // above the fixed BottomNav (GYM-140).
-                                  // = viewport − (safe-area/Telegram content top) − header-h − nav-h − 24px margin.
-                                  // Subtracting --nav-h ensures the sheet's bottom edge clears the
-                                  // nav (always visible while this sheet is open), so controls
-                                  // at the base of the flex column are never hidden under it.
-                                  height: "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - var(--header-h) - var(--nav-h) - 24px)",
-                                  // GYM-100: expose keyboard height as a CSS var so inner slide panels
-                                  // (RecordPicker) can apply it as their paddingBottom. The body region
-                                  // of a fixedHeight sheet does NOT add keyboardPad itself because the
-                                  // RecordPicker's overflow:hidden boundary traps the padding outside
-                                  // the panels' scroll containers, making scrollIntoView ineffective.
+                                  // Fixed height: fills the entire space from 24px below
+                                  // the header/top-inset down to the nav top.
+                                  // The wrapper bottom already positions the panel above
+                                  // the nav so no nav subtraction is needed here.
+                                  height: SHEET_MAX_HEIGHT,
+                                  // GYM-100: expose keyboard height as a CSS var so inner
+                                  // slide panels (RecordPicker) can apply it as their
+                                  // paddingBottom. The fixedHeight body does NOT add
+                                  // keyboardPad because the RecordPicker overflow:hidden
+                                  // boundary would trap the padding outside the scroll
+                                  // containers, making scrollIntoView ineffective.
                                   ["--keyboard-pad" as string]: `${keyboardPad}px`,
                               }
                             : {
-                                  maxHeight:
-                                      "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - 24px)",
+                                  // Content-sized: hugs content, bounded by max-height.
+                                  // Short content → compact sheet, footer right after last
+                                  // field, zero dead space.
+                                  // Tall content → hits max-height, body scrolls, footer
+                                  // visible (panel bottom is above the nav via wrapper).
+                                  maxHeight: SHEET_MAX_HEIGHT,
                               }),
                         // GYM-120: drag translate / snap-back transition.
                         ...panelStyle,
@@ -265,28 +310,24 @@ export function BottomSheet({
                     </div>
 
                     {/* Body region: scrolls internally so the sheet NEVER clips a
-                        tall editor, and a caller's sticky footer stays pinned
-                        (§11.4, GYM-54). When the sheet is fixedHeight the body
-                        is also flex-col so flex children (e.g. RecordPicker) can
-                        fill the available space with their own overflow handling.
+                        tall editor (§11.4, GYM-54). When the sheet is fixedHeight
+                        the body is also flex-col so flex children (e.g. RecordPicker)
+                        can fill the available space with their own overflow handling.
                         GYM-100: for fixedHeight sheets the keyboard padding is NOT
                         applied here — it is set as --keyboard-pad on the panel
-                        element and consumed directly by inner scroll containers. */}
+                        element and consumed by inner scroll containers.
+                        GYM-143-v2: for content-sized sheets the body paddingBottom
+                        only clears keyboard height (no nav clearance needed — the
+                        wrapper already positions the panel above the nav). */}
                     <div
                         className={`min-h-0 flex-1 overflow-y-auto px-4 ${fixedHeight ? "flex flex-col" : ""}`}
                         style={
                             fixedHeight
                                 ? undefined
                                 : {
-                                      // Non-fixedHeight sheets: paddingBottom must clear
-                                      // (a) the fixed BottomNav (--nav-h, always visible while
-                                      //     the sheet is open — GYM-140), so the SheetSaveButton
-                                      //     sticky at `bottom: var(--nav-h)` has room to anchor,
-                                      // (b) the device/Telegram bottom safe-area, and
-                                      // (c) keyboard height so the focused input scrolls clear.
                                       paddingBottom: keyboardPad > 0
-                                          ? `calc(var(--nav-h) + ${keyboardPad + 12}px)`
-                                          : "calc(var(--nav-h) + max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",
+                                          ? `${keyboardPad + 12}px`
+                                          : "12px",
                                   }
                         }
                     >
