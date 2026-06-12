@@ -341,7 +341,13 @@ export function BottomSheet({
                         className="shrink-0 touch-none pt-3"
                         {...handleProps}
                     >
-                        <div className="mx-auto mb-4 h-1 w-12 rounded-full bg-hairline" />
+                        {/* GYM-150: width via a literal value, NOT w-12. The theme
+                            sets `--spacing: initial` and enumerates only
+                            --spacing-0/1/2/3/4/6/8, so `w-12` never generates → the
+                            handle had NO width and stretched to the full panel width,
+                            painting bg-hairline as a full-width 4px STRIP across the
+                            sheet header. w-[2.5rem] always generates. */}
+                        <div className="mx-auto mb-4 h-1 w-[2.5rem] rounded-full bg-hairline" />
                     </div>
 
                     {/* Body region: scrolls internally so the sheet NEVER clips a
