@@ -18,8 +18,8 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: []
-commits: [28ba3fa, 2434084]
-tests: []
+commits: [92b5474]
+tests: [apps/api/tests/test_gym141_142_day_detail.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -106,7 +106,7 @@ Semantics: "current all-time max" (not "was a PR when logged"). Ties — includi
 the same day — all receive `is_pr=True`. A heavier set logged later moves the flag to every row at
 the new max on any day.
 
-Branch: `fix/gym-141-142-impl`. Tests in `apps/api/tests/test_gym141_142_day_detail.py`:
+Branch: `fix/gym-141-142-impl`. Tests in `apps/api/apps/api/tests/test_gym141_142_day_detail.py`:
   - test_set_at_alltime_max_is_pr_true
   - test_lighter_set_is_pr_false
   - test_ties_all_flagged

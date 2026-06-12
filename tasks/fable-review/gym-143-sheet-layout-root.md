@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-140]
-commits: [dd4b199]
+commits: [92b5474]
 tests: []
 design_reports: []
 review_reports: []

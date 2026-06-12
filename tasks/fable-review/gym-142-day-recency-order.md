@@ -18,11 +18,8 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-139]
-commits: [28ba3fa]
-tests:
-  - tests/test_gym141_142_day_detail.py::TestRecencyOrder::test_two_exercises_ordered_by_recency
-  - tests/test_gym141_142_day_detail.py::TestRecencyOrder::test_sets_within_exercise_still_ascending
-  - tests/test_gym141_142_day_detail.py::TestRecencyOrder::test_single_exercise_day_returns_correctly
+commits: [92b5474]
+tests: [apps/api/tests/test_gym141_142_day_detail.py]
 design_reports: []
 review_reports: []
 review: {}
