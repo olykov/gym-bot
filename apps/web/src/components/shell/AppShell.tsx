@@ -68,8 +68,11 @@ export function AppShell() {
 
             <AppHeader title={title} />
 
-            {/* Only the Container scrolls (spec §2 scroll model). */}
-            <div className="relative z-10 h-full">
+            {/* Only the Container scrolls (spec §2 scroll model).
+                GYM-148: .shell-content is targeted by the sheet-open page-scale
+                de-emphasis rule in index.css — the content layer (not chrome)
+                subtly scales back when any sheet is open, creating depth. */}
+            <div className="shell-content relative z-10 h-full">
                 <Container ref={mainRef} reveal={reveal} replayKey={replayKey}>
                     <RecordSheetContext.Provider value={recordSheetValue}>
                         <Outlet />

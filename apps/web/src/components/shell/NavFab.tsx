@@ -40,7 +40,7 @@ export function NavFab({ onRecord }: NavFabProps) {
             type="button"
             aria-label={t("nav.recordTraining")}
             onClick={handlePress}
-            className="press-95 absolute left-1/2 z-10 flex items-center justify-center rounded-full bg-accent shadow-card"
+            className="fab-btn press-95 absolute left-1/2 z-10 flex items-center justify-center rounded-full bg-accent shadow-card"
             style={{
                 width: FAB_SIZE,
                 height: FAB_SIZE,

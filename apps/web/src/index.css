@@ -295,12 +295,24 @@
 }
 
 .sheet-scrim {
-    background: rgba(0, 0, 0, 0.45);
+    /* GYM-148: increased opacity so the scrim reads as a clear focus layer.
+     * The page-behind de-emphasis is handled via the scale+dim on the content
+     * wrapper (see :root[data-sheet-open] rule below). */
+    background: rgba(0, 0, 0, 0.55);
     animation: sheet-fade 200ms var(--ease-out-soft) forwards;
 }
 
 .sheet-panel {
-    box-shadow: var(--shadow-card);
+    /* GYM-147: inset box-shadow replaces border-t border-hairline on the
+     * panel. A CSS border on a rounded-t-lg corner anti-aliases to a bright
+     * white sliver in dark mode (the browser blends the hairline color against
+     * the viewport behind it, not the panel surface). An inset shadow is
+     * composited AGAINST the panel's own bg-bg surface, so it stays subtle in
+     * both light and dark. 1px inset, hint-at-10% — visually identical to the
+     * hairline token in light, and correct in dark (no white artifact). */
+    box-shadow:
+        var(--shadow-card),
+        inset 0 1px 0 0 color-mix(in srgb, var(--hint) 10%, transparent);
     animation: sheet-rise 240ms var(--ease-out-soft) forwards;
 }
 
@@ -484,6 +496,46 @@
     animation: pr-banner var(--dur-pr-banner) var(--ease-out-soft) both;
 }
 
+/* GYM-148: de-emphasize page content behind an open sheet.
+ *
+ * Technique: scale the content layer to 0.97 + dim to 0.82 opacity.
+ * This creates a "card coming forward" depth perception — the sheet reads as
+ * the focused layer without backdrop-filter blur (which is janky on low-end
+ * Android Telegram WebViews). The transition is 220ms, same ease as the scrim.
+ *
+ * Scope: .shell-content only (the scrollable content area — NOT the header
+ * or bottom-nav, which should remain visually anchored while the sheet is open).
+ *
+ * Performance notes:
+ * - transform + opacity are GPU-composited (no layout/paint cost).
+ * - backdrop-filter intentionally avoided — forces a compositor layer on
+ *   every frame and is known to stutter on Snapdragon 400/600 series.
+ * - graceful fallback: if transform is unsupported, only opacity applies
+ *   (already functional as a plain dim).
+ *
+ * prefers-reduced-motion: the scale is motion — disabled below. Opacity dim
+ * is retained (it is information, not decoration) but instant (no transition).
+ */
+:root[data-sheet-open] .shell-content {
+    transform: scale(0.97);
+    opacity: 0.82;
+    transition:
+        transform 220ms var(--ease-out-soft),
+        opacity 220ms var(--ease-out-soft);
+    transform-origin: top center;
+    will-change: transform, opacity;
+}
+
+/* GYM-145: suppress the NavFab while any BottomSheet is open.
+ * BottomSheet sets data-sheet-open="1" on <html> via a ref-counted
+ * acquireSheetOpen() so nested sheets work correctly. The FAB is hidden
+ * (not disabled) — it becomes visible again the moment the last sheet closes.
+ * visibility:hidden keeps the layout slot intact (no jump); opacity:0 would
+ * still be clickable; display:none would reflow the nav — visibility is correct. */
+:root[data-sheet-open] .fab-btn {
+    visibility: hidden;
+}
+
 /* Active-tab indicator + press micro-interaction (spec §9.4). */
 .press-95 {
     transition: transform 80ms var(--ease-out-soft);
@@ -506,6 +558,14 @@
  * Reduced motion (spec §9.4, mandatory) — kill all motion, keep instant state.
  * ------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
+    /* GYM-148: under reduced motion, keep the opacity dim (informational) but
+     * remove the scale (motion) and the transition (instant state change). */
+    :root[data-sheet-open] .shell-content {
+        transform: none;
+        opacity: 0.82;
+        transition: none;
+        will-change: auto;
+    }
     .reveal-stagger > * {
         opacity: 1;
         animation: none;

@@ -1,5 +1,7 @@
 node_modules/
 dist/
+verify-screenshots/
+verify-*.mjs
 .env
 .env.*
 .DS_Store

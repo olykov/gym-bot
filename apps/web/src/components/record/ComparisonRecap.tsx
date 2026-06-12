@@ -141,14 +141,13 @@ export function ComparisonRecap({
 
     return (
         <>
-            {/* Column headers — tiny uppercase hint labels (TODAY | LAST TIME). */}
-            <div
-                className={`${GRID} text-label uppercase tracking-wide text-hint`}
-            >
-                <span />
+            {/* GYM-146: column headers on ONE shared baseline row.
+             * TODAY flush-left, LAST TIME flush-right — a simple flex row
+             * guarantees both labels sit on the same text baseline regardless
+             * of the underlying 4-column data grid. */}
+            <div className="flex items-baseline justify-between text-label uppercase tracking-wide text-hint">
                 <span>{t("recap.today")}</span>
-                <span />
-                <span className="text-right">{t("recap.lastTime")}</span>
+                <span>{t("recap.lastTime")}</span>
             </div>
             <div className="mt-2 flex flex-col divide-y divide-hairline">
                 {rows.map((row) => (

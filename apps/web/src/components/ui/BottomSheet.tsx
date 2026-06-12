@@ -48,6 +48,24 @@ import { pushBackHandler } from "@/telegram/webapp";
 import { useSheetDrag } from "./useSheetDrag";
 
 /**
+ * GYM-145: module-level reference counter for open sheets.
+ * When the count is > 0, data-sheet-open="1" is set on <html>; CSS uses this
+ * to suppress the NavFab (.fab-btn) so it does not poke through the scrim.
+ * A ref-count (not boolean) handles nested sheets correctly.
+ */
+let sheetCount = 0;
+function acquireSheetOpen(): () => void {
+    if (++sheetCount === 1) {
+        document.documentElement.dataset.sheetOpen = "1";
+    }
+    return () => {
+        if (--sheetCount === 0) {
+            delete document.documentElement.dataset.sheetOpen;
+        }
+    };
+}
+
+/**
  * Elements a Tab press may land on inside the panel (GYM-125 #4). Queried at
  * keydown time — not cached — so rows that mount/unmount while the sheet is
  * open are always covered.
@@ -139,6 +157,14 @@ export function BottomSheet({
         panelRef,
         onClose,
     );
+
+    // GYM-145: register this sheet in the global open-count so the NavFab is
+    // suppressed (via data-sheet-open on <html>) whenever any sheet is open.
+    // Runs once when open transitions true → false / component unmounts.
+    useEffect(() => {
+        if (!open) return;
+        return acquireSheetOpen();
+    }, [open]);
 
     // GYM-82: track the software keyboard height via visualViewport so the
     // sheet's scroll container can pad its bottom and keep the focused add-input
@@ -265,7 +291,7 @@ export function BottomSheet({
                     aria-modal="true"
                     aria-labelledby={titleId}
                     tabIndex={-1}
-                    className="sheet-panel flex w-full max-w-container flex-col rounded-t-lg border-t border-hairline bg-bg outline-none"
+                    className="sheet-panel flex w-full max-w-container flex-col rounded-t-lg bg-bg outline-none"
                     style={{
                         ...(fixedHeight
                             ? {
