@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-130]
-commits: [ca383e1]
+commits: [87ca6ee]
 tests: []
 design_reports: []
 review_reports: []
@@ -54,4 +54,4 @@ shared text baseline, independent of the underlying data grid columns.
 
 ### 2026-06-12T22:00:00Z — done
 Playwright measured Y-diff = 0.0px at both 393x852 and 375x667.
-Screenshot shows "Today" flush-left and "Last time" flush-right on same row. Commit ca383e1.
+Screenshot shows "Today" flush-left and "Last time" flush-right on same row. Commit 87ca6ee.

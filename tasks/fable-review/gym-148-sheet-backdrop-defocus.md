@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: [GYM-145]
 blocks: []
 related: [GYM-143, GYM-145]
-commits: [ca383e1]
+commits: [87ca6ee]
 tests: []
 design_reports: []
 review_reports: []
@@ -77,4 +77,4 @@ de-emphasis. No per-sheet wiring needed.
 ### 2026-06-12T22:00:00Z — done
 Playwright confirmed: .shell-content transform=applied, opacity=0.82 when sheet open.
 Screenshots show visible depth separation between page and sheet at both viewports.
-Commit ca383e1.
+Commit 87ca6ee.

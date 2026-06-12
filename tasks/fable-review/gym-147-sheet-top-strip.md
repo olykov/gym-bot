@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-143]
-commits: [ca383e1]
+commits: [87ca6ee]
 tests: []
 design_reports: []
 review_reports: []
@@ -56,4 +56,4 @@ artifact). Visually identical to the hairline border in light mode.
 ### 2026-06-12T22:00:00Z — done
 Panel border-top=0px confirmed by Playwright. Inset box-shadow composites against
 panel surface — no bright edge artifact. Screenshots show clean dark rounded top.
-Commit ca383e1.
+Commit 87ca6ee.

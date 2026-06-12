@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-143, GYM-148]
-commits: [ca383e1]
+commits: [87ca6ee]
 tests: []
 design_reports: []
 review_reports: []
@@ -59,4 +59,4 @@ BottomNav) while making it non-interactive and non-visible.
 ### 2026-06-12T22:00:00Z — done
 Implemented and verified. Green gate: lint 0 warnings, 198 tests pass, Vite build clean.
 Headless Playwright at 393x852 and 375x667: FAB visibility:hidden while sheet open,
-visible again after close. Commit ca383e1.
+visible again after close. Commit 87ca6ee.
