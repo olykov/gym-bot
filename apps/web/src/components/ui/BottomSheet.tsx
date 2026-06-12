@@ -16,15 +16,16 @@
  * springs back. The body region is NOT part of the drag zone, so internal
  * scroll is never intercepted.
  *
- * Fit (GYM-54): the panel is capped at a `max-height` of roughly
- * `viewport − top-safe-inset − a margin` and is a flex column. The `children`
- * region scrolls internally (`overflow-y:auto`) so the sheet NEVER clips — a
- * tall editor scrolls inside the panel instead of running off-screen. The
- * caller's own sticky footer (the in-sheet SAVE, `position:sticky; bottom:0`)
- * therefore stays pinned to the bottom of the scroll viewport and is never
- * clipped. This replaces the native Telegram MainButton, which overlaid the
- * WebApp viewport bottom and clipped the sheet's lowest field on real devices
- * (§11.4). The body's bottom padding clears the device/Telegram bottom inset.
+ * Fit (GYM-54 / GYM-143): sheets that contain a sticky SAVE footer (SetEditor,
+ * MoveSetPanel) use `fixedHeight=true` — the panel has a fixed, bounded height
+ * that clears both the AppShell header AND the BottomNav; the body is a flex
+ * column whose children fill and distribute the available space. A SAVE button
+ * at the bottom of the flex column uses `mt-auto` to stay anchored there for
+ * short content, or scrolls into view for tall content. This eliminates both
+ * the "REPS clipped behind SAVE" defect (GYM-143) and the dead-space-below-SAVE
+ * issue — neither sticky-padding nor dead space needed. Non-fixedHeight sheets
+ * (ManageSheet, etc.) have no SAVE footer; their body padding only clears the
+ * nav + safe-area.
  */
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/i18n/catalog";
@@ -280,10 +281,16 @@ export function BottomSheet({
                                 : {
                                       // Non-fixedHeight sheets: paddingBottom must clear
                                       // (a) the fixed BottomNav (--nav-h, always visible while
-                                      //     the sheet is open — GYM-140), so the SheetSaveButton
-                                      //     sticky at `bottom: var(--nav-h)` has room to anchor,
+                                      //     the sheet is open — GYM-140), so content is not
+                                      //     hidden under the nav,
                                       // (b) the device/Telegram bottom safe-area, and
                                       // (c) keyboard height so the focused input scrolls clear.
+                                      // GYM-143: sheets with a sticky SAVE footer (SetEditor,
+                                      // MoveSetPanel) now use fixedHeight=true and the
+                                      // flex-column model — they do NOT rely on this padding
+                                      // to clear the SAVE button. Non-fixedHeight sheets
+                                      // (ManageSheet, etc.) have no SAVE-type sticky footer
+                                      // and only need the nav + safe-area clearance below.
                                       paddingBottom: keyboardPad > 0
                                           ? `calc(var(--nav-h) + ${keyboardPad + 12}px)`
                                           : "calc(var(--nav-h) + max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",

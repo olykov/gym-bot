@@ -1,44 +1,31 @@
 /**
  * The set editor (spec §11.4, GYM-51 v2) — the contents of the <BottomSheet>.
- * Two <Stepper>s (Weight / Reps), a sticky in-sheet SAVE button, a secondary
- * two-step Delete confirm, and a new "Move" action (GYM-51).
+ * Two <Stepper>s (Weight / Reps), a pinned SAVE button, a secondary two-step
+ * Delete confirm, and a "Move" action (GYM-51).
  *
  * Modes:
- *   "edit"  — default, shows weight/reps steppers + Save + Delete (unchanged)
+ *   "edit"  — default, shows weight/reps steppers + Save + Delete
  *   "move"  — tapping "Move" swaps the body for <MoveSetPanel>; header stays.
- *   "confirmDelete" — in-sheet confirm before delete (unchanged)
+ *   "confirmDelete" — in-sheet confirm before delete
  *
- * Edit + delete are optimistic via the useTraining mutations; move is via
- * useMoveSet (optimistic removal from source day). The parent owns the day
- * `date` (the query key) and the close.
+ * GYM-143 (root-cause fix): SetEditor's parent <BottomSheet> now uses
+ * fixedHeight=true. The root div is flex-col flex-1 min-h-0, filling the
+ * fixed panel body. The body region (mode-specific content) is flex-1
+ * min-h-0 overflow-y-auto so it scrolls internally if needed. SheetSaveButton
+ * uses mt-auto to anchor at the bottom of its flex column — short content
+ * → SAVE pinned at panel bottom (no dead space); tall content → SAVE scrolls
+ * into view below the last field (no overlap, no clipping). No sticky needed.
  *
- * Validation (§11.7): Save is enabled only when weight & reps are valid
- * (non-empty, non-negative, reps integer) AND changed from the original.
- * Weight steps 2.5kg and accepts decimals (comma-normalized); reps is integer.
+ * Delete is never one-tap: tapping the header "Delete" swaps in an in-sheet
+ * "Delete this set?" Cancel/Delete confirm with a warning haptic (§11.4).
+ * The accent Delete lives in the HEADER row, spatially separated from the
+ * bottom SAVE so it is not mis-tapped (§11.7).
  *
- * SAVE is an in-sheet sticky button (`position:sticky; bottom:var(--nav-h)`),
- * NOT the Telegram native MainButton (GYM-54). The MainButton overlaid the
- * WebApp viewport bottom and, inside a bottom-sheet, clipped the sheet's lowest
- * field on real devices (it caused GYM-53 #1 + this bug). Using bottom:--nav-h
- * (GYM-140) keeps the button above the always-visible BottomNav; the
- * BottomSheet body's paddingBottom also reserves --nav-h space so the sticky
- * anchor has room to work. Weight + Reps + Save + Delete are all reachable and
- * nothing is ever clipped or hidden under the nav.
- *
- * Delete is never one-tap: tapping the header "Delete" control swaps in an
- * in-sheet "Delete this set?" Cancel/Delete confirm with a warning haptic
- * (§11.4). The accent Delete lives in the HEADER row, spatially separated from
- * the bottom SAVE so it is not mis-tapped.
- *
- * GYM-140 fixes:
- * - Confirm buttons: added `flex items-center justify-center` for reliable
- *   vertical text centering across all Android WebViews.
- * - Delete button in confirm step: uses `bg-accent text-button-text` (solid
- *   accent fill) instead of `bg-accent-weak text-accent` for clear visibility.
- * - Header Move/Delete triggers: removed negative margins (`-mr-*`) that could
- *   cause subtle clipping at the sheet panel edge.
- * - Added a sticky SheetSaveButton-style anchor in confirmDelete mode so the
- *   confirm buttons are always visible near the bottom of the sheet.
+ * GYM-140 fixes (retained):
+ * - Confirm buttons: `flex items-center justify-center` for reliable vertical
+ *   text centering across all Android WebViews.
+ * - Delete button in confirm step: `bg-accent text-button-text` (solid fill).
+ * - Header Move/Delete triggers: no negative margins that could cause clipping.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/i18n/catalog";
@@ -119,8 +106,6 @@ export function SetEditor({
             { trainingId: set.training_id, body: { weight, reps } },
             {
                 onSuccess: () => hapticNotification("success"),
-                // GYM-52: rollback is silent without this — notify the parent so
-                // it can surface "Couldn't save — restored." to the user.
                 onError: () => onEditError?.(),
             },
         );
@@ -137,13 +122,8 @@ export function SetEditor({
     function confirmDelete(): void {
         del.mutate(set.training_id, {
             onSuccess: () => hapticNotification("success"),
-            // GYM-52: rollback is silent without this — notify the parent so
-            // it can surface "Couldn't delete — restored." to the user.
             onError: () => onDeleteError?.(),
         });
-        // Optimistic: the onMutate cache patch has already removed the row, so
-        // close and let the page decide (from the live cache) whether the day
-        // is now empty and it should navigate back (spec §11.3).
         onClose();
         onDeleted();
     }
@@ -153,46 +133,20 @@ export function SetEditor({
         [t, set.set],
     );
 
-    // Move mode — delegates entirely to MoveSetPanel.
-    if (mode === "move") {
-        return (
-            <div>
-                {/* Header retained in move mode so the user knows which set. */}
-                <div className="mb-4 min-w-0">
-                    <h2
-                        id={titleId}
-                        className="truncate text-base font-semibold text-text"
-                    >
-                        {exerciseName}
-                    </h2>
-                    <p className="text-label uppercase tracking-wide text-hint">
-                        {headerSub}
-                    </p>
-                </div>
-                <MoveSetPanel
-                    date={date}
-                    exerciseName={exerciseName}
-                    muscleName={muscleName}
-                    set={set}
-                    onMoved={() => {
-                        onClose();
-                        onDeleted(); // the set left the source day — same post-delete check
-                    }}
-                    onCancel={() => setMode("edit")}
-                />
-            </div>
-        );
-    }
-
+    // GYM-143: root is flex-col flex-1 min-h-0 — fills the fixedHeight panel
+    // body (which is itself flex-col). Header is shrink-0 at the top; the body
+    // region (edit/confirm/move) is flex-1 min-h-0 overflow-y-auto so tall
+    // content scrolls internally. SheetSaveButton uses mt-auto (built into the
+    // component) to anchor at the flex bottom — short content: SAVE pinned at
+    // panel bottom; tall content: SAVE after last field, scrolls into view.
     return (
-        <div>
+        <div className="flex min-h-0 flex-1 flex-col">
             {/* Header row: read-only identity (§11.4) + Delete + Move actions.
                Both Delete and Move live HERE, in the header, spatially separated
                from the bottom SAVE so they are not mis-tapped (§11.7).
-               GYM-140: removed negative margins (-mr-*) that could clip the
-               buttons at the sheet panel edge; kept inline-flex + items-center
-               for reliable vertical centering on Android WebViews. */}
-            <div className="mb-4 flex items-start justify-between gap-3">
+               GYM-140: no negative margins; inline-flex + items-center for
+               reliable vertical centering on Android WebViews. */}
+            <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
                 <div className="min-w-0">
                     <h2
                         id={titleId}
@@ -240,65 +194,82 @@ export function SetEditor({
                 )}
             </div>
 
-            {/* Two-step confirm (§11.4 / §11.7) — in-sheet confirm before delete.
-               GYM-140: buttons get `flex items-center justify-center` for reliable
-               vertical text centering; Delete uses `bg-accent text-button-text`
-               (solid accent fill) for clear visibility on all devices. The confirm
-               block is followed by a sticky spacer at the bottom so the buttons
-               never scroll below the safe-area on small devices. */}
-            {mode === "confirmDelete" && (
-                <div>
-                    <div className="rounded-md border border-hairline bg-secondary-bg p-4">
-                        <p className="mb-4 text-base text-text">
-                            {t("editor.deleteThisSet")}
-                        </p>
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setMode("edit")}
-                                className="press-95 flex min-h-[48px] flex-1 items-center justify-center rounded-md border border-hairline bg-bg text-base text-text"
-                            >
-                                {t("common.cancel")}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={confirmDelete}
-                                disabled={del.isPending}
-                                className="press-95 flex min-h-[48px] flex-1 items-center justify-center rounded-md bg-accent text-base font-semibold text-button-text disabled:opacity-50"
-                            >
-                                {t("common.delete")}
-                            </button>
+            {/* Body region: flex-1 min-h-0 overflow-y-auto — all mode-specific
+               content scrolls internally if it exceeds the available height.
+               GYM-143: this is the scroll container, NOT the panel body, so
+               SheetSaveButton's mt-auto is relative to the flex column here. */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                {/* Two-step confirm (§11.4 / §11.7). GYM-140: buttons use
+                   `flex items-center justify-center`; Delete is `bg-accent
+                   text-button-text` (solid fill) for clear visibility. */}
+                {mode === "confirmDelete" && (
+                    <>
+                        <div className="rounded-md border border-hairline bg-secondary-bg p-4">
+                            <p className="mb-4 text-base text-text">
+                                {t("editor.deleteThisSet")}
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setMode("edit")}
+                                    className="press-95 flex min-h-[48px] flex-1 items-center justify-center rounded-md border border-hairline bg-bg text-base text-text"
+                                >
+                                    {t("common.cancel")}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={confirmDelete}
+                                    disabled={del.isPending}
+                                    className="press-95 flex min-h-[48px] flex-1 items-center justify-center rounded-md bg-accent text-base font-semibold text-button-text disabled:opacity-50"
+                                >
+                                    {t("common.delete")}
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                    {/* Sticky bottom spacer — mirrors SheetSaveButton's height so
-                       the confirm buttons above it are always visible and not
-                       scrolled under the safe-area (GYM-140). */}
-                    <div className="sticky bottom-0 -mx-4 h-6 bg-bg" />
-                </div>
-            )}
+                    </>
+                )}
 
-            {mode === "edit" && (
-                <>
-                    <div className="flex flex-col gap-6">
-                        <Stepper
-                            label={t("label.weight")}
-                            unit={t("unit.kg")}
-                            {...form.weightProps}
-                        />
-                        <Stepper label={t("label.reps")} {...form.repsProps} />
-                    </div>
+                {mode === "edit" && (
+                    <>
+                        <div className="flex flex-col gap-6">
+                            <Stepper
+                                label={t("label.weight")}
+                                unit={t("unit.kg")}
+                                {...form.weightProps}
+                            />
+                            <Stepper label={t("label.reps")} {...form.repsProps} />
+                        </div>
 
-                    {/* Sticky in-sheet SAVE (§11.4, GYM-54) — the shared
-                       <SheetSaveButton>, pinned to the bottom of the sheet's scroll
-                       viewport so it never clips (replaces the native MainButton).
-                       Disabled when unchanged/invalid (same logic as before). */}
-                    <SheetSaveButton
-                        label={t("common.save")}
-                        onClick={save}
-                        disabled={!canSave}
+                        {/* GYM-143: mt-auto wrapper pushes SAVE to the bottom
+                           of this flex column. Short content → SAVE at panel
+                           bottom, no dead space. Tall content → scrolls into
+                           view after the last stepper, no clipping/overlap. */}
+                        <div className="mt-auto">
+                            <SheetSaveButton
+                                label={t("common.save")}
+                                onClick={save}
+                                disabled={!canSave}
+                            />
+                        </div>
+                    </>
+                )}
+
+                {/* Move mode — header is retained above; MoveSetPanel fills
+                   the body region (it is also flex-col flex-1 min-h-0). */}
+                {mode === "move" && (
+                    <MoveSetPanel
+                        date={date}
+                        exerciseName={exerciseName}
+                        muscleName={muscleName}
+                        set={set}
+                        onMoved={() => {
+                            onClose();
+                            onDeleted();
+                        }}
+                        onCancel={() => setMode("edit")}
                     />
-                </>
-            )}
+                )}
+            </div>
         </div>
     );
 }

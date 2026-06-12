@@ -185,10 +185,16 @@ export function HistoryDay() {
                 </Card>
             ))}
 
+            {/* GYM-143: fixedHeight=true so the panel has a bounded, fixed
+               height (clears both AppShell header and BottomNav). SetEditor
+               fills the body via flex-col flex-1 min-h-0 — the flex-column
+               model eliminates both the REPS-behind-SAVE overlap and the
+               dead-space-below-SAVE issue without any sticky/padding tricks. */}
             <BottomSheet
                 open={target !== null}
                 onClose={closeEditor}
                 titleId="set-editor-title"
+                fixedHeight
             >
                 {target ? (
                     <SetEditor
