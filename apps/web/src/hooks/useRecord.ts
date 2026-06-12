@@ -23,31 +23,19 @@ import {
 import {
     createExercise,
     createMuscle,
-    deleteExercise,
-    deleteMuscle,
     fetchExercises,
-    fetchHiddenExercises,
-    fetchHiddenMuscles,
+    fetchExerciseTrend,
     fetchLogContext,
     fetchTopExercises,
     fetchTopMuscles,
-    hideExercise,
-    hideMuscle,
-    moveExercise,
-    renameExercise,
-    renameMuscle,
     searchExercises,
-    unhideExercise,
-    unhideMuscle,
     type Exercise,
     type ExerciseCandidate,
     type ExerciseCreate,
-    type ExerciseMove,
-    type ExerciseRename,
+    type ExerciseTrend,
     type LogContext,
     type Muscle,
     type MuscleCreate,
-    type MuscleRename,
 } from "@/api/analytics";
 import { fetchTrainingDay } from "@/api/training";
 import {
@@ -55,6 +43,7 @@ import {
     type Training,
     type TrainingCreate,
 } from "@/api/training";
+import { queryKeys } from "@/api/queryKeys";
 
 /** Pull-all sentinel for a muscle's exercises (mirrors useAnalytics). */
 const TOP_EXERCISES_LIMIT = 200;
@@ -68,14 +57,11 @@ const TOP_EXERCISES_LIMIT = 200;
 const SESSION_STALE = 10 * 60_000;
 const SESSION_GC = 10 * 60_000;
 
-/** Query key for one exercise's log-context on a date. */
-export function logContextKey(
-    muscle: string | null,
-    exercise: string | null,
-    date: string,
-) {
-    return ["analytics", "log-context", muscle, exercise, date] as const;
-}
+/**
+ * Query key for one exercise's log-context on a date — re-exported from the
+ * central queryKeys factory (GYM-126) so existing imports keep working.
+ */
+export const logContextKey = queryKeys.analytics.logContext;
 
 /**
  * The single Phase-B read (§12.3): completed set numbers + last session's sets +
@@ -108,14 +94,50 @@ export function useLogContext(
     });
 }
 
+/** Trailing window (weeks) for the SetLogger e1RM trend sparkline (GYM-135). */
+export const TREND_WEEKS = 8;
+
+/**
+ * GYM-135: the e1RM trend feeding the SetLogger sparkline + trend chip
+ * (`GET /analytics/exercise-trend`, GYM-134). Mounted only inside Phase B
+ * (TrendSparkline), so it fires alongside log-context on entry and never
+ * delays stepper interactivity — the steppers render independently of it.
+ * Normal SESSION staleTime: a save invalidates `exerciseTrendPrefix`, which
+ * marks the key stale and refetches the active query regardless of staleTime.
+ */
+export function useExerciseTrend(
+    muscle: string | null,
+    exercise: string | null,
+) {
+    return useQuery<ExerciseTrend>({
+        queryKey: queryKeys.analytics.exerciseTrend(
+            muscle,
+            exercise,
+            TREND_WEEKS,
+        ),
+        queryFn: ({ signal }) =>
+            fetchExerciseTrend(
+                muscle as string,
+                exercise as string,
+                TREND_WEEKS,
+                signal,
+            ),
+        enabled: Boolean(muscle && exercise),
+        staleTime: SESSION_STALE,
+        gcTime: SESSION_GC,
+    });
+}
+
 /** Add-inline: create a private muscle, then refresh the muscle catalog. */
 export function useCreateMuscle() {
     const qc = useQueryClient();
     return useMutation<Muscle, Error, MuscleCreate>({
         mutationFn: (body) => createMuscle(body),
         onSuccess: () => {
-            void qc.invalidateQueries({ queryKey: ["muscles"] });
-            void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
+            void qc.invalidateQueries({ queryKey: queryKeys.muscles.list });
+            void qc.invalidateQueries({
+                queryKey: queryKeys.analytics.topMuscles,
+            });
         },
     });
 }
@@ -126,9 +148,11 @@ export function useCreateExercise() {
     return useMutation<Exercise, Error, ExerciseCreate>({
         mutationFn: (body) => createExercise(body),
         onSuccess: (data, vars) => {
-            void qc.invalidateQueries({ queryKey: ["muscles"] });
+            void qc.invalidateQueries({ queryKey: queryKeys.muscles.list });
             void qc.invalidateQueries({
-                queryKey: ["analytics", "top-exercises", vars.muscle_name],
+                queryKey: queryKeys.analytics.topExercisesPrefix(
+                    vars.muscle_name,
+                ),
             });
             // GYM-100 fix #3: after add→resolve (resolution=existing or resolution=unhidden),
             // the GYM-99 server now correctly returns the exercise's real PR/history instead
@@ -138,17 +162,18 @@ export function useCreateExercise() {
             // returned (data.name), not the user-typed name, since the resolution may have
             // matched a differently-cased or trimmed name.
             void qc.invalidateQueries({
-                queryKey: ["analytics", "log-context", vars.muscle_name, data.name],
+                queryKey: queryKeys.analytics.logContextPrefix(
+                    vars.muscle_name,
+                    data.name,
+                ),
             });
             // Also invalidate exercise-progress for the canonical name so the Progress chart
             // is not stale if the user re-adds a previously tracked exercise.
             void qc.invalidateQueries({
-                queryKey: [
-                    "analytics",
-                    "exercise-progress",
+                queryKey: queryKeys.analytics.exerciseProgressPrefix(
                     vars.muscle_name,
                     data.name,
-                ],
+                ),
             });
         },
     });
@@ -165,32 +190,53 @@ export function useCreateExercise() {
  * On error the caller keeps the sheet open and surfaces an inline message; it
  * does NOT advance the set number or append the recap (so the recap never lies,
  * §12.5).
+ *
+ * GYM-125 #2: invalidation deliberately runs in `onSettled` (NOT onSuccess) —
+ * a 409 set-number collision must also refetch the log-context so the caller's
+ * `computeNextSet` auto-corrects to a free set number. Do not narrow this to
+ * the success path.
  */
 export function useCreateTraining(today: string) {
     const qc = useQueryClient();
     return useMutation<Training, Error, TrainingCreate>({
         mutationFn: (body) => createTraining(body),
         onSettled: (_data, _err, vars) => {
-            void qc.invalidateQueries({ queryKey: ["analytics", "summary"] });
-            void qc.invalidateQueries({ queryKey: ["analytics", "activity"] });
             void qc.invalidateQueries({
-                queryKey: [
-                    "analytics",
-                    "log-context",
-                    vars.muscle_name,
-                    vars.exercise_name,
-                ],
+                queryKey: queryKeys.analytics.summaryPrefix,
             });
             void qc.invalidateQueries({
-                queryKey: [
-                    "analytics",
-                    "exercise-progress",
+                queryKey: queryKeys.analytics.activityPrefix,
+            });
+            // GYM-136: a saved set moves this week's totals on the Dashboard.
+            void qc.invalidateQueries({
+                queryKey: queryKeys.analytics.weekComparePrefix,
+            });
+            void qc.invalidateQueries({
+                queryKey: queryKeys.analytics.logContextPrefix(
                     vars.muscle_name,
                     vars.exercise_name,
-                ],
+                ),
             });
-            void qc.invalidateQueries({ queryKey: ["training", "days"] });
-            void qc.invalidateQueries({ queryKey: ["training", "day", today] });
+            void qc.invalidateQueries({
+                queryKey: queryKeys.analytics.exerciseProgressPrefix(
+                    vars.muscle_name,
+                    vars.exercise_name,
+                ),
+            });
+            // GYM-135: a saved set changes the e1RM trend (and session volume),
+            // so the sparkline must refetch on the next render/mount.
+            void qc.invalidateQueries({
+                queryKey: queryKeys.analytics.exerciseTrendPrefix(
+                    vars.muscle_name,
+                    vars.exercise_name,
+                ),
+            });
+            void qc.invalidateQueries({
+                queryKey: queryKeys.training.daysPrefix,
+            });
+            void qc.invalidateQueries({
+                queryKey: queryKeys.training.day(today),
+            });
         },
     });
 }
@@ -205,13 +251,13 @@ export function useCreateTraining(today: string) {
  */
 export function prefetchPickerReads(qc: QueryClient, today: string): void {
     void qc.prefetchQuery({
-        queryKey: ["analytics", "top-muscles"],
+        queryKey: queryKeys.analytics.topMuscles,
         queryFn: ({ signal }) => fetchTopMuscles(signal),
         staleTime: SESSION_STALE,
         gcTime: SESSION_GC,
     });
     void qc.prefetchQuery({
-        queryKey: ["training", "day", today],
+        queryKey: queryKeys.training.day(today),
         queryFn: ({ signal }) => fetchTrainingDay(today, signal),
         staleTime: 0,
         gcTime: SESSION_GC,
@@ -233,7 +279,7 @@ export function prefetchMuscleExercises(
     muscleId: number | null,
 ): void {
     void qc.prefetchQuery({
-        queryKey: ["analytics", "top-exercises", muscle, TOP_EXERCISES_LIMIT],
+        queryKey: queryKeys.analytics.topExercises(muscle, TOP_EXERCISES_LIMIT),
         queryFn: ({ signal }) =>
             fetchTopExercises(muscle, TOP_EXERCISES_LIMIT, signal),
         staleTime: SESSION_STALE,
@@ -241,7 +287,7 @@ export function prefetchMuscleExercises(
     });
     if (muscleId != null) {
         void qc.prefetchQuery({
-            queryKey: ["muscles", muscleId, "exercises"],
+            queryKey: queryKeys.muscles.exercises(muscleId),
             queryFn: ({ signal }) => fetchExercises(muscleId, signal),
             staleTime: SESSION_STALE,
             gcTime: SESSION_GC,
@@ -267,245 +313,22 @@ export function prefetchLogContext(
     });
 }
 
-/** Shared invalidation after any manage-element action (rename/delete/hide). */
-function invalidateElementLists(qc: QueryClient): void {
-    void qc.invalidateQueries({ queryKey: ["muscles"] });
-    void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
-    void qc.invalidateQueries({ queryKey: ["analytics", "top-exercises"] });
-    // Invalidate all hidden-exercise caches so the "Show Hidden" expander appears
-    // immediately after hiding an exercise (GYM-104 #2: the expander was invisible
-    // because the hidden-exercises cache was not cleared after hide/unhide/move ops).
-    void qc.invalidateQueries({ queryKey: ["exercises", "hidden"] });
-}
-
-interface RenameMuscleVars {
-    muscleId: number;
-    body: MuscleRename;
-}
-
-/**
- * PATCH /muscles/{id} — rename the caller's own private muscle (GYM-82).
- * On success invalidates the muscle + exercise lists and top lists so tiles
- * reflect the new name immediately.
- */
-export function useRenameMuscle() {
-    const qc = useQueryClient();
-    return useMutation<Muscle, Error, RenameMuscleVars>({
-        mutationFn: ({ muscleId, body }) => renameMuscle(muscleId, body),
-        onSuccess: () => {
-            invalidateElementLists(qc);
-        },
-    });
-}
-
-interface DeleteMuscleVars {
-    muscleId: number;
-}
-
-/**
- * DELETE /muscles/{id} — delete the caller's own private muscle (GYM-82).
- * On success invalidates lists. A 409 (has history) is surfaced to the caller
- * to offer the Hide action instead.
- */
-export function useDeleteMuscle() {
-    const qc = useQueryClient();
-    return useMutation<void, Error, DeleteMuscleVars>({
-        mutationFn: ({ muscleId }) => deleteMuscle(muscleId),
-        onSuccess: () => {
-            invalidateElementLists(qc);
-        },
-    });
-}
-
-interface HideMuscleVars {
-    muscleId: number;
-}
-
-/**
- * PUT /muscles/{id}/hidden — hide a global catalog muscle from the caller's
- * picker (GYM-82). On success invalidates the muscle + exercise lists.
- */
-export function useHideMuscle() {
-    const qc = useQueryClient();
-    return useMutation<void, Error, HideMuscleVars>({
-        mutationFn: ({ muscleId }) => hideMuscle(muscleId),
-        onSuccess: () => {
-            invalidateElementLists(qc);
-        },
-    });
-}
-
-interface RenameExerciseVars {
-    exerciseId: number;
-    muscleName: string;
-    body: ExerciseRename;
-}
-
-/**
- * PATCH /exercises/{id} — rename the caller's own private exercise (GYM-82).
- * On success invalidates the exercise lists for the muscle plus top-exercises
- * so tiles + progress charts that key on the name pick up the new value.
- */
-export function useRenameExercise() {
-    const qc = useQueryClient();
-    return useMutation<Exercise, Error, RenameExerciseVars>({
-        mutationFn: ({ exerciseId, body }) => renameExercise(exerciseId, body),
-        onSuccess: (_data, vars) => {
-            invalidateElementLists(qc);
-            // Also invalidate the exercise-progress series (keyed by exercise name)
-            // so any Progress chart for the old name refreshes.
-            void qc.invalidateQueries({
-                queryKey: ["analytics", "exercise-progress"],
-            });
-            void qc.invalidateQueries({
-                queryKey: ["analytics", "top-exercises", vars.muscleName],
-            });
-        },
-    });
-}
-
-interface DeleteExerciseVars {
-    exerciseId: number;
-}
-
-/**
- * DELETE /exercises/{id} — delete the caller's own private exercise (GYM-82).
- * A 409 (has history) is surfaced to the caller to offer Hide instead.
- */
-export function useDeleteExercise() {
-    const qc = useQueryClient();
-    return useMutation<void, Error, DeleteExerciseVars>({
-        mutationFn: ({ exerciseId }) => deleteExercise(exerciseId),
-        onSuccess: () => {
-            invalidateElementLists(qc);
-            void qc.invalidateQueries({
-                queryKey: ["analytics", "exercise-progress"],
-            });
-        },
-    });
-}
-
-interface HideExerciseVars {
-    exerciseId: number;
-}
-
-/**
- * PUT /exercises/{id}/hidden — hide a global catalog exercise from the caller's
- * picker (GYM-82). On success invalidates the exercise lists.
- */
-export function useHideExercise() {
-    const qc = useQueryClient();
-    return useMutation<void, Error, HideExerciseVars>({
-        mutationFn: ({ exerciseId }) => hideExercise(exerciseId),
-        onSuccess: () => {
-            invalidateElementLists(qc);
-        },
-    });
-}
-
-interface MoveExerciseVars {
-    exerciseId: number;
-    body: ExerciseMove;
-}
-
-/**
- * PATCH /exercises/{id}/muscle — move the caller's own exercise to another
- * muscle (GYM-90). On success invalidates the muscle + exercise lists and
- * top-muscles/top-exercises so the exercise appears under the new muscle and
- * disappears from the old one. The exercise-progress series is also invalidated
- * since the muscle context changed.
- * 403: exercise is global (not movable). 404: exercise or target muscle not
- * found. 409: name collision in the target muscle — surfaced to the caller.
- */
-export function useMoveExercise() {
-    const qc = useQueryClient();
-    return useMutation<Exercise, Error, MoveExerciseVars>({
-        mutationFn: ({ exerciseId, body }) => moveExercise(exerciseId, body),
-        onSuccess: () => {
-            invalidateElementLists(qc);
-            void qc.invalidateQueries({
-                queryKey: ["analytics", "exercise-progress"],
-            });
-        },
-    });
-}
-
-// ── GYM-103: Show Hidden + Unhide ────────────────────────────────────────────
-
-/**
- * GET /muscles/hidden — the global muscles the caller has hidden (GYM-102/103).
- * Powers the "Show Hidden" expander at the bottom of the muscle picker.
- * Returns [] when nothing is hidden; the expander is omitted entirely in that
- * case (no empty-state query fan-out on the happy path).
- */
-export function useHiddenMuscles() {
-    return useQuery<Muscle[]>({
-        queryKey: ["muscles", "hidden"],
-        queryFn: ({ signal }) => fetchHiddenMuscles(signal),
-        staleTime: 5 * 60_000,
-    });
-}
-
-/**
- * GET /exercises/hidden?muscle=<name> — the global exercises hidden for one
- * muscle (GYM-102/103). Powers the "Show Hidden" expander on the exercise step.
- * Disabled until a muscle name is provided so the empty path fires no query.
- *
- * @param muscleName - muscle group name; pass null to disable the query.
- */
-export function useHiddenExercises(muscleName: string | null) {
-    return useQuery<Exercise[]>({
-        queryKey: ["exercises", "hidden", muscleName],
-        queryFn: ({ signal }) =>
-            fetchHiddenExercises(muscleName as string, signal),
-        enabled: muscleName != null,
-        staleTime: 5 * 60_000,
-    });
-}
-
-interface UnhideMuscleVars {
-    muscleId: number;
-}
-
-/**
- * DELETE /muscles/{id}/hidden — unhide a previously hidden global muscle
- * (GYM-103). On success invalidates the visible muscle list, top-muscles, and
- * the hidden-muscles list so both lists update immediately.
- */
-export function useUnhideMuscle() {
-    const qc = useQueryClient();
-    return useMutation<void, Error, UnhideMuscleVars>({
-        mutationFn: ({ muscleId }) => unhideMuscle(muscleId),
-        onSuccess: () => {
-            void qc.invalidateQueries({ queryKey: ["muscles"] });
-            void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
-            void qc.invalidateQueries({ queryKey: ["muscles", "hidden"] });
-        },
-    });
-}
-
-interface UnhideExerciseVars {
-    exerciseId: number;
-    muscleName: string;
-}
-
-/**
- * DELETE /exercises/{id}/hidden — unhide a previously hidden global exercise
- * (GYM-103). On success invalidates the visible exercises list, top-exercises,
- * and the hidden-exercises list for the muscle so both lists update immediately.
- */
-export function useUnhideExercise() {
-    const qc = useQueryClient();
-    return useMutation<void, Error, UnhideExerciseVars>({
-        mutationFn: ({ exerciseId }) => unhideExercise(exerciseId),
-        onSuccess: (_data, vars) => {
-            void qc.invalidateQueries({ queryKey: ["muscles"] });
-            void qc.invalidateQueries({ queryKey: ["analytics", "top-muscles"] });
-            void qc.invalidateQueries({ queryKey: ["analytics", "top-exercises"] });
-            void qc.invalidateQueries({ queryKey: ["exercises", "hidden", vars.muscleName] });
-        },
-    });
-}
+// ── Manage-element hooks (GYM-82/90/99/103) ──────────────────────────────────
+// Moved to useManageElements.ts in GYM-127 (file-size split, behavior
+// identical). Re-exported here so existing import sites keep working.
+export {
+    useRenameMuscle,
+    useDeleteMuscle,
+    useHideMuscle,
+    useRenameExercise,
+    useDeleteExercise,
+    useHideExercise,
+    useMoveExercise,
+    useHiddenMuscles,
+    useHiddenExercises,
+    useUnhideMuscle,
+    useUnhideExercise,
+} from "./useManageElements";
 
 // ── GYM-94: Exercise search (ADR 0003 Channel B) ─────────────────────────────
 
@@ -534,7 +357,7 @@ export function useExerciseSearch(
 ) {
     const trimmed = q.trim();
     return useQuery<ExerciseCandidate[]>({
-        queryKey: ["exercises", "search", muscleId, lang, trimmed, limit],
+        queryKey: queryKeys.exercises.search(muscleId, lang, trimmed, limit),
         queryFn: ({ signal }) =>
             searchExercises(trimmed, muscleId ?? undefined, lang, limit, signal),
         enabled: trimmed.length > 0 && muscleId !== null,

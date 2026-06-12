@@ -6,6 +6,11 @@
  * fit and the Monday-first ordering testable and keeps the component thin.
  */
 import type { ActivityDay } from "@/api/analytics";
+import type { Locale } from "@/i18n/locales";
+import { getLocale } from "@/i18n/locale";
+import { translate, translatePlural } from "@/i18n/catalog";
+import { shortMonthStandalone, shortWeekday } from "@/i18n/datetime";
+import { formatDayHeading } from "@/components/history/historyWindow";
 
 /** MVP window: ~26 weeks (6 months) — fits 360px with no horizontal scroll. */
 export const WEEKS = 26;
@@ -91,9 +96,93 @@ export function buildGrid(days: ActivityDay[], today: Date = new Date()): GridCe
     return columns;
 }
 
-/** Tooltip text for a cell (spec §10.2: "N sets on <date>"). */
-export function cellTooltip(cell: GridCell): string | undefined {
+/** Min columns between two labels so ~10px nowrap text never overlaps at 26 cols. */
+const MIN_LABEL_GAP = 3;
+
+/**
+ * Month labels row for the grid columns (GYM-123): one entry per column —
+ * the short month name on each column whose month (taken from its first,
+ * Monday cell) differs from the previous column's month, null elsewhere.
+ * The very first column is never labelled (no previous month to differ from),
+ * and a label closer than {@link MIN_LABEL_GAP} columns to the previous label
+ * is skipped so adjacent labels cannot overlap.
+ *
+ * Labels come from Intl short month names (GYM-109), capitalized standalone.
+ *
+ * @param columns - the {@link buildGrid} output (column-major weeks).
+ * @param locale - explicit locale for deterministic tests; defaults active.
+ * @returns an array the same length as `columns`; label or null per column.
+ */
+export function monthLabels(
+    columns: GridCell[][],
+    locale: Locale = getLocale(),
+): Array<string | null> {
+    const labels: Array<string | null> = [];
+    let prevMonth: number | null = null;
+    let lastLabelIdx = -MIN_LABEL_GAP;
+
+    for (let i = 0; i < columns.length; i++) {
+        const iso = columns[i][0]?.date;
+        if (!iso) {
+            labels.push(null);
+            continue;
+        }
+        const month = Number(iso.slice(5, 7)) - 1;
+        const changed = prevMonth !== null && month !== prevMonth;
+        prevMonth = month;
+        if (changed && i - lastLabelIdx >= MIN_LABEL_GAP) {
+            labels.push(shortMonthStandalone(month, locale));
+            lastLabelIdx = i;
+        } else {
+            labels.push(null);
+        }
+    }
+    return labels;
+}
+
+/** Tooltip text for a cell (spec §10.2: "N sets on <date>"), localized. */
+export function cellTooltip(
+    cell: GridCell,
+    locale: Locale = getLocale(),
+): string | undefined {
     if (!cell.date) return undefined;
-    const noun = cell.sets === 1 ? "set" : "sets";
-    return `${cell.sets} ${noun} on ${cell.date}`;
+    return translate(locale, "activity.cellTooltip", {
+        sets: translatePlural(locale, "count.sets", cell.sets),
+        date: cell.date,
+    });
+}
+
+/**
+ * Detail line for the selected cell (GYM-117): `12 sets · MON 02 JUN`.
+ * Reuses the History day-heading format so the grid and the day detail it
+ * links to read identically. Null for padding cells (nothing to inspect).
+ *
+ * @param cell - the selected grid cell.
+ * @param today - injectable for determinism (year-suffix rule).
+ * @param locale - explicit locale for deterministic tests; defaults active.
+ */
+export function cellDetailText(
+    cell: GridCell,
+    today: Date = new Date(),
+    locale: Locale = getLocale(),
+): string | null {
+    if (!cell.date) return null;
+    const sets = translatePlural(locale, "count.sets", cell.sets);
+    return `${sets} · ${formatDayHeading(cell.date, today, locale)}`;
+}
+
+/**
+ * Monday-first weekday rail labels for the grid (GYM-109): only odd rows get
+ * a visible label (blank strings keep the rail's row rhythm). Localized via
+ * Intl short weekdays, first letter capitalized (en "Mon", ru "Пн").
+ *
+ * @param locale - explicit locale for deterministic tests; defaults active.
+ */
+export function weekdayRail(locale: Locale = getLocale()): string[] {
+    // 2024-01-01 is a Monday — a fixed anchor for Monday-first weekday names.
+    const label = (offset: number): string => {
+        const raw = shortWeekday(new Date(2024, 0, 1 + offset), locale);
+        return raw.charAt(0).toLocaleUpperCase(locale) + raw.slice(1);
+    };
+    return [label(0), "", label(2), "", label(4), "", label(6)];
 }

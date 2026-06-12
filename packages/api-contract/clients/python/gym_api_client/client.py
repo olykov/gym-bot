@@ -328,6 +328,25 @@ class GymApiClient:
         )
         return models.CompletedSets.model_validate(r.json())
 
+    async def get_log_context(
+        self,
+        *,
+        muscle: str,
+        exercise: str,
+        date: str,
+        act_as_user: int | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> models.LogContext:
+        """getLogContext — GET /analytics/log-context."""
+        r = await self._request(
+            "GET",
+            "/analytics/log-context",
+            params={"muscle": muscle, "exercise": exercise, "date": date},
+            act_as_user=act_as_user,
+            headers=headers,
+        )
+        return models.LogContext.model_validate(r.json())
+
     async def get_training_history(
         self,
         *,

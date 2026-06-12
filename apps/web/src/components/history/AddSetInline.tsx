@@ -15,10 +15,12 @@
  * targets, Chalk & Iron aesthetic. No new library.
  */
 import { useState } from "react";
+import { useT } from "@/i18n/catalog";
 import type { TrainingSet } from "@/api/training";
 import { hapticNotification } from "@/telegram/webapp";
 import { useAddSet } from "@/hooks/useTraining";
-import { Stepper, parseNumeric } from "@/components/ui/Stepper";
+import { useWeightRepsForm } from "@/hooks/useWeightRepsForm";
+import { Stepper } from "@/components/ui/Stepper";
 import { ApiError } from "@/api/client";
 
 interface AddSetInlineProps {
@@ -41,6 +43,7 @@ export function AddSetInline({
     existingSets,
     onAdded,
 }: AddSetInlineProps) {
+    const { t } = useT();
     const [open, setOpen] = useState(false);
 
     // Pre-fill from the last (highest set-number) set on this day.
@@ -49,12 +52,13 @@ export function AddSetInline({
             ? existingSets.reduce((best, s) => (s.set > best.set ? s : best))
             : null;
 
-    const [weightText, setWeightText] = useState(
-        lastSet ? String(lastSet.weight) : "",
-    );
-    const [repsText, setRepsText] = useState(
-        lastSet ? String(lastSet.reps) : "",
-    );
+    // GYM-126: shared weight/reps form mechanics; the lastSet pre-fill (here
+    // and re-applied in openForm) is this component's own semantic.
+    const form = useWeightRepsForm({
+        weightText: lastSet ? String(lastSet.weight) : "",
+        repsText: lastSet ? String(lastSet.reps) : "",
+    });
+    const { weight, reps } = form;
     const [error, setError] = useState<string | null>(null);
 
     const addSet = useAddSet(date);
@@ -65,14 +69,7 @@ export function AddSetInline({
             ? Math.max(...existingSets.map((s) => s.set)) + 1
             : 1;
 
-    const weight = parseNumeric(weightText, false);
-    const reps = parseNumeric(repsText, true);
-    const valid =
-        weight !== null &&
-        weight >= 0 &&
-        reps !== null &&
-        reps >= 0 &&
-        !addSet.isPending;
+    const valid = form.valid && !addSet.isPending;
 
     function openForm(): void {
         // Reset pre-fill from current existingSets each time the form opens.
@@ -82,8 +79,10 @@ export function AddSetInline({
                       s.set > best.set ? s : best,
                   )
                 : null;
-        setWeightText(last ? String(last.weight) : "");
-        setRepsText(last ? String(last.reps) : "");
+        form.reset({
+            weightText: last ? String(last.weight) : "",
+            repsText: last ? String(last.reps) : "",
+        });
         setError(null);
         setOpen(true);
     }
@@ -115,11 +114,9 @@ export function AddSetInline({
                 },
                 onError: (err) => {
                     if (err instanceof ApiError && err.status === 409) {
-                        setError(
-                            "That set already exists — the set number may have changed.",
-                        );
+                        setError(t("addSet.exists"));
                     } else {
-                        setError("Couldn't add the set — try again.");
+                        setError(t("addSet.error"));
                     }
                 },
             },
@@ -132,7 +129,7 @@ export function AddSetInline({
                 type="button"
                 onClick={openForm}
                 className="press-95 -mx-1 flex min-h-[44px] w-full items-center gap-2 rounded-md px-1 text-label text-hint"
-                aria-label={`Add set to ${exerciseName}`}
+                aria-label={t("addSet.triggerAria", { exercise: exerciseName })}
             >
                 <span
                     aria-hidden
@@ -140,7 +137,7 @@ export function AddSetInline({
                 >
                     +
                 </span>
-                Add set
+                {t("addSet.trigger")}
             </button>
         );
     }
@@ -149,30 +146,16 @@ export function AddSetInline({
         <div className="mt-2 rounded-md border border-hairline bg-secondary-bg p-3">
             {/* Compact label */}
             <p className="mb-3 text-label uppercase tracking-wide text-hint">
-                Set {nextSet}
+                {t("set.n", { n: nextSet })}
             </p>
 
             <div className="flex flex-col gap-4">
                 <Stepper
-                    label="Weight"
-                    unit="kg"
-                    value={weight}
-                    text={weightText}
-                    onChange={({ text }) => setWeightText(text)}
-                    min={0}
-                    step={2.5}
-                    inputMode="decimal"
+                    label={t("label.weight")}
+                    unit={t("unit.kg")}
+                    {...form.weightProps}
                 />
-                <Stepper
-                    label="Reps"
-                    value={reps}
-                    text={repsText}
-                    onChange={({ text }) => setRepsText(text)}
-                    min={0}
-                    step={1}
-                    integer
-                    inputMode="numeric"
-                />
+                <Stepper label={t("label.reps")} {...form.repsProps} />
             </div>
 
             {error ? (
@@ -191,7 +174,7 @@ export function AddSetInline({
                     disabled={addSet.isPending}
                     className="press-95 min-h-[44px] flex-1 rounded-md border border-hairline bg-bg text-base text-text disabled:opacity-50"
                 >
-                    Cancel
+                    {t("common.cancel")}
                 </button>
                 <button
                     type="button"
@@ -199,7 +182,7 @@ export function AddSetInline({
                     disabled={!valid}
                     className="press-95 min-h-[44px] flex-1 rounded-md bg-accent text-base font-semibold uppercase tracking-wide text-button-text disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                    {addSet.isPending ? "Adding…" : "Add"}
+                    {addSet.isPending ? t("addSet.adding") : t("common.add")}
                 </button>
             </div>
         </div>

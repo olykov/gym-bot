@@ -9,6 +9,9 @@
  * dark mode). Series beyond the color cap also vary dash style so multi-set is
  * distinguishable without relying on color alone.
  */
+import type { Locale } from "@/i18n/locales";
+import { getLocale } from "@/i18n/locale";
+import { shortMonthInDate } from "@/i18n/datetime";
 
 export interface CssVars {
     accent: string;
@@ -62,21 +65,20 @@ export function seriesColorAt(vars: CssVars, index: number): string {
     return colors[index % colors.length];
 }
 
-const AXIS_MONTHS = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
 /**
- * Compact, single-tier x-axis label: `DD MMM` (e.g. `02 Jun`). One legible
- * label per tick avoids ECharts' default month/year-over-day two-tier labels
- * overlapping the day numbers in a 360px column (GYM-53 §10.5).
+ * Compact, single-tier x-axis label: `DD MMM` (e.g. `02 Jun` / ru `02 июн`,
+ * Intl-based — GYM-109). One legible label per tick avoids ECharts' default
+ * month/year-over-day two-tier labels overlapping the day numbers in a 360px
+ * column (GYM-53 §10.5).
  */
-export function formatAxisDate(value: number): string {
+export function formatAxisDate(
+    value: number,
+    locale: Locale = getLocale(),
+): string {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "";
     const day = String(d.getDate()).padStart(2, "0");
-    return `${day} ${AXIS_MONTHS[d.getMonth()]}`;
+    return `${day} ${shortMonthInDate(d, locale)}`;
 }
 
 /** Target number of x-axis labels — keeps the axis legible at 360px (GYM-57 §10.5). */
@@ -126,6 +128,10 @@ export function baseChartOption(vars: CssVars) {
         },
         tooltip: {
             trigger: "axis" as const,
+            // GYM-123 #9: explicit so a plain TAP shows values on coarse
+            // pointers (touch maps taps to click) — never rely on the
+            // version-dependent ECharts default.
+            triggerOn: "mousemove|click" as const,
             backgroundColor: vars.bg,
             borderColor: vars.hairline,
             borderWidth: 1,

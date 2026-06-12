@@ -13,6 +13,7 @@ import {
 } from "react";
 import type { Schemas } from "@/api/client";
 import { ApiError } from "@/api/client";
+import { t } from "@/i18n/catalog";
 import { authenticateWithInitData } from "@/api/auth";
 import { getInitData, isTelegramEnv } from "@/telegram/webapp";
 
@@ -29,6 +30,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// The companion hook lives next to its provider on purpose (one auth module);
+// editing this file simply falls back to a full reload instead of fast refresh.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextValue {
     const ctx = useContext(AuthContext);
     if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
@@ -62,10 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             })
             .catch((err: unknown) => {
                 if (cancelled) return;
+                // Server detail (4xx/5xx) passes through; the transport-level
+                // status-0 "Network request failed" gets the localized
+                // fallback so ru users never see a raw English string (GYM-109).
                 const msg =
-                    err instanceof ApiError
+                    err instanceof ApiError && err.status !== 0
                         ? err.message
-                        : "Authentication failed";
+                        : t("auth.failed");
                 setError(msg);
                 setStatus("error");
             });

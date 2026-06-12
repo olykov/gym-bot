@@ -11,10 +11,11 @@
  * circle reads as a distinct shape against the bar. Press fires a `medium`
  * impact haptic.
  *
- * The action is left PLUGGABLE: `onRecord` defaults to a no-op so the nav ships
- * independently of the record sheet. GYM-69 wires the real sheet-open by
- * passing `onRecord` down from the shell — no change to this component.
+ * The action is PLUGGABLE: `onRecord` is optional so the nav renders on its
+ * own; the shell wires the real record-sheet open (GYM-69). When absent the
+ * press is haptic-only (GYM-127 removed the dead debug placeholder branch).
  */
+import { useT } from "@/i18n/catalog";
 import { hapticImpact } from "@/telegram/webapp";
 
 /** Diameter of the FAB circle (px). Mirrored by FAB_LIFT consumers. */
@@ -23,28 +24,21 @@ export const FAB_SIZE = 56;
 export const FAB_LIFT = 16;
 
 interface NavFabProps {
-    /**
-     * The record-sheet open handler (GYM-69). Defaults to a no-op so the nav is
-     * usable on its own; for now we also log a debug breadcrumb.
-     */
+    /** The record-sheet open handler (GYM-69), wired by the shell. */
     onRecord?: () => void;
 }
 
 export function NavFab({ onRecord }: NavFabProps) {
-    const handlePress = () => {
+    const { t } = useT();
+    const handlePress = (): void => {
         hapticImpact("medium");
-        if (onRecord) {
-            onRecord();
-        } else {
-            // Placeholder until GYM-69 wires the record sheet.
-            console.debug("[NavFab] record action (placeholder) — wired in GYM-69");
-        }
+        onRecord?.();
     };
 
     return (
         <button
             type="button"
-            aria-label="Record training"
+            aria-label={t("nav.recordTraining")}
             onClick={handlePress}
             className="press-95 absolute left-1/2 z-10 flex items-center justify-center rounded-full bg-accent shadow-card"
             style={{

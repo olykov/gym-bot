@@ -7,7 +7,6 @@ No direct database access.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
 
 import httpx
 import prettytable as pt
@@ -18,6 +17,7 @@ from aiogram.types import CallbackQuery, Message
 
 from gym_api_client import models as api_models
 from modules.api import api
+from modules.confirmation import build_save_confirmation, normalize_weight_format
 from modules.logging import Logger
 from modules.states import UserStates
 from templates.exercise import sets, weights, reps
@@ -30,37 +30,9 @@ logger = Logger(name="handlers")
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
-
-def normalize_weight_format(weight_str: str) -> str:
-    """Convert comma decimal separator to dot for numeric parsing.
-
-    Args:
-        weight_str: Weight value as string, e.g. "2,5" or "2.5".
-
-    Returns:
-        Weight value with dot decimal format, e.g. "2.5".
-    """
-    return weight_str.replace(",", ".") if "," in weight_str else weight_str
-
-
-def format_result_message(data: dict) -> str:
-    """Format a single training record as an HTML-wrapped PrettyTable.
-
-    Args:
-        data: Keys: muscle, exercise, set, weight, reps.
-
-    Returns:
-        HTML <pre>-wrapped table string.
-    """
-    table = pt.PrettyTable(["Name", "Details"])
-    table.align = "l"
-    table.add_row(["Muscle", data["muscle"]])
-    table.add_row(["Exercise", data["exercise"]])
-    table.add_row(["Set", data["set"]])
-    table.add_row(["Weight", f"{data['weight']}kg"])
-    table.add_row(["Reps", data["reps"]])
-    table.add_row(["Recorded at", datetime.now().strftime("%d-%m-%Y %H:%M:%S")])
-    return f"<pre>{table}</pre>"
+# normalize_weight_format / format_result_message and the GYM-137 save
+# confirmation live in modules.confirmation (handlers.py is over the size
+# limit — split when touched, per CLAUDE.md).
 
 
 def format_last_training_table(
@@ -328,13 +300,9 @@ async def process_reps(callback_query: CallbackQuery, state: FSMContext) -> None
         )
         logger.info(f"{user_id}: training {training.id} saved")
 
-        message = format_result_message({
-            "muscle": muscle_name,
-            "exercise": exercise_name,
-            "set": set_number,
-            "weight": weight_value,
-            "reps": reps_value,
-        })
+        message = await build_save_confirmation(
+            user_id, muscle_name, exercise_name, set_number, weight_value, reps_value
+        )
         ikm = await markups.generate_post_set_markup(user_id, muscle_name, exercise_name)
 
     except httpx.HTTPError as exc:

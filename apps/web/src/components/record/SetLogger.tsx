@@ -4,10 +4,15 @@
  *
  *  - One read: `GET /analytics/log-context` (GYM-71) → completed set numbers +
  *    the last prior session's sets + the PR, in a single round-trip.
- *  - Today recap = log-context completed set NUMBERS ∪ this-session saved sets
- *    (full w×r). Session sets show `Set n — {w}kg × {r}`; pre-session ones
- *    `Set n ✓`. Sorted DESC (newest first) so older sets scroll away and the
- *    most recent set is always at the top of the recap block (GYM-101).
+ *  - Recap (GYM-130) = a TODAY | LAST TIME comparison matched by set number,
+ *    ASC (Set 1 top — line-by-line reading; reverts the GYM-101 DESC order).
+ *    Today figures keep the priority session > server > ✓-only (`— · —`,
+ *    GYM-123 #3 — honest, never fabricated); last-session-only rows are
+ *    GHOSTS (--hint, ~70% opacity) — the visible target. Saved sets that
+ *    match a ghost get a delta (weight first, reps tiebreak). With no prior
+ *    session the recap renders single-column exactly as before. "Last set
+ *    visible" is solved by auto-scrolling the recap to the just-saved row
+ *    (and to the next ghost target on entry).
  *  - Auto set # = max(completed ∪ session) + 1 (never a naive counter).
  *  - Two pre-filled <Stepper>s, priority (§12.3): (1) this session's previous
  *    set for this exercise; (2) `last_session_sets` set N (what you did for that
@@ -15,9 +20,17 @@
  *    a pre-fill source anymore — it's only the target chip.
  *  - In-sheet sticky <SheetSaveButton> → `POST /training`. On success: success
  *    haptic, append to recap (optimistic), re-arm in place (nextSet+1, same
- *    pre-fill) → +1 tap/set. PR-beat: a single accent pulse when the weight
- *    strictly beats the known PR, behind prefers-reduced-motion.
- *  - "← Switch exercise" → Phase A; "Done" → close (controller invalidates).
+ *    pre-fill) → +1 tap/set. PR-beat (GYM-133): one resolved kind per save —
+ *    weight PR = full celebration (banner + pulse + flare); reps-at-weight /
+ *    e1rm PRs are quiet (no banner). All behind prefers-reduced-motion.
+ *  - GYM-135: the SET/PR heading row (SetHeadingRow.tsx) carries a secondary
+ *    e1RM trend sparkline + chip (TrendSparkline owns its own read).
+ *  - "← Switch exercise" → Phase A; "Done" → RecordSheet (summary or close).
+ *  - GYM-131 save choreography: row entrance + soft flash, delta slide-in,
+ *    Save success morph, SET digit roll, PR banner — all CSS-token motion
+ *    behind prefers-reduced-motion, timers in useSaveChoreography.
+ *  - GYM-132: each saved set is reported up via onSetLogged (beat-last /
+ *    beat-PR computed here) — RecordSheet owns the session log + summary.
  *
  * Layout (GYM-101): the root div is a flex column that fills the sheet body.
  *   - Static top: switch button + createHint + exercise identity (shrink-0).
@@ -30,20 +43,38 @@
  * Write error (§12.5): keep the sheet open, surface an inline message, do NOT
  * advance the set number or append the recap (the recap never lies).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "@/i18n/catalog";
 import { Chip } from "@/components/ui/Chip";
-import { Stepper, parseNumeric } from "@/components/ui/Stepper";
+import { Stepper } from "@/components/ui/Stepper";
 import { SheetSaveButton } from "@/components/ui/SheetSaveButton";
-import { hapticNotification } from "@/telegram/webapp";
+import { hapticImpact, hapticNotification } from "@/telegram/webapp";
 import { useLogContext, useCreateTraining } from "@/hooks/useRecord";
+import { useWeightRepsForm } from "@/hooks/useWeightRepsForm";
 import type { TrainingSet } from "@/api/training";
 import type { ChosenExercise } from "./types";
+import { ComparisonRecap } from "./ComparisonRecap";
+import { PrBannerOverlay } from "./PrBannerOverlay";
+import { SetHeadingRow } from "./SetHeadingRow";
+import { useSaveChoreography } from "./useSaveChoreography";
+import {
+    beatsLastSession,
+    buildComparisonRows,
+    computeEffectivePR,
+    computeNextSet,
+    findNextGhostSet,
+    resolvePrBeat,
+    saveErrorMessage,
+    type SessionLogEntry,
+    type SessionSet,
+} from "./derive";
 
-/** A set logged in THIS session (full weight/reps, always exact). */
-interface SessionSet {
-    set: number;
-    weight: number;
-    reps: number;
+/** Reduced-motion check for the recap auto-scroll (instant vs smooth). */
+function prefersReducedMotion(): boolean {
+    return (
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
 }
 
 interface SetLoggerProps {
@@ -70,9 +101,16 @@ interface SetLoggerProps {
     onClearCreateHint?: () => void;
     onSwitch: () => void;
     onDone: () => void;
+    /**
+     * GYM-132: reports every successfully saved set (with its beat-last /
+     * beat-PR flags, computed here at save time) to RecordSheet, which owns
+     * the cross-exercise session log behind the Done summary.
+     */
+    onSetLogged: (entry: SessionLogEntry) => void;
 }
 
-export function SetLogger({ chosen, today, serverSets, createHint, onClearCreateHint, onSwitch, onDone }: SetLoggerProps) {
+export function SetLogger({ chosen, today, serverSets, createHint, onClearCreateHint, onSwitch, onDone, onSetLogged }: SetLoggerProps) {
+    const { t, muscle } = useT();
     const { muscleName, exerciseName } = chosen;
 
     const ctx = useLogContext(muscleName, exerciseName, today);
@@ -80,74 +118,50 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
 
     // Sets logged this session for THIS exercise (optimistic recap source).
     const [sessionSets, setSessionSets] = useState<SessionSet[]>([]);
-    // PR-beat flare: the recap-row index to flare + a pulse on the Save button.
-    const [pulse, setPulse] = useState(false);
-    const [flareSet, setFlareSet] = useState<number | null>(null);
+    // GYM-131: every transient save celebration (success morph, PR pulse /
+    // row flare, PR banner) + its interrupt-safe timers live in one hook.
+    const { pulse, flareSet, morph, banner, onSave, reset: resetChoreo } =
+        useSaveChoreography();
 
-    // The just-typed/stepped values (raw text + parsed).
-    const [weightText, setWeightText] = useState("");
-    const [repsText, setRepsText] = useState("");
-    const weight = parseNumeric(weightText, false);
-    const reps = parseNumeric(repsText, true);
+    // The just-typed/stepped values (raw text + parsed) — shared form
+    // mechanics (GYM-126); the §12.3 pre-fill effect below stays local.
+    const form = useWeightRepsForm();
+    const {
+        weightText,
+        repsText,
+        setWeightText,
+        setRepsText,
+        weight,
+        reps,
+        reset,
+    } = form;
 
     const serverPR = ctx.data?.pr ?? null;
 
     /**
-     * GYM-104 #3: DERIVED effective PR — no race, no timing dependence.
-     *
-     * The effective PR is always the greater of:
-     *   - the server PR (ctx.data.pr) — the real historical record from the server
-     *   - the best session set (max weight among sessionSets this session)
-     *
-     * This completely replaces the one-shot `prAnchor` useState pattern that caused
-     * the race: prAnchor started null; if the user saved a set BEFORE log-context
-     * resolved, the PR-beat set prAnchor = <session weight> (e.g. 2.5), and the
-     * seed effect `if (pr && prAnchor === null)` then never fired, permanently
-     * locking in 2.5 instead of the real server PR (80).
-     *
-     * With the derived approach: once ctx resolves and serverPR.weight = 80, the
-     * effective PR is max(80, sessionBest) = 80 — regardless of what session sets
-     * were logged before ctx resolved. A 2.5kg session set never hides the real PR.
-     *
-     * The chip shows:
-     *  - `PR {w}kg × {r}` when the server PR is the effective max (reps known).
-     *  - `PR {w}kg`        when a session set strictly exceeds the server PR (no reps source).
-     *
-     * PR-beat fires when a newly-saved set STRICTLY exceeds the current
-     * effectivePR.weight (so it's always compared against the real max).
+     * GYM-104 #3: DERIVED effective PR — no race (rationale in derive.ts).
+     * Renders the PR chip; resolvePrBeat (GYM-133) derives the same value
+     * from the same inputs for the weight-PR check at save time.
      */
-    const effectivePR = useMemo(() => {
-        const serverWeight = serverPR?.weight ?? -Infinity;
-        const sessionBestWeight = sessionSets.reduce<number>(
-            (best, s) => Math.max(best, s.weight),
-            -Infinity,
-        );
-        if (serverWeight === -Infinity && sessionBestWeight === -Infinity) {
-            return null;
-        }
-        const effectiveWeight = Math.max(serverWeight, sessionBestWeight);
-        // Show reps only when the server PR is the source (session sets have no reps).
-        const effectiveReps =
-            serverPR && serverPR.weight >= sessionBestWeight ? serverPR.reps : null;
-        return { weight: effectiveWeight, reps: effectiveReps };
-    }, [serverPR, sessionSets]);
+    const effectivePR = useMemo(
+        () => computeEffectivePR(serverPR, sessionSets),
+        [serverPR, sessionSets],
+    );
 
     // Reset everything when the chosen exercise changes (sheet re-used).
+    // form.reset / resetChoreo are identity-stable (useCallback), so they
+    // never re-trigger this effect.
     useEffect(() => {
         setSessionSets([]);
-        setPulse(false);
-        setFlareSet(null);
-        setWeightText("");
-        setRepsText("");
-    }, [muscleName, exerciseName]);
+        resetChoreo();
+        reset();
+    }, [muscleName, exerciseName, reset, resetChoreo]);
 
     // Auto set # = max(completed ∪ session) + 1 (§12.3, never a counter).
-    const nextSet = useMemo(() => {
-        const serverSets = ctx.data?.completed_sets ?? [];
-        const sessionNums = sessionSets.map((s) => s.set);
-        const all = [...serverSets, ...sessionNums];
-        return (all.length ? Math.max(...all) : 0) + 1;
-    }, [ctx.data, sessionSets]);
+    const nextSet = useMemo(
+        () => computeNextSet(ctx.data?.completed_sets ?? [], sessionSets),
+        [ctx.data, sessionSets],
+    );
 
     // Pre-fill priority (§12.3): (1) this session's previous set for this
     // exercise; (2) last_session_sets for the NEXT set #; (3) leave empty (Save
@@ -188,40 +202,64 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
         sessionSets.length,
     ]);
 
-    // Recap: union of all set numbers known today, with w×r sourced in priority:
-    //  1. This-session set (always exact, was just logged).
-    //  2. serverSets from GET /training/day/{today} (carries weight+reps from
-    //     the server) — fixes the reopen/Continue ✓-only display (GYM-74).
-    //  3. completed_sets from log-context (set numbers only, no w×r → shows ✓).
-    const recap = useMemo(() => {
-        const sessionByNum = new Map(sessionSets.map((s) => [s.set, s]));
-        const serverByNum = new Map(serverSets.map((s) => [s.set, s]));
-        const nums = new Set<number>([
-            ...(ctx.data?.completed_sets ?? []),
-            ...serverSets.map((s) => s.set),
-            ...sessionSets.map((s) => s.set),
-        ]);
-        // GYM-101: DESC order so the newest set is at the top of the recap.
-        // Older sets scroll away below; the last-logged set is always visible.
-        return [...nums]
-            .sort((a, b) => b - a)
-            .map((n) => {
-                const session = sessionByNum.get(n) ?? null;
-                // Server set provides w×r for pre-session sets (reopen / Continue).
-                const srv = serverByNum.get(n);
-                const weight = session?.weight ?? srv?.weight ?? null;
-                const reps = session?.reps ?? srv?.reps ?? null;
-                return {
-                    set: n,
-                    weight,
-                    reps,
-                };
-            });
-    }, [ctx.data, sessionSets, serverSets]);
+    // Recap (GYM-130): TODAY | LAST TIME comparison rows matched by set
+    // number, ASC. Today column keeps priority session > server > ✓-only;
+    // last-session-only rows are ghosts — algorithm in derive.ts.
+    const lastSessionSets = ctx.data?.last_session_sets ?? [];
+    const recap = useMemo(
+        () =>
+            buildComparisonRows(
+                ctx.data?.completed_sets ?? [],
+                serverSets,
+                sessionSets,
+                ctx.data?.last_session_sets ?? [],
+            ),
+        [ctx.data, serverSets, sessionSets],
+    );
+    const hasGhost = lastSessionSets.length > 0;
 
-    const valid =
-        weight !== null && weight >= 0 && reps !== null && reps >= 0;
-    const canSave = valid && !create.isPending;
+    // GYM-130 auto-scroll plumbing: each recap row registers its element by
+    // set number so the effects below can scrollIntoView a specific row
+    // inside the internally-scrollable recap region.
+    const rowEls = useRef<Map<number, HTMLDivElement>>(new Map());
+    const registerRow = useCallback(
+        (set: number, el: HTMLDivElement | null) => {
+            if (el) rowEls.current.set(set, el);
+            else rowEls.current.delete(set);
+        },
+        [],
+    );
+
+    // After a save appends a row at the bottom (ASC), keep the just-saved
+    // row visible. block:"nearest" no-ops when already in view; smooth is
+    // gated behind prefers-reduced-motion (then: instant).
+    const lastSaved = sessionSets[sessionSets.length - 1];
+    const lastSavedSet = lastSaved ? lastSaved.set : null;
+    useEffect(() => {
+        if (lastSavedSet === null) return;
+        rowEls.current.get(lastSavedSet)?.scrollIntoView({
+            block: "nearest",
+            behavior: prefersReducedMotion() ? "auto" : "smooth",
+        });
+    }, [lastSavedSet]);
+
+    // On Phase-B entry (per exercise, once log-context resolves): bring the
+    // NEXT ghost target — the first unlogged last-session set — into view if
+    // the rows overflow the recap region. Instant (it's an initial position,
+    // not a transition).
+    const ghostScrolledFor = useRef<string>("");
+    useEffect(() => {
+        const key = `${muscleName}/${exerciseName}`;
+        if (!ctx.data || ghostScrolledFor.current === key) return;
+        ghostScrolledFor.current = key;
+        const target = findNextGhostSet(recap);
+        if (target === null) return;
+        rowEls.current
+            .get(target)
+            ?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    }, [ctx.data, recap, muscleName, exerciseName]);
+
+    const canSave = form.valid && !create.isPending;
 
     function save(): void {
         if (!canSave || weight === null || reps === null) return;
@@ -233,19 +271,28 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                     hapticNotification("success");
                     // Append to recap (optimistic) + re-arm in place (§12.3).
                     setSessionSets((prev) => [...prev, { set, weight, reps }]);
-                    // PR-beat: strictly beats the current effective PR (or first ever).
-                    // effectivePR is derived (never stale), so a session set saved
-                    // before log-context resolved still compares against the correct
-                    // effective weight once ctx resolves on the NEXT render.
-                    const beat = effectivePR === null || weight > effectivePR.weight;
-                    if (beat) {
-                        setPulse(true);
-                        setFlareSet(set);
-                        window.setTimeout(() => {
-                            setPulse(false);
-                            setFlareSet(null);
-                        }, 700);
-                    }
+                    // GYM-133: ONE PR-beat kind per save (weight > reps-at-
+                    // weight > e1rm), resolved against the PRE-save session
+                    // sets; the weight branch keeps the GYM-104 derived-
+                    // effective-PR check verbatim (race-free).
+                    const last = ctx.data?.last_session_sets ?? [];
+                    const saved = { set, weight, reps };
+                    const prBeat = resolvePrBeat(serverPR, last, sessionSets, saved);
+                    // GYM-131: morph/pulse/flare — interrupt-safe; the banner
+                    // fires for the weight kind only (GYM-133 calibration).
+                    onSave({ set, weight, reps, prBeat });
+                    // GYM-132: report to RecordSheet's session log; beat-last
+                    // = GYM-130 delta vs the same-number ghost, at save time.
+                    // beatPR stays WEIGHT-PRs-only ("{n} PR" count unchanged).
+                    onSetLogged({
+                        muscle: muscleName,
+                        exercise: exerciseName,
+                        set,
+                        weight,
+                        reps,
+                        beatLast: beatsLastSession(last, saved),
+                        beatPR: prBeat === "weight",
+                    });
                     // Keep the same pre-fill (gym sets repeat); Save re-enabled.
                 },
             },
@@ -260,7 +307,10 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
         //   1. Static top  — shrink-0, always at the top
         //   2. Recap       — flex-1 min-h-0 overflow-y-auto, consumes remaining space
         //   3. Controls    — shrink-0, always at the bottom (never pushed off-screen)
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+            {/* GYM-131 #5: PR banner overlay (lives in PrBannerOverlay.tsx). */}
+            <PrBannerOverlay banner={banner} />
+
             {/* ── Static top: switch + createHint + exercise identity ──────── */}
             <div className="shrink-0">
                 {/* Switch-exercise (in-body, NOT the Telegram Back — §12.8). */}
@@ -269,7 +319,7 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                     onClick={onSwitch}
                     className="press-95 -ml-1 mb-3 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
                 >
-                    ← Switch exercise
+                    ← {t("logger.switchExercise")}
                 </button>
 
                 {/* GYM-85: non-blocking hint when resolution=existing on the previous
@@ -285,7 +335,7 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                         </p>
                         <button
                             type="button"
-                            aria-label="Dismiss"
+                            aria-label={t("common.dismiss")}
                             onClick={onClearCreateHint}
                             className="press-95 flex shrink-0 min-h-[32px] min-w-[32px] items-center justify-center text-base text-hint"
                         >
@@ -302,8 +352,10 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                     <h2 className="min-w-0 flex-1 truncate font-display text-title text-text" title={exerciseName}>
                         {exerciseName}
                     </h2>
-                    <span className="min-w-0 shrink-0" style={{ maxWidth: "8rem" }}>
-                        <Chip title={muscleName}>{muscleName}</Chip>
+                    <span className="min-w-0 max-w-chip shrink-0">
+                        <Chip title={muscle(muscleName)}>
+                            {muscle(muscleName)}
+                        </Chip>
                     </span>
                 </div>
             </div>
@@ -311,39 +363,32 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
             {/* ── Recap region: internally scrollable, bounded by remaining height ── */}
             {/* GYM-101: flex-1 min-h-0 overflow-y-auto means this region expands
                 to fill whatever space is left between the static top and controls
-                region, and scrolls INTERNALLY when sets overflow. Sorted DESC so
-                the newest set is always at the top (most recently logged is
-                immediately visible; older sets scroll away below). */}
-            <section className="mt-5 min-h-0 flex-1 overflow-y-auto">
-                <div className="shrink-0 text-label uppercase tracking-wide text-hint">
-                    Today
-                </div>
-                {recap.length === 0 ? (
-                    <p className="mt-2 text-base text-hint">No sets logged yet.</p>
-                ) : (
-                    <div className="mt-2 flex flex-col divide-y divide-hairline">
-                        {recap.map((row) => (
-                            <div
-                                key={row.set}
-                                className={`flex min-h-[36px] items-center justify-between gap-4 ${
-                                    flareSet === row.set
-                                        ? "pr-flare motion-reduce:animate-none"
-                                        : ""
-                                }`}
-                            >
-                                <span className="text-label uppercase tracking-wide text-hint">
-                                    Set {row.set}
-                                </span>
-                                {row.weight !== null && row.reps !== null ? (
-                                    <span className="tabular font-display text-title leading-none text-text">
-                                        {row.weight}kg × {row.reps}
-                                    </span>
-                                ) : (
-                                    <span className="text-base text-hint">✓</span>
-                                )}
-                            </div>
-                        ))}
+                region, and scrolls INTERNALLY when sets overflow. GYM-130: rows
+                are ASC (comparison reads top-down); the just-saved row and the
+                next ghost target are kept visible by the auto-scroll effects. */}
+            {/* GYM-123 #6: polite live region — a newly appended set row is
+                announced by screen readers without stealing focus. */}
+            <section
+                className="mt-5 min-h-0 flex-1 overflow-y-auto"
+                aria-live="polite"
+            >
+                {!hasGhost ? (
+                    <div className="shrink-0 text-label uppercase tracking-wide text-hint">
+                        {t("logger.today")}
                     </div>
+                ) : null}
+                {recap.length === 0 ? (
+                    <p className="mt-2 text-base text-hint">
+                        {t("logger.noSetsYet")}
+                    </p>
+                ) : (
+                    <ComparisonRecap
+                        rows={recap}
+                        hasGhost={hasGhost}
+                        flareSet={flareSet}
+                        justSavedSet={lastSavedSet}
+                        registerRow={registerRow}
+                    />
                 )}
             </section>
 
@@ -352,75 +397,85 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                 flex column regardless of how tall the recap grows. The PR chip
                 lives here so it is always visible on reopen. */}
             <div className="shrink-0 pb-2">
-                {/* SET heading + PR target chip (§12.3) — "PR {w}kg × {r}".
+                {/* SET heading + GYM-135 trend group + PR target chip (§12.3).
                     Placed in the fixed controls region (GYM-101) so the PR is
-                    always visible regardless of how many sets are in the recap. */}
-                <div className="mt-4 flex items-center justify-between">
-                    <h3 className="font-display text-title text-text">
-                        SET {nextSet}
-                    </h3>
-                    {effectivePR !== null ? (
-                        <span
-                            className={`tabular rounded-full px-3 py-1 text-label font-semibold text-accent ${
-                                pulse ? "pr-pulse motion-reduce:animate-none" : ""
-                            }`}
-                        >
-                            PR {effectivePR.weight}kg
-                            {effectivePR.reps !== null ? ` × ${effectivePR.reps}` : ""}
-                        </span>
-                    ) : null}
-                </div>
+                    always visible regardless of how many sets are in the recap.
+                    Row extracted to SetHeadingRow.tsx (file-size split). */}
+                <SetHeadingRow
+                    nextSet={nextSet}
+                    effectivePR={effectivePR}
+                    pulse={pulse}
+                    muscleName={muscleName}
+                    exerciseName={exerciseName}
+                />
 
                 {ctx.isLoading ? (
-                    <p className="mt-2 text-label text-hint">loading your numbers…</p>
+                    <p className="mt-2 text-label text-hint">
+                        {t("logger.loadingNumbers")}
+                    </p>
                 ) : null}
 
                 {/* Two pre-filled steppers (§12.3). */}
                 <div className="mt-4 flex flex-col gap-6">
                     <Stepper
-                        label="Weight"
-                        unit="kg"
-                        value={weight}
-                        text={weightText}
-                        onChange={({ text }) => setWeightText(text)}
-                        min={0}
-                        step={2.5}
-                        inputMode="decimal"
+                        label={t("label.weight")}
+                        unit={t("unit.kg")}
+                        {...form.weightProps}
                     />
-                    <Stepper
-                        label="Reps"
-                        value={reps}
-                        text={repsText}
-                        onChange={({ text }) => setRepsText(text)}
-                        min={0}
-                        step={1}
-                        integer
-                        inputMode="numeric"
-                    />
+                    <Stepper label={t("label.reps")} {...form.repsProps} />
                 </div>
 
-                {/* Write error (§12.5) — sheet stays open, no recap was appended. */}
+                {/* Write error (§12.5) — sheet stays open, no recap was appended.
+                    GYM-125 #2: a 409 (set-number collision, §12.8) gets a specific
+                    message via saveErrorMessage; the onSettled invalidation in
+                    useCreateTraining refetches log-context, so nextSet auto-corrects.
+                    create.variables carries the body of the LAST attempt — the set
+                    number the failed save actually tried to write. */}
                 {create.isError ? (
                     <p className="mt-3 text-label text-accent">
-                        Couldn't save that set — try again.
+                        {saveErrorMessage(
+                            create.error,
+                            create.variables?.set ?? nextSet,
+                        )}
                     </p>
                 ) : null}
 
-                {/* Sticky in-sheet SAVE — the shared <SheetSaveButton> (§11.4). */}
+                {/* Sticky in-sheet SAVE (§11.4). GYM-131 #3: while `morph` is
+                    live the button shows check + "Saved set n — w×r", then
+                    snaps back to "Save set {n+1}". Interactive throughout —
+                    a rapid double-save restarts the morph cleanly. */}
                 <SheetSaveButton
-                    label={`Save set ${nextSet}`}
+                    label={t("logger.saveSet", { n: nextSet })}
                     onClick={save}
                     disabled={!canSave}
                     pulse={pulse}
+                    success={
+                        morph
+                            ? {
+                                  label: t("logger.savedSet", {
+                                      n: morph.set,
+                                      weight: morph.weight,
+                                      reps: morph.reps,
+                                  }),
+                                  nonce: morph.nonce,
+                              }
+                            : null
+                    }
                 />
 
-                {/* Quiet "finish" affordance — closes the sheet (§12.3). */}
+                {/* Quiet "finish" affordance (§12.3). GYM-123 #7: a light
+                    impact haptic marks the close. GYM-132: onDone now goes to
+                    RecordSheet's handleDone — with ≥1 set logged this session
+                    it body-swaps to the summary; otherwise it closes. */}
                 <button
                     type="button"
-                    onClick={onDone}
+                    onClick={() => {
+                        hapticImpact("light");
+                        onDone();
+                    }}
                     className="press-95 mt-2 min-h-[44px] w-full text-base text-hint"
                 >
-                    Done
+                    {t("common.done")}
                 </button>
             </div>
         </div>

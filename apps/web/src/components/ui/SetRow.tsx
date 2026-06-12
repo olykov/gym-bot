@@ -13,8 +13,10 @@
  * transition class). `training_id` is carried by the caller as the mutation key.
  */
 import { useRef, useState } from "react";
+import { useT } from "@/i18n/catalog";
 import { hapticImpact } from "@/telegram/webapp";
 import type { TrainingSet } from "@/api/training";
+import { SetFigure } from "./SetFigure";
 
 interface SetRowProps {
     set: TrainingSet;
@@ -28,6 +30,7 @@ const REVEAL = 88;
 const THRESHOLD = REVEAL / 2;
 
 export function SetRow({ set, onEdit, onDelete }: SetRowProps) {
+    const { t } = useT();
     const [open, setOpen] = useState(false);
     const [dragX, setDragX] = useState<number | null>(null);
     const startX = useRef(0);
@@ -39,6 +42,16 @@ export function SetRow({ set, onEdit, onDelete }: SetRowProps) {
         startX.current = e.clientX;
         moved.current = false;
         setDragX(open ? -REVEAL : 0);
+        // GYM-125 #3: capture the pointer so a finger that leaves the row keeps
+        // streaming move/up events here — without it the swipe strands half-open.
+        // Guarded: older WebViews may lack setPointerCapture or throw on it.
+        try {
+            if (typeof e.currentTarget.setPointerCapture === "function") {
+                e.currentTarget.setPointerCapture(e.pointerId);
+            }
+        } catch {
+            /* degrade gracefully — swipe still works while inside the row */
+        }
     }
     function onPointerMove(e: React.PointerEvent): void {
         if (dragX === null) return;
@@ -69,11 +82,11 @@ export function SetRow({ set, onEdit, onDelete }: SetRowProps) {
             <button
                 type="button"
                 onClick={onDelete}
-                aria-label={`Delete set ${set.set}`}
+                aria-label={t("setRow.deleteAria", { n: set.set })}
                 className="absolute inset-y-0 right-0 flex items-center justify-center text-label font-semibold uppercase tracking-wide text-accent"
                 style={{ width: `${REVEAL}px` }}
             >
-                Delete
+                {t("common.delete")}
             </button>
 
             <div
@@ -99,11 +112,9 @@ export function SetRow({ set, onEdit, onDelete }: SetRowProps) {
                 }`}
             >
                 <span className="text-label uppercase tracking-wide text-hint">
-                    Set {set.set}
+                    {t("set.n", { n: set.set })}
                 </span>
-                <span className="tabular font-display text-title leading-none text-text">
-                    {set.weight}kg × {set.reps}
-                </span>
+                <SetFigure weight={set.weight} reps={set.reps} />
             </div>
         </div>
     );

@@ -88,3 +88,11 @@ Sheet height ≈ `100dvh − header − 24px`. On a 360×640 phone with ~56px he
 - The controls region does not jump or re-layout when a new set is saved (optimistic append at the top of the DESC recap).
 - The PR chip appears immediately on reopen when the log-context cache is warm.
 - The `SheetSaveButton` renders correctly without its `sticky` positioning (it's now in a non-scrolling parent; `sticky` is a no-op but harmless).
+
+### 2026-06-12T17:10:00Z — DESC ordering reverted by GYM-130 (ASC restored)
+
+GYM-130 (ghost recap + deltas) restored **ASC** recap order: the TODAY | LAST TIME comparison must
+read line-by-line top-down, which DESC breaks. The "last set visible" goal this task introduced is
+now solved by **auto-scroll** of the internally-scrollable recap region (scrollIntoView the just-saved
+row after save; next ghost target on entry). The layout restructure from this task (static top /
+scrollable recap / pinned controls) is unchanged and remains the foundation.

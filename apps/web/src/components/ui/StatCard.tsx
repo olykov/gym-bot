@@ -4,6 +4,9 @@
  * numeral switches to --accent and an optional chip sits beside the label.
  * Reused for all four summary numbers in GYM-42. Count-up animation is left to
  * GYM-42 (it needs live data); this is the static, token-only primitive.
+ *
+ * GYM-123 #1: NOT tappable — no press state. Cards-as-entry-points (Sets →
+ * History, Streak → explainer) was considered and deferred as feature creep.
  */
 import type { ReactNode } from "react";
 import { Card } from "./Card";
@@ -18,12 +21,11 @@ interface StatCardProps {
 
 export function StatCard({ value, label, accent = false, chip }: StatCardProps) {
     return (
-        <Card className="press-95">
+        <Card>
             <div
-                className={`tabular font-display leading-none ${
+                className={`tabular font-display text-stat leading-none ${
                     accent ? "text-accent" : "text-text"
                 }`}
-                style={{ fontSize: "var(--stat-size, 2.5rem)" }}
             >
                 {value}
             </div>

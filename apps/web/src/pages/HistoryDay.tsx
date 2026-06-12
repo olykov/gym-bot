@@ -12,15 +12,12 @@
  * EmptyState for an empty day / 404, an inline ErrorState + retry on error.
  */
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { useT } from "@/i18n/catalog";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import type { TrainingDayDetail, TrainingSet } from "@/api/training";
-import {
-    hideBackButton,
-    showBackButton,
-    wireBackButton,
-} from "@/telegram/webapp";
+import { pushBackHandler } from "@/telegram/webapp";
 import { dayKey, useTrainingDay } from "@/hooks/useTraining";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
@@ -32,10 +29,14 @@ import { SetRow } from "@/components/ui/SetRow";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { SetEditor, type EditorTarget } from "@/components/history/SetEditor";
 import { AddSetInline } from "@/components/history/AddSetInline";
+import { useTransitionNavigate } from "@/components/shell/useTransitionNavigate";
 
 export function HistoryDay() {
+    const { t, muscle } = useT();
     const { date = "" } = useParams();
-    const navigate = useNavigate();
+    // GYM-121: leaving the day is a pop — content slides right; unsupported
+    // WebViews / reduced motion degrade to the previous instant navigate(-1).
+    const transitionNavigate = useTransitionNavigate();
     const qc = useQueryClient();
 
     const day = useTrainingDay(date);
@@ -59,16 +60,14 @@ export function HistoryDay() {
     }, []);
 
     // BackButton: on this route, Back returns to the list (the sheet, while open,
-    // overrides this — see <BottomSheet>). Wired only when the sheet is closed.
+    // overrides this — see <BottomSheet>). GYM-119: pushed onto the shared
+    // back-handler stack so visibility has a single owner; the sheet's own
+    // handler stacks above this one while open. Pushed only when the sheet is
+    // closed (the early return keeps the route layer off the stack meanwhile).
     useEffect(() => {
         if (target) return; // sheet owns Back while open
-        showBackButton();
-        const teardown = wireBackButton(() => navigate(-1));
-        return () => {
-            teardown();
-            hideBackButton();
-        };
-    }, [navigate, target]);
+        return pushBackHandler(() => transitionNavigate(-1, "back"));
+    }, [transitionNavigate, target]);
 
     function openEditor(
         set: TrainingSet,
@@ -88,7 +87,7 @@ export function HistoryDay() {
     function afterDelete(): void {
         const detail = qc.getQueryData<TrainingDayDetail>(dayKey(date));
         const remaining = detail?.exercises.some((e) => e.sets.length > 0);
-        if (detail && !remaining) navigate(-1);
+        if (detail && !remaining) transitionNavigate(-1, "back");
     }
 
     if (day.isLoading) return <DayDetailSkeleton />;
@@ -99,8 +98,8 @@ export function HistoryDay() {
         if (notFound) {
             return (
                 <EmptyState
-                    title="Empty day"
-                    subtitle="This day has no trainings."
+                    title={t("empty.dayTitle")}
+                    subtitle={t("empty.dayNotFound")}
                 />
             );
         }
@@ -115,8 +114,8 @@ export function HistoryDay() {
     if (exercises.length === 0) {
         return (
             <EmptyState
-                title="Empty day"
-                subtitle="No sets recorded on this day."
+                title={t("empty.dayTitle")}
+                subtitle={t("empty.dayNoSets")}
             />
         );
     }
@@ -145,8 +144,10 @@ export function HistoryDay() {
                         <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-text" title={ex.exercise_name}>
                             {ex.exercise_name}
                         </h2>
-                        <span className="min-w-0 shrink-0" style={{ maxWidth: "8rem" }}>
-                            <Chip title={ex.muscle_name}>{ex.muscle_name}</Chip>
+                        <span className="min-w-0 max-w-chip shrink-0">
+                            <Chip title={muscle(ex.muscle_name)}>
+                                {muscle(ex.muscle_name)}
+                            </Chip>
                         </span>
                     </div>
 
@@ -197,10 +198,10 @@ export function HistoryDay() {
                         onClose={closeEditor}
                         onDeleted={afterDelete}
                         onEditError={() =>
-                            showMutationError("Couldn't save — restored.")
+                            showMutationError(t("history.saveRestored"))
                         }
                         onDeleteError={() =>
-                            showMutationError("Couldn't delete — restored.")
+                            showMutationError(t("history.deleteRestored"))
                         }
                     />
                 ) : null}

@@ -4,6 +4,7 @@
  * cache hit and under reduced motion, see useCountUp). The PRs card is the
  * `--accent` hero with a PR chip.
  */
+import { useT } from "@/i18n/catalog";
 import { StatCard, StatChip } from "@/components/ui/StatCard";
 import { useCountUp } from "@/hooks/useCountUp";
 import type { AnalyticsSummary } from "@/api/analytics";
@@ -15,19 +16,26 @@ interface SummaryCardsProps {
 }
 
 export function SummaryCards({ summary, animate }: SummaryCardsProps) {
+    const { t } = useT();
     return (
         <div className="grid grid-cols-2 gap-4">
-            <StatCard value={<Num value={summary.exercises} animate={animate} />} label="Exercises" />
-            <StatCard value={<Num value={summary.sets} animate={animate} />} label="Sets" />
+            <StatCard
+                value={<Num value={summary.exercises} animate={animate} />}
+                label={t("summary.exercises")}
+            />
+            <StatCard
+                value={<Num value={summary.sets} animate={animate} />}
+                label={t("summary.sets")}
+            />
             <StatCard
                 value={<Num value={summary.prs} animate={animate} />}
-                label="PRs set"
+                label={t("summary.prs")}
                 accent
-                chip={<StatChip>PR</StatChip>}
+                chip={<StatChip>{t("pr")}</StatChip>}
             />
             <StatCard
                 value={<Num value={summary.current_streak} animate={animate} />}
-                label="Week streak"
+                label={t("summary.weekStreak")}
             />
         </div>
     );

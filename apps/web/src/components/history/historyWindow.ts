@@ -7,6 +7,9 @@
  * window backward another step (same `to`, `from -= STEP_DAYS`) so a multi-year
  * history never loads as one unbounded list (the §0/ARCH §2 anti-pattern).
  */
+import type { Locale } from "@/i18n/locales";
+import { getLocale } from "@/i18n/locale";
+import { shortMonthInDate, shortWeekday } from "@/i18n/datetime";
 
 /** One pagination step = ~12 weeks (matches the spec's default + expand size). */
 export const STEP_DAYS = 84;
@@ -38,26 +41,27 @@ export function windowForSteps(steps: number, today: Date = new Date()): DateWin
     return { from: toISODate(start), to };
 }
 
-const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-const MONTHS = [
-    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
-];
-
 /**
- * Human, condensed day heading (spec §11.2): `MON 02 JUN`, upper, tabular. The
- * full year is appended only when it differs from the current year.
+ * Human, condensed day heading (spec §11.2): `MON 02 JUN` / ru `ПН 08 ИЮН`,
+ * upper, tabular — weekday/month via Intl (GYM-109), uppercased per locale.
+ * The full year is appended only when it differs from the current year.
  *
  * @param iso - the API date string (YYYY-MM-DD).
  * @param today - injectable for determinism.
+ * @param locale - explicit locale for deterministic tests; defaults to the
+ *   active Telegram locale.
  */
-export function formatDayHeading(iso: string, today: Date = new Date()): string {
+export function formatDayHeading(
+    iso: string,
+    today: Date = new Date(),
+    locale: Locale = getLocale(),
+): string {
     const [y, m, d] = iso.split("-").map(Number);
     if (!y || !m || !d) return iso;
     // Construct as local midnight so the weekday matches the calendar date.
     const date = new Date(y, m - 1, d);
-    const wd = WEEKDAYS[date.getDay()];
-    const mon = MONTHS[date.getMonth()];
+    const wd = shortWeekday(date, locale).toLocaleUpperCase(locale);
+    const mon = shortMonthInDate(date, locale).toLocaleUpperCase(locale);
     const day = String(d).padStart(2, "0");
     const base = `${wd} ${day} ${mon}`;
     return y === today.getFullYear() ? base : `${base} ${y}`;

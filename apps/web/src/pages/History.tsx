@@ -13,20 +13,25 @@
  * and a quiet "That's the beginning." footer when the window is exhausted.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "@/i18n/catalog";
 import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { EmptyState, EmptyStateAction } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { useRecordSheet } from "@/components/record/RecordSheetContext";
 import { DayCard } from "@/components/ui/DayCard";
 import { useTrainingDays } from "@/hooks/useTraining";
 import { windowForSteps } from "@/components/history/historyWindow";
 
 export function History() {
+    const { t } = useT();
     // Expandable window: `steps` grows backward; `to` stays today.
     const [steps, setSteps] = useState(1);
     const { from, to } = useMemo(() => windowForSteps(steps), [steps]);
 
     const days = useTrainingDays(from, to);
+    // GYM-118: the empty-state CTA opens the shell-owned record sheet.
+    const { openRecordSheet } = useRecordSheet();
 
     // Track the previous earliest day to detect "no new day" (window exhausted).
     const prevEarliest = useRef<string | null>(null);
@@ -71,8 +76,14 @@ export function History() {
     if (list.length === 0) {
         return (
             <EmptyState
-                title="No trainings yet"
-                subtitle="Log a set in the bot and it shows up here."
+                title={t("empty.noTrainingsTitle")}
+                subtitle={t("empty.noTrainingsSubtitle")}
+                action={
+                    <EmptyStateAction
+                        label={t("empty.logASet")}
+                        onClick={openRecordSheet}
+                    />
+                }
             />
         );
     }
@@ -102,6 +113,7 @@ function ListTail({
     fetching: boolean;
     onLoadEarlier: () => void;
 }) {
+    const { t } = useT();
     const sentinel = useRef<HTMLDivElement>(null);
 
     // IntersectionObserver: expand the window when the sentinel scrolls into view.
@@ -122,7 +134,7 @@ function ListTail({
     if (exhausted) {
         return (
             <p className="py-4 text-center text-label text-hint">
-                That's the beginning.
+                {t("history.beginning")}
             </p>
         );
     }
@@ -143,7 +155,7 @@ function ListTail({
                 }}
                 className="press-95 cursor-pointer text-center text-base text-hint"
             >
-                {fetching ? "Loading…" : "Load earlier"}
+                {fetching ? t("common.loading") : t("history.loadEarlier")}
             </Card>
         </>
     );
@@ -161,7 +173,7 @@ function DayCardSkeleton() {
                 </div>
                 <Skeleton className="mt-2 h-3 w-40" />
             </div>
-            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-5 w-5 rounded-md" />
         </Card>
     );
 }

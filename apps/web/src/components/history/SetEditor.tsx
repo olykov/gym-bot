@@ -29,10 +29,12 @@
  * the bottom SAVE so it is not mis-tapped.
  */
 import { useEffect, useMemo, useState } from "react";
+import { useT } from "@/i18n/catalog";
 import type { TrainingSet } from "@/api/training";
 import { hapticNotification } from "@/telegram/webapp";
 import { useDeleteSet, useEditSet } from "@/hooks/useTraining";
-import { Stepper, parseNumeric } from "@/components/ui/Stepper";
+import { useWeightRepsForm } from "@/hooks/useWeightRepsForm";
+import { Stepper } from "@/components/ui/Stepper";
 import { SheetSaveButton } from "@/components/ui/SheetSaveButton";
 import { MoveSetPanel } from "./MoveSetPanel";
 
@@ -72,29 +74,32 @@ export function SetEditor({
     onEditError,
     onDeleteError,
 }: SetEditorProps) {
+    const { t } = useT();
     const { set, exerciseName, muscleName } = target;
 
-    const [weightText, setWeightText] = useState(String(set.weight));
-    const [repsText, setRepsText] = useState(String(set.reps));
+    // GYM-126: shared weight/reps form mechanics; the changed-from-original
+    // check below is this editor's own semantic, composed on top.
+    const form = useWeightRepsForm({
+        weightText: String(set.weight),
+        repsText: String(set.reps),
+    });
+    const { weight, reps, valid, reset } = form;
     const [mode, setMode] = useState<EditorMode>("edit");
 
     const edit = useEditSet(date);
     const del = useDeleteSet(date);
 
-    const weight = parseNumeric(weightText, false);
-    const reps = parseNumeric(repsText, true);
-
-    const valid =
-        weight !== null && weight >= 0 && reps !== null && reps >= 0;
     const changed = weight !== set.weight || reps !== set.reps;
     const canSave = valid && changed && !edit.isPending && !del.isPending;
 
     // Reset local state when the target set changes (sheet re-used for a new row).
     useEffect(() => {
-        setWeightText(String(set.weight));
-        setRepsText(String(set.reps));
+        reset({
+            weightText: String(set.weight),
+            repsText: String(set.reps),
+        });
         setMode("edit");
-    }, [set.training_id, set.weight, set.reps]);
+    }, [reset, set.training_id, set.weight, set.reps]);
 
     function save(): void {
         if (!canSave || weight === null || reps === null) return;
@@ -131,7 +136,10 @@ export function SetEditor({
         onDeleted();
     }
 
-    const headerSub = useMemo(() => `Set ${set.set}`, [set.set]);
+    const headerSub = useMemo(
+        () => t("set.n", { n: set.set }),
+        [t, set.set],
+    );
 
     // Move mode — delegates entirely to MoveSetPanel.
     if (mode === "move") {
@@ -191,10 +199,13 @@ export function SetEditor({
                             type="button"
                             onClick={() => setMode("move")}
                             className="press-95 -mr-1 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
-                            aria-label={`Move ${exerciseName} ${headerSub}`}
+                            aria-label={t("editor.moveSetAria", {
+                                exercise: exerciseName,
+                                n: set.set,
+                            })}
                         >
                             <MoveIcon />
-                            Move
+                            {t("editor.move")}
                         </button>
 
                         {/* Delete trigger */}
@@ -202,10 +213,13 @@ export function SetEditor({
                             type="button"
                             onClick={startDelete}
                             className="press-95 -mr-2 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
-                            aria-label={`Delete ${exerciseName} ${headerSub}`}
+                            aria-label={t("editor.deleteSetAria", {
+                                exercise: exerciseName,
+                                n: set.set,
+                            })}
                         >
                             <TrashIcon />
-                            Delete
+                            {t("common.delete")}
                         </button>
                     </div>
                 )}
@@ -215,14 +229,16 @@ export function SetEditor({
                header, separated from the sticky SAVE. */}
             {mode === "confirmDelete" && (
                 <div className="mb-5 rounded-md border border-hairline bg-secondary-bg p-3">
-                    <p className="text-base text-text">Delete this set?</p>
+                    <p className="text-base text-text">
+                        {t("editor.deleteThisSet")}
+                    </p>
                     <div className="mt-3 flex gap-2">
                         <button
                             type="button"
                             onClick={() => setMode("edit")}
                             className="press-95 min-h-[44px] flex-1 rounded-md border border-hairline bg-bg text-base text-text"
                         >
-                            Cancel
+                            {t("common.cancel")}
                         </button>
                         <button
                             type="button"
@@ -230,7 +246,7 @@ export function SetEditor({
                             disabled={del.isPending}
                             className="press-95 min-h-[44px] flex-1 rounded-md bg-accent-weak text-base font-semibold text-accent disabled:opacity-50"
                         >
-                            Delete
+                            {t("common.delete")}
                         </button>
                     </div>
                 </div>
@@ -240,25 +256,11 @@ export function SetEditor({
                 <>
                     <div className="flex flex-col gap-6">
                         <Stepper
-                            label="Weight"
-                            unit="kg"
-                            value={weight}
-                            text={weightText}
-                            onChange={({ text }) => setWeightText(text)}
-                            min={0}
-                            step={2.5}
-                            inputMode="decimal"
+                            label={t("label.weight")}
+                            unit={t("unit.kg")}
+                            {...form.weightProps}
                         />
-                        <Stepper
-                            label="Reps"
-                            value={reps}
-                            text={repsText}
-                            onChange={({ text }) => setRepsText(text)}
-                            min={0}
-                            step={1}
-                            integer
-                            inputMode="numeric"
-                        />
+                        <Stepper label={t("label.reps")} {...form.repsProps} />
                     </div>
 
                     {/* Sticky in-sheet SAVE (§11.4, GYM-54) — the shared
@@ -266,7 +268,7 @@ export function SetEditor({
                        viewport so it never clips (replaces the native MainButton).
                        Disabled when unchanged/invalid (same logic as before). */}
                     <SheetSaveButton
-                        label="Save"
+                        label={t("common.save")}
                         onClick={save}
                         disabled={!canSave}
                     />

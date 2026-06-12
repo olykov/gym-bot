@@ -26,21 +26,18 @@ import {
     type TrainingMove,
     type TrainingUpdate,
 } from "@/api/training";
+import { queryKeys } from "@/api/queryKeys";
 import { DEVICE_TZ } from "@/lib/timezone";
 
 /**
- * Query key for one window of the day list (consistent with activity's key).
- *
- * DEVICE_TZ is included so that a timezone change (across reloads) produces a
- * cache miss and the server regroups days in the correct local timezone.
+ * Query key for one window of the day list — re-exported from the central
+ * queryKeys factory (GYM-126) so existing imports keep working. The key
+ * includes the device tz so that a timezone change (across reloads) produces
+ * a cache miss and the server regroups days in the correct local timezone.
  */
-export function daysKey(from: string, to: string) {
-    return ["training", "days", from, to, DEVICE_TZ ?? "UTC"] as const;
-}
-/** Query key for one day's detail. */
-export function dayKey(date: string) {
-    return ["training", "day", date] as const;
-}
+export const daysKey = queryKeys.training.days;
+/** Query key for one day's detail (re-export of queryKeys.training.day). */
+export const dayKey = queryKeys.training.day;
 
 /**
  * Day list for a date window (§11.2). Newest-first from the API.
@@ -97,13 +94,26 @@ function invalidateAfterMutation(
     date: string,
 ): void {
     void qc.invalidateQueries({ queryKey: dayKey(date) });
-    void qc.invalidateQueries({ queryKey: ["training", "days"] });
-    void qc.invalidateQueries({ queryKey: ["analytics", "summary"] });
-    void qc.invalidateQueries({ queryKey: ["analytics", "activity"] });
-    void qc.invalidateQueries({ queryKey: ["analytics", "exercise-progress"] });
+    void qc.invalidateQueries({ queryKey: queryKeys.training.daysPrefix });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.summaryPrefix });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.activityPrefix });
+    // GYM-136: an edit/delete/move can change this week's sets/volume totals.
+    void qc.invalidateQueries({
+        queryKey: queryKeys.analytics.weekComparePrefix,
+    });
+    void qc.invalidateQueries({
+        queryKey: queryKeys.analytics.exerciseProgressPrefix(),
+    });
     // GYM-105: invalidate ALL log-context entries (by broad prefix) so the
-    // SetLogger never shows deleted sets as ✓ and always shows the real PR.
-    void qc.invalidateQueries({ queryKey: ["analytics", "log-context"] });
+    // SetLogger never shows deleted sets as done and always shows the real PR.
+    void qc.invalidateQueries({
+        queryKey: queryKeys.analytics.logContextPrefix(),
+    });
+    // GYM-135: a weight/reps edit (or delete/move) changes the e1RM history —
+    // every cached exercise-trend window must refetch (broad prefix).
+    void qc.invalidateQueries({
+        queryKey: queryKeys.analytics.exerciseTrendPrefix(),
+    });
 }
 
 interface EditVars {

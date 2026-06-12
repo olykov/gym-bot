@@ -38,6 +38,13 @@ interface RequestOptions {
 /**
  * Perform a typed JSON request against the Core API.
  *
+ * 401 self-heal (GYM-125 #1): when an AUTHED request gets a 401 (the stored
+ * JWT outlived its expiry), the stale token is cleared, the initData→JWT
+ * exchange re-runs once (single-flight across concurrent queries — see
+ * ./reauth), and the original request is retried once with the fresh token.
+ * A second 401, an anonymous request, or no initData (outside Telegram)
+ * throws as before — never a retry loop.
+ *
  * @param path - API path relative to {@link API_BASE} (e.g. "/analytics/summary").
  * @param options - method/body/auth options.
  * @returns the parsed JSON response, typed by the caller's generic.
@@ -46,6 +53,15 @@ interface RequestOptions {
 export async function apiRequest<TResponse>(
     path: string,
     options: RequestOptions = {},
+): Promise<TResponse> {
+    return performRequest<TResponse>(path, options, false);
+}
+
+/** The actual fetch; `isRetry` guards the one-shot 401 self-heal. */
+async function performRequest<TResponse>(
+    path: string,
+    options: RequestOptions,
+    isRetry: boolean,
 ): Promise<TResponse> {
     const { method = "GET", body, anonymous = false, signal } = options;
 
@@ -73,6 +89,16 @@ export async function apiRequest<TResponse>(
     const data = text ? safeJson(text) : undefined;
 
     if (!res.ok) {
+        // GYM-125 #1: one-shot re-auth + retry for expired-token 401s. The
+        // import is dynamic so this module stays free of a static cycle
+        // (reauth → auth → client) and node-safe for unit tests; it only
+        // loads on the 401 path.
+        if (res.status === 401 && !anonymous && !isRetry) {
+            const { reauthenticate } = await import("./reauth");
+            if (await reauthenticate()) {
+                return performRequest<TResponse>(path, options, true);
+            }
+        }
         const detail =
             (data as { detail?: string } | undefined)?.detail ??
             res.statusText;

@@ -1229,6 +1229,72 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /analytics/exercise-trend:
+    get:
+      tags: [analytics]
+      summary: Session volume delta + e1RM trend series for an exercise
+      description: >
+        One small read powering the SetLogger sparkline and the session-vs-session
+        volume delta (GYM-134): the most recent session's volume, the previous
+        session's volume, and a per-session max-e1RM series over the trailing
+        `weeks` window. Volume is the sum of weight×reps across the session's
+        (calendar day's) sets; e1RM uses Epley, weight × (1 + reps/30).
+        Scoped to the caller.
+      operationId: getExerciseTrend
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MuscleNameQuery'
+        - $ref: '#/components/parameters/ExerciseNameQuery'
+        - $ref: '#/components/parameters/ActAsUser'
+        - name: weeks
+          in: query
+          required: false
+          description: Trailing window for the e1RM trend, in weeks.
+          schema:
+            type: integer
+            default: 8
+            minimum: 1
+            maximum: 52
+      responses:
+        '200':
+          description: The exercise trend payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseTrend'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/week-compare:
+    get:
+      tags: [analytics]
+      summary: This-week vs last-week sets/volume totals for the Dashboard
+      description: >
+        Training totals for the current calendar week and the previous one
+        (GYM-136): sets = number of recorded sets, volume = sum of weight×reps.
+        Weeks are Monday-start calendar weeks computed in the `tz` timezone
+        (UTC when omitted); `this_week` is the week containing today,
+        `last_week` is the week immediately before. A week with no training
+        carries zeros. Scoped to the caller.
+      operationId: getWeekCompare
+      security:
+        - userJwt: []
+        - serviceAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActAsUser'
+        - $ref: '#/components/parameters/TimezoneQuery'
+      responses:
+        '200':
+          description: The week comparison totals.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeekCompare'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ---------------------------------------------------------------- admin catalog
   /admin/muscles:
     post:
@@ -1902,7 +1968,7 @@ components:
     TrainingDay:
       type: object
       description: One day the caller trained, summarised for the History list.
-      required: [date, muscles, exercises_count, sets_count]
+      required: [date, muscles, exercises_count, sets_count, has_pr]
       properties:
         date:
           type: string
@@ -1918,6 +1984,14 @@ components:
         sets_count:
           type: integer
           description: Total sets recorded that day.
+        has_pr:
+          type: boolean
+          description: >
+            True when the day holds the caller's current all-time max-weight set
+            of at least one exercise (GYM-136). Semantic is "current max", not
+            "was a PR when logged": the marker reflects today's standing weight
+            records, so a later heavier set moves the marker to its own day, and
+            a tie marks every tying day.
 
     TrainingSet:
       type: object
@@ -2147,6 +2221,78 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExerciseSetSeries'
+
+    SessionVolume:
+      type: object
+      description: One training session (calendar day) with its total volume.
+      required: [date, volume]
+      properties:
+        date:
+          type: string
+          format: date
+        volume:
+          type: number
+          description: Sum of weight×reps across all sets of the session.
+
+    E1rmPoint:
+      type: object
+      description: Per-session maximum estimated one-rep max (Epley).
+      required: [date, e1rm]
+      properties:
+        date:
+          type: string
+          format: date
+        e1rm:
+          type: number
+          description: max(weight × (1 + reps/30)) across the session's sets.
+
+    ExerciseTrend:
+      type: object
+      description: >
+        Session-vs-session volume delta inputs plus a per-session max-e1RM
+        trend over the trailing window (GYM-134).
+      required: [last_session, prev_session, e1rm_trend]
+      properties:
+        last_session:
+          oneOf:
+            - $ref: '#/components/schemas/SessionVolume'
+            - type: 'null'
+          description: The most recent session, or null when no history exists.
+        prev_session:
+          oneOf:
+            - $ref: '#/components/schemas/SessionVolume'
+            - type: 'null'
+          description: The session before the most recent one, or null.
+        e1rm_trend:
+          type: array
+          items:
+            $ref: '#/components/schemas/E1rmPoint'
+          description: Per-session max-e1RM points within the window, date ascending.
+
+    WeekStats:
+      type: object
+      description: Training totals for one Monday-start calendar week (GYM-136).
+      required: [sets, volume]
+      properties:
+        sets:
+          type: integer
+          description: Number of sets recorded in the week.
+        volume:
+          type: number
+          description: Sum of weight×reps across the week's sets.
+
+    WeekCompare:
+      type: object
+      description: >
+        This-week vs last-week totals for the Dashboard comparison card
+        (GYM-136). Weeks are Monday-start calendar weeks in the requested
+        timezone (UTC when omitted); a week with no training carries zeros.
+      required: [this_week, last_week]
+      properties:
+        this_week:
+          $ref: '#/components/schemas/WeekStats'
+        last_week:
+          $ref: '#/components/schemas/WeekStats'
 
     # ---- static data
     StaticData:

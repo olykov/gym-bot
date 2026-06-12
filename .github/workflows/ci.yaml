@@ -18,7 +18,46 @@ env:
   WEB_FRONTEND_IMAGE: ${{ secrets.DOCKER_HUB_USERNAME }}/gym-bot-web-frontend
 
 jobs:
+  # GYM-124: quality gate for apps/web — type-check, lint and unit tests must
+  # pass before any image is built or deployed.
+  web-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The TS API client is gitignored and generated from the contract spec
+      # (same step the apps/web Dockerfile runs) — tsc resolves @api-contract
+      # against packages/api-contract/clients/typescript/.
+      - name: Generate API contract client
+        working-directory: .
+        run: |
+          mkdir -p packages/api-contract/clients/typescript
+          npx --yes openapi-typescript@7 packages/api-contract/openapi.yaml \
+            -o packages/api-contract/clients/typescript/schema.ts
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
   build-bot:
+    needs: web-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -35,6 +74,7 @@ jobs:
           docker push ${{ env.BOT_IMAGE }}:${{ env.BUILD_TAG }}
 
   build-admin-backend:
+    needs: web-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -51,6 +91,7 @@ jobs:
           docker push ${{ env.ADMIN_BACKEND_IMAGE }}:${{ env.BUILD_TAG }}
 
   build-admin-frontend:
+    needs: web-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -67,6 +108,7 @@ jobs:
           docker push ${{ env.ADMIN_FRONTEND_IMAGE }}:${{ env.BUILD_TAG }}
 
   build-web-frontend:
+    needs: web-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

@@ -4,10 +4,17 @@
  *
  * Owns: a grab-handle + §9.5 top hairline, a scrim over the page (tap-scrim
  * dismisses), bottom safe-area inset, a 240ms slide gated by
- * prefers-reduced-motion (reduced = instant), basic focus management, and the
- * BackButton ownership rule (§11.7): while the sheet is open the Telegram
- * BackButton closes the SHEET first (one back-step), not the page. Esc closes
- * too (desktop). Width never exceeds the container column.
+ * prefers-reduced-motion (reduced = instant), focus management (initial focus
+ * into the panel + a minimal Tab/Shift+Tab focus trap that cycles within the
+ * open panel — GYM-125 #4), and the BackButton ownership rule (§11.7): while
+ * the sheet is open the Telegram BackButton closes the SHEET first (one
+ * back-step), not the page. Back is wired through the module-level handler
+ * stack (GYM-119) so nested sheets each consume one press — top sheet first.
+ * Esc closes too (desktop). Width never exceeds the container column.
+ * GYM-120: the grab-handle strip is a drag-to-dismiss zone (useSheetDrag) —
+ * drag down past ~30% of the panel height or flick to close; otherwise it
+ * springs back. The body region is NOT part of the drag zone, so internal
+ * scroll is never intercepted.
  *
  * Fit (GYM-54): the panel is capped at a `max-height` of roughly
  * `viewport − top-safe-inset − a margin` and is a flex column. The `children`
@@ -20,11 +27,19 @@
  * (§11.4). The body's bottom padding clears the device/Telegram bottom inset.
  */
 import { useEffect, useRef, useState } from "react";
-import {
-    hideBackButton,
-    showBackButton,
-    wireBackButton,
-} from "@/telegram/webapp";
+import { useT } from "@/i18n/catalog";
+import { pushBackHandler } from "@/telegram/webapp";
+import { useSheetDrag } from "./useSheetDrag";
+
+/**
+ * Elements a Tab press may land on inside the panel (GYM-125 #4). Queried at
+ * keydown time — not cached — so rows that mount/unmount while the sheet is
+ * open are always covered.
+ */
+const FOCUSABLE_SELECTOR =
+    'a[href], button:not([disabled]), input:not([disabled]), ' +
+    'select:not([disabled]), textarea:not([disabled]), ' +
+    '[tabindex]:not([tabindex="-1"])';
 
 interface BottomSheetProps {
     open: boolean;
@@ -45,12 +60,13 @@ interface BottomSheetProps {
      */
     onBackOverride?: () => boolean;
     /**
-     * CSS z-index for the sheet overlay. Defaults to 30 (the shared sheet
-     * layer). Pass a higher value when the sheet is nested inside another
-     * sheet so it clears the parent sheet's stacking context and its scrim
-     * covers the full viewport uniformly (GYM-98).
+     * Stacking layer for the sheet overlay (GYM-127 z-scale tokens).
+     * "sheet" (default) → var(--z-sheet); "sheet-nested" → var(--z-sheet-nested)
+     * for a sheet opened on top of another sheet, so it clears the parent
+     * sheet's stacking context and its scrim covers the full viewport
+     * uniformly (GYM-98).
      */
-    zIndex?: number;
+    layer?: "sheet" | "sheet-nested";
     /**
      * Sheet body. Scrolls internally when the sheet hits its max-height; the
      * caller may pin its own sticky footer (the SAVE) with
@@ -71,10 +87,18 @@ export function BottomSheet({
     titleId,
     fixedHeight = false,
     onBackOverride,
-    zIndex = 30,
+    layer = "sheet",
     children,
 }: BottomSheetProps) {
+    const { t } = useT();
     const panelRef = useRef<HTMLDivElement>(null);
+
+    // GYM-120: drag-to-dismiss. The drag zone is ONLY the grab-handle strip
+    // below — never the body — so it can't fight internal scroll.
+    const { handleProps, panelStyle, scrimStyle } = useSheetDrag(
+        panelRef,
+        onClose,
+    );
 
     // GYM-82: track the software keyboard height via visualViewport so the
     // sheet's scroll container can pad its bottom and keep the focused add-input
@@ -101,29 +125,61 @@ export function BottomSheet({
 
     // BackButton ownership (§11.7): while open, Back closes the sheet first,
     // unless the caller intercepts it (e.g. for step navigation in the picker).
+    // GYM-119: the handler is PUSHED onto the module-level stack — a nested
+    // sheet pushes on top and consumes Back alone; this sheet regains it on
+    // pop. Latest callbacks live in refs so the stack entry is pushed exactly
+    // once per open and never re-ordered by a callback identity change while
+    // a nested sheet sits above it.
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
+    const onBackOverrideRef = useRef(onBackOverride);
+    onBackOverrideRef.current = onBackOverride;
+
     useEffect(() => {
         if (!open) return;
-        showBackButton();
-        const handler = () => {
-            if (onBackOverride) {
-                const consumed = onBackOverride();
-                if (consumed) return;
-            }
-            onClose();
-        };
-        const teardown = wireBackButton(handler);
-        return () => {
-            teardown();
-            hideBackButton();
-        };
-    }, [open, onClose, onBackOverride]);
+        return pushBackHandler(() => {
+            const override = onBackOverrideRef.current;
+            if (override && override()) return; // consumed — sheet stays open
+            onCloseRef.current();
+        });
+    }, [open]);
 
-    // Esc closes (desktop); move focus into the panel on open.
+    // Esc closes (desktop); initial focus into the panel + a minimal focus
+    // trap (GYM-125 #4): Tab/Shift+Tab cycle within the open panel. The scrim
+    // button is a sibling OUTSIDE the panel, so it is intentionally excluded
+    // (the dialog is aria-modal; pointer users still tap the scrim).
     useEffect(() => {
         if (!open) return;
         panelRef.current?.focus();
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
+            if (e.key === "Escape") {
+                onClose();
+                return;
+            }
+            if (e.key !== "Tab") return;
+            const panel = panelRef.current;
+            if (!panel) return;
+            const focusables = Array.from(
+                panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+            );
+            if (focusables.length === 0) {
+                e.preventDefault(); // nothing to land on — stay on the panel
+                return;
+            }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            const active = document.activeElement;
+            const inside =
+                active instanceof HTMLElement && panel.contains(active);
+            if (e.shiftKey) {
+                if (!inside || active === first) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else if (!inside || active === last) {
+                e.preventDefault();
+                first.focus();
+            }
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
@@ -132,13 +188,25 @@ export function BottomSheet({
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0" style={{ zIndex }}>
+        <div
+            className="fixed inset-0"
+            style={{
+                zIndex:
+                    layer === "sheet-nested"
+                        ? "var(--z-sheet-nested)"
+                        : "var(--z-sheet)",
+            }}
+        >
             {/* Scrim — tap to dismiss. Darker so it reads over near-black dark. */}
             <button
                 type="button"
-                aria-label="Close"
+                aria-label={t("common.close")}
                 onClick={onClose}
                 className="sheet-scrim absolute inset-0"
+                // GYM-120: while a handle-drag is live the scrim opacity
+                // follows drag progress (inline, with the entrance animation
+                // pinned off so its `forwards` fill can't fight the style).
+                style={scrimStyle}
             />
 
             {/* Panel: bottom-anchored, container-width. A flex column capped at
@@ -155,9 +223,9 @@ export function BottomSheet({
                     aria-modal="true"
                     aria-labelledby={titleId}
                     tabIndex={-1}
-                    className="sheet-panel flex w-full max-w-container flex-col rounded-t-lg border-t border-hairline bg-bg pt-3 outline-none"
-                    style={
-                        fixedHeight
+                    className="sheet-panel flex w-full max-w-container flex-col rounded-t-lg border-t border-hairline bg-bg outline-none"
+                    style={{
+                        ...(fixedHeight
                             ? {
                                   // Fixed height: sits strictly below the AppShell header.
                                   // = viewport − (safe-area/Telegram content top) − header-h − 24px margin.
@@ -173,14 +241,25 @@ export function BottomSheet({
                             : {
                                   maxHeight:
                                       "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - 24px)",
-                              }
-                    }
+                              }),
+                        // GYM-120: drag translate / snap-back transition.
+                        ...panelStyle,
+                    }}
                 >
-                    {/* Grab handle (spec §9.5) — fixed at the top of the panel. */}
+                    {/* Drag zone (GYM-120): the grab handle (spec §9.5) plus the
+                        panel's top padding strip — and ONLY that strip, so the
+                        gesture never intercepts the body's internal scroll
+                        (critical for the fixedHeight record sheet). touch-none
+                        keeps the browser from hijacking the vertical drag as a
+                        page scroll. Decorative: scrim/Back/Esc remain the
+                        accessible close paths. */}
                     <div
                         aria-hidden
-                        className="mx-auto mb-4 h-1 w-12 shrink-0 rounded-full bg-hairline"
-                    />
+                        className="shrink-0 touch-none pt-3"
+                        {...handleProps}
+                    >
+                        <div className="mx-auto mb-4 h-1 w-12 rounded-full bg-hairline" />
+                    </div>
 
                     {/* Body region: scrolls internally so the sheet NEVER clips a
                         tall editor, and a caller's sticky footer stays pinned

@@ -1123,3 +1123,350 @@ def get_log_context(
         },
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# GYM-134: /analytics/exercise-trend — session volume delta + e1RM trend
+# ---------------------------------------------------------------------------
+
+
+def _fetch_last_two_session_volumes(
+    db: Session,
+    uid: int,
+    exercise_id: int,
+) -> List[schemas.SessionVolume]:
+    """Return the two most recent sessions (calendar days) with total volume.
+
+    Volume = SUM(weight * reps) over all sets logged on the day.  Sargable:
+    the WHERE predicates on ``user_id``/``exercise_id`` use
+    ``idx_training_user_exercise (user_id, exercise_id)``; ``date::date``
+    appears only in GROUP BY / SELECT / ORDER BY, never in WHERE.
+
+    Args:
+        db: SQLAlchemy session.
+        uid: User id (defence-in-depth; RLS already scopes the session).
+        exercise_id: Exercise id (already resolved via RLS-scoped lookup).
+
+    Returns:
+        Up to two SessionVolume entries, most recent first.  Empty list when
+        the exercise has no training history.
+    """
+    rows = db.execute(
+        text("""
+            SELECT date::date AS day, SUM(weight * reps) AS volume
+            FROM training
+            WHERE user_id     = :uid
+              AND exercise_id = :eid
+            GROUP BY date::date
+            ORDER BY day DESC
+            LIMIT 2
+        """),
+        {"uid": uid, "eid": exercise_id},
+    ).fetchall()
+    return [
+        schemas.SessionVolume(
+            date=r[0] if isinstance(r[0], date) else date.fromisoformat(str(r[0])),
+            volume=float(r[1]),
+        )
+        for r in rows
+    ]
+
+
+def _fetch_e1rm_trend(
+    db: Session,
+    uid: int,
+    exercise_id: int,
+    window_start: datetime,
+) -> List[schemas.E1rmPoint]:
+    """Return per-session max Epley e1RM points within the trailing window.
+
+    e1RM (Epley) = weight * (1 + reps/30); per session (calendar day) the
+    maximum across the day's sets is taken — done directly in SQL via
+    ``MAX(weight * (1 + reps / 30.0))``.  Sargable: WHERE uses plain
+    predicates on ``user_id``/``exercise_id`` plus a raw timestamp range
+    (``date >= :window_start``) so ``idx_training_user_exercise`` applies;
+    ``date::date`` appears only in GROUP BY / SELECT / ORDER BY.
+
+    Args:
+        db: SQLAlchemy session.
+        uid: User id.
+        exercise_id: Exercise id.
+        window_start: Inclusive lower bound of the trailing window (UTC).
+
+    Returns:
+        E1rmPoint entries ordered by date ascending; empty when no sessions
+        fall within the window.
+    """
+    rows = db.execute(
+        text("""
+            SELECT date::date AS day, MAX(weight * (1 + reps / 30.0)) AS e1rm
+            FROM training
+            WHERE user_id     = :uid
+              AND exercise_id = :eid
+              AND date >= :window_start
+            GROUP BY date::date
+            ORDER BY day ASC
+        """),
+        {"uid": uid, "eid": exercise_id, "window_start": window_start},
+    ).fetchall()
+    return [
+        schemas.E1rmPoint(
+            date=r[0] if isinstance(r[0], date) else date.fromisoformat(str(r[0])),
+            e1rm=float(r[1]),
+        )
+        for r in rows
+    ]
+
+
+def _trend_to_cache(trend: schemas.ExerciseTrend) -> dict:
+    """Serialize an ExerciseTrend for the JSON cache (dates as ISO strings).
+
+    Args:
+        trend: Computed trend payload.
+
+    Returns:
+        JSON-serialisable dict mirroring the contract shape.
+    """
+    def _session(s: Optional[schemas.SessionVolume]) -> Optional[dict]:
+        return {"date": str(s.date), "volume": s.volume} if s else None
+
+    return {
+        "last_session": _session(trend.last_session),
+        "prev_session": _session(trend.prev_session),
+        "e1rm_trend": [{"date": str(p.date), "e1rm": p.e1rm} for p in trend.e1rm_trend],
+    }
+
+
+def _trend_from_cache(cached: dict) -> schemas.ExerciseTrend:
+    """Rebuild an ExerciseTrend from its cached JSON dict.
+
+    Args:
+        cached: Dict previously produced by ``_trend_to_cache``.
+
+    Returns:
+        ExerciseTrend instance.
+    """
+    last_raw = cached.get("last_session")
+    prev_raw = cached.get("prev_session")
+    return schemas.ExerciseTrend(
+        last_session=schemas.SessionVolume(**last_raw) if last_raw else None,
+        prev_session=schemas.SessionVolume(**prev_raw) if prev_raw else None,
+        e1rm_trend=[schemas.E1rmPoint(**p) for p in cached.get("e1rm_trend", [])],
+    )
+
+
+@router.get(
+    "/analytics/exercise-trend",
+    response_model=schemas.ExerciseTrend,
+    tags=["analytics"],
+)
+def get_exercise_trend(
+    muscle: str,
+    exercise: str,
+    weeks: int = Query(default=8, ge=1, le=52),
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> schemas.ExerciseTrend:
+    """Return session volume delta inputs + e1RM trend for an exercise (GYM-134).
+
+    One small read powering the SetLogger sparkline and the session-vs-session
+    volume delta: the two most recent sessions' volumes (Σ weight×reps per
+    calendar day) and a per-session max Epley e1RM series over the trailing
+    ``weeks`` window.  Resolves muscle/exercise by name through the RLS-scoped
+    session (GYM-71 pattern) so a user cannot probe invisible exercises.
+
+    Cached under ``analytics:{uid}:exercise-trend:...`` (90 s TTL); training
+    mutations purge ``analytics:{uid}:*`` (GYM-47), which covers this key
+    family automatically.
+
+    Args:
+        muscle: Muscle group name.
+        exercise: Exercise name.
+        weeks: Trailing window for the e1RM trend in weeks (1–52, default 8).
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session (GUC-wired for the calling user).
+
+    Returns:
+        ExerciseTrend with last_session, prev_session, and e1rm_trend.
+    """
+    uid = principal["user_id"]
+    cache_key = make_key(uid, "exercise-trend", muscle=muscle, exercise=exercise, weeks=weeks)
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return _trend_from_cache(cached)
+
+    exercise_id = _resolve_exercise_id(db, muscle, exercise, uid)
+    if exercise_id is None:
+        # Reason: do NOT cache a resolution miss — caching would poison the key
+        # for the full TTL and mask history once the exercise becomes visible
+        # (GYM-99 discipline, mirrors log-context).
+        return schemas.ExerciseTrend(last_session=None, prev_session=None, e1rm_trend=[])
+
+    sessions = _fetch_last_two_session_volumes(db, uid, exercise_id)
+    window_start = datetime.utcnow() - timedelta(weeks=weeks)
+    trend = _fetch_e1rm_trend(db, uid, exercise_id, window_start)
+
+    result = schemas.ExerciseTrend(
+        last_session=sessions[0] if sessions else None,
+        prev_session=sessions[1] if len(sessions) > 1 else None,
+        e1rm_trend=trend,
+    )
+    cache_set(cache_key, _trend_to_cache(result))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# GYM-136: /analytics/week-compare — this-week vs last-week totals
+# ---------------------------------------------------------------------------
+
+
+def _week_compare_bounds(tz: Optional[str]) -> tuple[date, date, datetime, datetime]:
+    """Compute the Monday anchors and the UTC range for the 2-week window.
+
+    Weeks are Monday-start calendar weeks in the user's timezone (UTC when
+    ``tz`` is None).  The returned range covers [last Monday 00:00 local,
+    next Monday 00:00 local) expressed as naive-UTC datetimes — the training
+    ``date`` column stores naive UTC, so comparing against these bounds keeps
+    the WHERE clause sargable on ``idx_training_user_date``.
+
+    Args:
+        tz: Validated IANA timezone name, or None for UTC behaviour.
+
+    Returns:
+        Tuple of (last_monday, this_monday, range_start_utc, range_end_utc).
+    """
+    if tz is None:
+        today_ref = datetime.now(timezone.utc).date()
+        this_monday = _monday_of_week(today_ref)
+        last_monday = this_monday - timedelta(weeks=1)
+        next_monday = this_monday + timedelta(weeks=1)
+        range_start = datetime(last_monday.year, last_monday.month, last_monday.day)
+        range_end = datetime(next_monday.year, next_monday.month, next_monday.day)
+        return last_monday, this_monday, range_start, range_end
+
+    tz_info = ZoneInfo(tz)
+    today_ref = datetime.now(tz_info).date()
+    this_monday = _monday_of_week(today_ref)
+    last_monday = this_monday - timedelta(weeks=1)
+    next_monday = this_monday + timedelta(weeks=1)
+
+    def _local_midnight_as_utc(d: date) -> datetime:
+        # Local wall-clock midnight converted to the naive-UTC instant stored
+        # in the training table.
+        local = datetime(d.year, d.month, d.day, tzinfo=tz_info)
+        return local.astimezone(timezone.utc).replace(tzinfo=None)
+
+    return (
+        last_monday,
+        this_monday,
+        _local_midnight_as_utc(last_monday),
+        _local_midnight_as_utc(next_monday),
+    )
+
+
+def _fetch_week_buckets(
+    db: Session,
+    uid: int,
+    range_start: datetime,
+    range_end: datetime,
+    tz: Optional[str],
+) -> Dict[date, schemas.WeekStats]:
+    """Aggregate sets/volume per Monday-start week within the bounded range.
+
+    One grouped query over the 2-week range.  Sargable: the WHERE clause is a
+    plain ``user_id`` filter plus a raw timestamp range, so Postgres uses
+    ``idx_training_user_date``; the AT TIME ZONE transform appears only in
+    SELECT / GROUP BY (GYM-58 discipline, mirrors summary/streak).
+
+    Args:
+        db: SQLAlchemy session.
+        uid: User id (defence-in-depth; RLS already scopes the session).
+        range_start: Inclusive naive-UTC lower bound (last Monday local 00:00).
+        range_end: Exclusive naive-UTC upper bound (next Monday local 00:00).
+        tz: Validated IANA timezone name, or None for UTC grouping.
+
+    Returns:
+        Mapping of week-start Monday date to WeekStats.
+    """
+    if tz is None:
+        week_expr = "DATE_TRUNC('week', date)"
+        params: dict = {"uid": uid, "range_start": range_start, "range_end": range_end}
+    else:
+        week_expr = "DATE_TRUNC('week', date AT TIME ZONE 'UTC' AT TIME ZONE :tz)"
+        params = {
+            "uid": uid, "range_start": range_start, "range_end": range_end, "tz": tz
+        }
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                {week_expr}::date    AS week_start,
+                COUNT(*)             AS sets,
+                SUM(weight * reps)   AS volume
+            FROM training
+            WHERE user_id = :uid
+              AND date >= :range_start
+              AND date  < :range_end
+            GROUP BY {week_expr}
+        """),
+        params,
+    ).fetchall()
+
+    buckets: Dict[date, schemas.WeekStats] = {}
+    for r in rows:
+        week_start = r[0] if isinstance(r[0], date) else date.fromisoformat(str(r[0]))
+        buckets[week_start] = schemas.WeekStats(
+            sets=int(r[1]), volume=float(r[2] or 0.0)
+        )
+    return buckets
+
+
+@router.get(
+    "/analytics/week-compare",
+    response_model=schemas.WeekCompare,
+    tags=["analytics"],
+)
+def get_week_compare(
+    tz: Optional[str] = Query(default=None),
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db_for_principal),
+) -> schemas.WeekCompare:
+    """Return this-week vs last-week sets/volume totals (GYM-136).
+
+    Weeks are Monday-start calendar weeks computed in the requested timezone
+    (default UTC, mirroring the summary endpoint's tz convention): ``this_week``
+    is the week containing today, ``last_week`` the week immediately before.
+    A week with no training carries zeros.
+
+    Cached under ``analytics:{uid}:week-compare:{tz}`` (90 s TTL); training
+    mutations purge ``analytics:{uid}:*`` (GYM-47), which covers this key.
+
+    Args:
+        tz: Optional IANA timezone name (e.g. "Asia/Tbilisi"). Default None = UTC.
+        principal: Resolved identity from ``get_principal``.
+        db: SQLAlchemy session.
+
+    Returns:
+        WeekCompare with this_week and last_week totals.
+
+    Raises:
+        HTTPException 422: If ``tz`` is not a valid IANA timezone name.
+    """
+    _validate_tz(tz)  # raises 422 on invalid tz
+
+    uid = principal["user_id"]
+    cache_key = make_key(uid, "week-compare", tz=tz or "UTC")
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return schemas.WeekCompare(**cached)
+
+    last_monday, this_monday, range_start, range_end = _week_compare_bounds(tz)
+    buckets = _fetch_week_buckets(db, uid, range_start, range_end, tz)
+
+    empty = schemas.WeekStats(sets=0, volume=0.0)
+    result = schemas.WeekCompare(
+        this_week=buckets.get(this_monday, empty),
+        last_week=buckets.get(last_monday, empty),
+    )
+    cache_set(cache_key, result.model_dump())
+    return result

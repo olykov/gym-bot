@@ -31,8 +31,10 @@
  * only (no magic hex). Reduced-motion: BottomSheet already handles slide gating.
  */
 import { useState } from "react";
+import { useT } from "@/i18n/catalog";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { AddInlineField } from "./AddInlineField";
+import { ManageMoveView } from "./ManageMoveView";
 import {
     useRenameMuscle,
     useRenameExercise,
@@ -88,6 +90,7 @@ export function ManageSheet({
     onUnhide,
     isUnhidePending = false,
 }: ManageSheetProps) {
+    const { t, muscle } = useT();
     const [view, setView] = useState<ManageView>("actions");
     const [renameError, setRenameError] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -126,33 +129,38 @@ export function ManageSheet({
         setMovingMuscleId(null);
     }
 
+    /**
+     * Map a rename failure to its inline message (GYM-126: was duplicated
+     * verbatim across the muscle and exercise branches). 409 = name already
+     * in use; 422 = the server's validation detail; anything else = generic.
+     */
+    function renameErrorMessage(err: unknown): string {
+        if (err instanceof ApiError) {
+            if (err.status === 409) {
+                return t("manage.nameInUse");
+            }
+            if (err.status === 422) {
+                // Server validation detail passes through untranslated.
+                return typeof (err.detail as { detail?: string })?.detail ===
+                    "string"
+                    ? (err.detail as { detail: string }).detail
+                    : err.message;
+            }
+        }
+        return t("manage.renameError");
+    }
+
     function submitRename(newName: string): void {
         if (!item) return;
         setRenameError(null);
+        const callbacks = {
+            onSuccess: () => handleClose(),
+            onError: (err: unknown) => setRenameError(renameErrorMessage(err)),
+        };
         if (item.kind === "muscle") {
             renameMuscle.mutate(
                 { muscleId: item.id, body: { name: newName } },
-                {
-                    onSuccess: () => handleClose(),
-                    onError: (err) => {
-                        if (err instanceof ApiError) {
-                            if (err.status === 409) {
-                                setRenameError("That name is already in use.");
-                                return;
-                            }
-                            if (err.status === 422) {
-                                const detail =
-                                    typeof (err.detail as { detail?: string })?.detail ===
-                                    "string"
-                                        ? (err.detail as { detail: string }).detail
-                                        : err.message;
-                                setRenameError(detail);
-                                return;
-                            }
-                        }
-                        setRenameError("Couldn't rename — try again.");
-                    },
-                },
+                callbacks,
             );
         } else {
             renameExercise.mutate(
@@ -161,27 +169,7 @@ export function ManageSheet({
                     muscleName: item.muscleName ?? "",
                     body: { name: newName },
                 },
-                {
-                    onSuccess: () => handleClose(),
-                    onError: (err) => {
-                        if (err instanceof ApiError) {
-                            if (err.status === 409) {
-                                setRenameError("That name is already in use.");
-                                return;
-                            }
-                            if (err.status === 422) {
-                                const detail =
-                                    typeof (err.detail as { detail?: string })?.detail ===
-                                    "string"
-                                        ? (err.detail as { detail: string }).detail
-                                        : err.message;
-                                setRenameError(detail);
-                                return;
-                            }
-                        }
-                        setRenameError("Couldn't rename — try again.");
-                    },
-                },
+                callbacks,
             );
         }
     }
@@ -200,7 +188,7 @@ export function ManageSheet({
                             setView("offer-hide");
                             return;
                         }
-                        setDeleteError("Couldn't delete — try again.");
+                        setDeleteError(t("manage.deleteError"));
                     },
                 },
             );
@@ -214,7 +202,7 @@ export function ManageSheet({
                             setView("offer-hide");
                             return;
                         }
-                        setDeleteError("Couldn't delete — try again.");
+                        setDeleteError(t("manage.deleteError"));
                     },
                 },
             );
@@ -252,20 +240,22 @@ export function ManageSheet({
                     if (err instanceof ApiError) {
                         if (err.status === 409) {
                             setMoveError(
-                                `You already have an exercise with this name in ${targetMuscleName}.`,
+                                t("manage.moveCollision", {
+                                    muscle: muscle(targetMuscleName),
+                                }),
                             );
                             return;
                         }
                         if (err.status === 403) {
-                            setMoveError("This exercise can't be moved.");
+                            setMoveError(t("manage.cantMove"));
                             return;
                         }
                         if (err.status === 404) {
-                            setMoveError("Target muscle not found — try again.");
+                            setMoveError(t("manage.targetNotFound"));
                             return;
                         }
                     }
-                    setMoveError("Couldn't move — try again.");
+                    setMoveError(t("move.error"));
                 },
             },
         );
@@ -274,18 +264,21 @@ export function ManageSheet({
     if (!item) return null;
 
     const maxLength = item.kind === "muscle" ? MUSCLE_NAME_MAX : EXERCISE_NAME_MAX;
-    const kindLabel = item.kind === "muscle" ? "Muscle" : "Exercise";
+    const kindLabel =
+        item.kind === "muscle" ? t("label.muscle") : t("label.exercise");
+    // Muscle headlines show the localized label; exercises pass through.
+    const displayName = item.kind === "muscle" ? muscle(item.name) : item.name;
 
     return (
-        <BottomSheet open={open} onClose={handleClose} titleId="manage-sheet-title" zIndex={40}>
+        <BottomSheet open={open} onClose={handleClose} titleId="manage-sheet-title" layer="sheet-nested">
             <div className="pb-2">
                 {/* Item name as Bebas headline — always visible */}
                 <h2
                     id="manage-sheet-title"
                     className="font-display text-title text-text mb-1 truncate"
-                    title={item.name}
+                    title={displayName}
                 >
-                    {item.name}
+                    {displayName}
                 </h2>
                 <p className="text-label text-hint mb-4 uppercase tracking-wide">
                     {kindLabel}
@@ -300,7 +293,9 @@ export function ManageSheet({
                             disabled={isUnhidePending}
                             className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
                         >
-                            {isUnhidePending ? "Unhiding…" : "Unhide"}
+                            {isUnhidePending
+                                ? t("picker.unhiding")
+                                : t("picker.unhide")}
                         </button>
                     </div>
                 ) : null}
@@ -319,7 +314,7 @@ export function ManageSheet({
                                     }}
                                     className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text"
                                 >
-                                    Rename
+                                    {t("manage.rename")}
                                 </button>
                                 {/* Move to another muscle (exercises only) */}
                                 {item.kind === "exercise" && (
@@ -333,7 +328,7 @@ export function ManageSheet({
                                             }}
                                             className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text"
                                         >
-                                            Move to another muscle
+                                            {t("manage.moveToAnotherMuscle")}
                                         </button>
                                     </>
                                 )}
@@ -349,8 +344,8 @@ export function ManageSheet({
                                     className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
                                 >
                                     {hideMuscle.isPending || hideExercise.isPending
-                                        ? "Hiding…"
-                                        : "Hide from my list"}
+                                        ? t("manage.hiding")
+                                        : t("manage.hide")}
                                 </button>
                                 <div className="h-px bg-hairline" aria-hidden />
                                 {/* Delete */}
@@ -362,7 +357,7 @@ export function ManageSheet({
                                     }}
                                     className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-accent"
                                 >
-                                    Delete
+                                    {t("common.delete")}
                                 </button>
                             </>
                         ) : (
@@ -374,8 +369,8 @@ export function ManageSheet({
                                 className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
                             >
                                 {hideMuscle.isPending || hideExercise.isPending
-                                    ? "Hiding…"
-                                    : "Hide from my list"}
+                                    ? t("manage.hiding")
+                                    : t("manage.hide")}
                             </button>
                         )}
                     </div>
@@ -392,11 +387,15 @@ export function ManageSheet({
                             }}
                             className="press-95 -ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
                         >
-                            ← Back
+                            ← {t("common.back")}
                         </button>
                         <AddInlineField
-                            placeholder={`New ${item.kind} name`}
-                            actionLabel="Save"
+                            placeholder={
+                                item.kind === "muscle"
+                                    ? t("manage.newMuscleName")
+                                    : t("manage.newExerciseName")
+                            }
+                            actionLabel={t("common.save")}
                             maxLength={maxLength}
                             initialValue={item.name}
                             pending={renameMuscle.isPending || renameExercise.isPending}
@@ -414,9 +413,7 @@ export function ManageSheet({
                 {view === "confirm-delete" && (
                     <div className="space-y-3">
                         <p className="text-base text-text">
-                            Delete{" "}
-                            <span className="font-semibold">"{item.name}"</span>? This
-                            cannot be undone.
+                            {t("manage.deleteConfirm", { name: displayName })}
                         </p>
                         {deleteError ? (
                             <p className="text-label text-accent">{deleteError}</p>
@@ -431,7 +428,7 @@ export function ManageSheet({
                                 disabled={isPendingMutation}
                                 className="press-95 flex-1 min-h-[48px] rounded-lg border border-hairline bg-secondary-bg text-base text-text disabled:opacity-40"
                             >
-                                Cancel
+                                {t("common.cancel")}
                             </button>
                             <button
                                 type="button"
@@ -440,8 +437,8 @@ export function ManageSheet({
                                 className="press-95 flex-1 min-h-[48px] rounded-lg bg-accent text-base font-semibold text-button-text disabled:opacity-40"
                             >
                                 {deleteMuscle.isPending || deleteExercise.isPending
-                                    ? "Deleting…"
-                                    : "Delete"}
+                                    ? t("manage.deleting")
+                                    : t("common.delete")}
                             </button>
                         </div>
                     </div>
@@ -451,9 +448,7 @@ export function ManageSheet({
                 {view === "offer-hide" && (
                     <div className="space-y-3">
                         <p className="text-base text-text">
-                            <span className="font-semibold">"{item.name}"</span> has
-                            logged history and can't be deleted. Hide it from your
-                            picker instead?
+                            {t("manage.hasHistory", { name: displayName })}
                         </p>
                         <div className="flex gap-3">
                             <button
@@ -462,7 +457,7 @@ export function ManageSheet({
                                 disabled={isPendingMutation}
                                 className="press-95 flex-1 min-h-[48px] rounded-lg border border-hairline bg-secondary-bg text-base text-text disabled:opacity-40"
                             >
-                                Cancel
+                                {t("common.cancel")}
                             </button>
                             <button
                                 type="button"
@@ -471,67 +466,28 @@ export function ManageSheet({
                                 className="press-95 flex-1 min-h-[48px] rounded-lg bg-accent text-base font-semibold text-button-text disabled:opacity-40"
                             >
                                 {hideMuscle.isPending || hideExercise.isPending
-                                    ? "Hiding…"
-                                    : "Hide"}
+                                    ? t("manage.hiding")
+                                    : t("manage.hideAction")}
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* ── MOVE view (GYM-90) ────────────────────────────────── */}
+                {/* ── MOVE view (GYM-90, extracted in GYM-127) ──────────── */}
                 {view === "move" && (
-                    <div className="space-y-3">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setView("actions");
-                                setMoveError(null);
-                            }}
-                            className="press-95 -ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
-                        >
-                            ← Back
-                        </button>
-                        <p className="text-label uppercase tracking-wide text-hint">
-                            Move to
-                        </p>
-                        {moveError ? (
-                            <p className="text-label text-accent">{moveError}</p>
-                        ) : null}
-                        <div className="rounded-lg border border-hairline overflow-hidden">
-                            {(muscles.data ?? [])
-                                .filter((m) => m.id !== item.muscleId)
-                                .map((m, idx, arr) => {
-                                    const isThisRowMoving = movingMuscleId === m.id;
-                                    return (
-                                        <div key={m.id}>
-                                            <button
-                                                type="button"
-                                                onClick={() => submitMove(m.id, m.name)}
-                                                disabled={moveExercise.isPending}
-                                                className="press-95 flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-left text-base text-text disabled:opacity-40"
-                                            >
-                                                {isThisRowMoving ? "Moving…" : m.name}
-                                            </button>
-                                            {idx < arr.length - 1 && (
-                                                <div className="h-px bg-hairline" aria-hidden />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            {muscles.isLoading && (
-                                <div className="flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-base text-hint">
-                                    Loading…
-                                </div>
-                            )}
-                            {!muscles.isLoading &&
-                                (muscles.data ?? []).filter((m) => m.id !== item.muscleId)
-                                    .length === 0 && (
-                                    <div className="flex w-full items-center min-h-[52px] px-4 bg-secondary-bg text-base text-hint">
-                                        No other muscles available.
-                                    </div>
-                                )}
-                        </div>
-                    </div>
+                    <ManageMoveView
+                        muscles={muscles.data ?? []}
+                        musclesLoading={muscles.isLoading}
+                        excludeMuscleId={item.muscleId}
+                        moveError={moveError}
+                        movingMuscleId={movingMuscleId}
+                        movePending={moveExercise.isPending}
+                        onBack={() => {
+                            setView("actions");
+                            setMoveError(null);
+                        }}
+                        onMove={submitMove}
+                    />
                 )}
             </div>
         </BottomSheet>

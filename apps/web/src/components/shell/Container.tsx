@@ -9,46 +9,52 @@
  * center FAB's lift (--fab-lift) on top of the nav height so nothing
  * interactive at the content bottom hides under the raised circle (spec §12.8).
  *
- * It also applies the page-load reveal stagger (spec §9.4): direct children are
- * faded+risen with an incrementing --reveal-i, gated by prefers-reduced-motion.
- * Pass a `revealKey` (e.g. the route) so the stagger replays on navigation.
+ * GYM-116: the <main> is NEVER re-keyed — it is the scroll container, and
+ * remounting it on navigation wiped the scroll position. The §9.4 reveal
+ * stagger is CSS-only now (.reveal-stagger > :nth-child delays in index.css)
+ * and lives on the inner wrapper: `reveal` toggles the class (off on back-nav)
+ * and `replayKey` re-keys ONLY the wrapper so forward navigation gets fresh
+ * children (= the entrance replays). The forwarded ref exposes the scrolling
+ * element to the shell's useScrollRestoration.
+ *
+ * GYM-121: `vt-content` names this <main> as the view-transition target, so
+ * drill-in route transitions slide just the content area while the fixed
+ * header/bottom-nav hold still (spec §2).
  */
-import { Children, isValidElement, cloneElement, type ReactNode } from "react";
+import { forwardRef, type ReactNode } from "react";
 
 interface ContainerProps {
     children: ReactNode;
-    /** Changing this re-keys the children so the reveal replays per route. */
-    revealKey?: string;
+    /** Play the §9.4 reveal stagger for this entry (first mount / PUSH only). */
+    reveal?: boolean;
+    /** Changes on forward navigation only — remounts the stagger wrapper. */
+    replayKey?: string;
 }
 
-export function Container({ children, revealKey }: ContainerProps) {
-    return (
-        <main
-            key={revealKey}
-            className="mx-auto h-full max-w-container overflow-y-auto px-4"
-            style={{
-                paddingTop:
-                    "calc(max(env(safe-area-inset-top), var(--tg-content-top, 0px)) + var(--header-h) + 16px)",
-                paddingBottom:
-                    "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + var(--nav-h) + var(--fab-lift) + 16px)",
-            }}
-        >
-            <div className="flex flex-col gap-4">
-                {Children.map(children, (child, i) =>
-                    isValidElement(child)
-                        ? cloneElement(child, {
-                              // Tag each direct child for the staggered reveal.
-                              className: `reveal ${
-                                  (child.props as { className?: string }).className ?? ""
-                              }`.trim(),
-                              style: {
-                                  ...(child.props as { style?: object }).style,
-                                  ["--reveal-i" as string]: i,
-                              },
-                          } as Partial<Record<string, unknown>>)
-                        : child,
-                )}
-            </div>
-        </main>
-    );
-}
+export const Container = forwardRef<HTMLElement, ContainerProps>(
+    function Container({ children, reveal = true, replayKey }, ref) {
+        return (
+            <main
+                ref={ref}
+                className="vt-content mx-auto h-full max-w-container overflow-y-auto px-4"
+                style={{
+                    paddingTop:
+                        "calc(max(env(safe-area-inset-top), var(--tg-content-top, 0px)) + var(--header-h) + 16px)",
+                    paddingBottom:
+                        "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + var(--nav-h) + var(--fab-lift) + 16px)",
+                }}
+            >
+                <div
+                    key={replayKey}
+                    className={
+                        reveal
+                            ? "reveal-stagger flex flex-col gap-4"
+                            : "flex flex-col gap-4"
+                    }
+                >
+                    {children}
+                </div>
+            </main>
+        );
+    },
+);

@@ -38,7 +38,7 @@ import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EXERCISE_NAME_MAX } from "@/validation";
 import { useExerciseSearch } from "@/hooks/useRecord";
-import { useLocale } from "@/i18n/locale";
+import { useT } from "@/i18n/catalog";
 
 /** Debounce interval in ms (per GYM-94 spec: ~250ms). */
 const DEBOUNCE_MS = 250;
@@ -90,7 +90,7 @@ export function ExerciseSearchField({
     tabIndex = 0,
     ownedIds,
 }: ExerciseSearchFieldProps) {
-    const locale = useLocale();
+    const { t, locale, muscle } = useT();
 
     // Raw input value (unDebounced — drives the visible input).
     const [inputValue, setInputValue] = useState("");
@@ -166,7 +166,9 @@ export function ExerciseSearchField({
                         tabIndex={tabIndex}
                         value={inputValue}
                         maxLength={EXERCISE_NAME_MAX}
-                        placeholder={`Search in ${muscleName}…`}
+                        placeholder={t("search.placeholder", {
+                            muscle: muscle(muscleName),
+                        })}
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}
                         className="min-h-[44px] w-full rounded-md border border-hairline bg-secondary-bg py-2 pl-8 pr-3 text-base text-text outline-none placeholder:text-hint focus:border-accent"
@@ -175,7 +177,7 @@ export function ExerciseSearchField({
                 <button
                     type="button"
                     onClick={onCancel}
-                    aria-label="Cancel search"
+                    aria-label={t("search.cancelAria")}
                     tabIndex={tabIndex}
                     className="press-95 min-h-[44px] shrink-0 rounded-md border border-hairline bg-bg px-3 text-base text-hint"
                 >
@@ -194,12 +196,14 @@ export function ExerciseSearchField({
                     className="mt-2 overflow-y-auto rounded-md border border-hairline bg-bg"
                     style={{ maxHeight: "256px" }}
                     role="listbox"
-                    aria-label={`Exercise suggestions for ${muscleName}`}
+                    aria-label={t("search.suggestionsAria", {
+                        muscle: muscle(muscleName),
+                    })}
                 >
                     {/* Loading skeleton — one row while the search is in-flight. */}
                     {search.isFetching && candidates.length === 0 ? (
                         <div className="px-3 py-2">
-                            <Skeleton className="h-[40px] w-full rounded" />
+                            <Skeleton className="h-[40px] w-full rounded-md" />
                         </div>
                     ) : null}
 
@@ -207,14 +211,14 @@ export function ExerciseSearchField({
                     {search.isError && !search.isFetching ? (
                         <div className="px-3 py-2">
                             <p className="text-label text-hint">
-                                Search unavailable.{" "}
+                                {t("search.unavailable")}{" "}
                                 <button
                                     type="button"
                                     tabIndex={tabIndex}
                                     onClick={() => void search.refetch()}
                                     className="text-accent underline"
                                 >
-                                    Retry
+                                    {t("search.retry")}
                                 </button>
                             </p>
                         </div>
@@ -257,7 +261,9 @@ export function ExerciseSearchField({
                     {/* "No suggestions" hint — only shown when search finished with no results. */}
                     {!search.isFetching && !search.isError && candidates.length === 0 && debouncedQ.trim() ? (
                         <div className="px-3 py-2">
-                            <p className="text-label text-hint">No matches — create it below.</p>
+                            <p className="text-label text-hint">
+                                {t("search.noMatches")}
+                            </p>
                         </div>
                     ) : null}
 
@@ -271,7 +277,9 @@ export function ExerciseSearchField({
                             onClick={handleCreate}
                             className="press-95 flex min-h-[44px] w-full items-center gap-2 border-t border-dashed border-hairline px-3 py-2 text-left disabled:opacity-40"
                         >
-                            <span className="text-label text-hint">Create</span>
+                            <span className="text-label text-hint">
+                                {t("search.create")}
+                            </span>
                             <span
                                 className="min-w-0 flex-1 truncate text-base font-semibold text-accent"
                                 title={trimmedQ}

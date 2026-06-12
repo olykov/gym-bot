@@ -26,3 +26,25 @@ export function EmptyState({ icon, title, subtitle, action }: EmptyStateProps) {
         </div>
     );
 }
+
+interface EmptyStateActionProps {
+    label: string;
+    onClick: () => void;
+}
+
+/**
+ * The one empty-state CTA (GYM-118) — an accent-weak pill mirroring
+ * <ErrorState>'s retry button (≥44px target, press scale, accent text).
+ * Pass it via the `action` prop; pages wire `onClick` to `openRecordSheet()`.
+ */
+export function EmptyStateAction({ label, onClick }: EmptyStateActionProps) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="press-95 min-h-[44px] rounded-full bg-accent-weak px-6 text-base font-semibold text-accent"
+        >
+            {label}
+        </button>
+    );
+}

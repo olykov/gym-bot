@@ -769,18 +769,32 @@ For the chosen `{muscle_name, exercise_name}`, the panel is built to make **each
   (GYM-71) returns `{completed_sets:int[], last_session_sets:[{set,weight,reps}], pr:{weight,reps,date}
   |null}` in **one round-trip** — it replaces the old three reads (`completed-sets` + `personal-record`
   + the recent pre-fill).
-- **"Today" recap (GYM-74 fix):** a compact, tabular row/grid of sets already logged today for this
-  exercise, using `<SetRow>`-style figures (`Set n — {w}kg × {r}`). Source — three tiers, in priority:
-  1. **This-session sets** (optimistic, exact weight/reps just logged).
-  2. **`GET /training/day/{today}` `TrainingDayExercise.sets`** (the server's already-recorded sets for
-     this exercise, carrying `{set, weight, reps}`). This data is already fetched/prefetched for the
-     Continue tile; filtering to the chosen exercise and passing it to `<SetLogger>` as `serverSets`
-     means the recap shows real `w×r` **even after reopen or Continue** — not just `Set n ✓`.
-  3. **`log-context.completed_sets`** (set numbers only, no w×r — fallback `Set n ✓` when neither tier
-     1 nor tier 2 provides weight+reps for a set number).
-  Session set wins over server set for the same set number (it's always more recent). This approach
-  requires NO API change. The recap makes "where am I" obvious and removes the bot's "pick set number"
-  step entirely.
+- **Comparison recap (GYM-130, supersedes the single-column "Today" recap):** a two-column
+  **TODAY | LAST TIME** table — the ghost of the previous session is the visible target. Rows are the
+  **union** of today's set numbers and `log-context.last_session_sets`, matched by set number, sorted
+  **ASC** (Set 1 top — the comparison reads line-by-line; reverts the GYM-101 DESC order). One line per
+  row at 360px: `Set n | today-figure | delta | last-figure`. NO API change.
+  - **Today column** — the same `<SetFigure>` figures, sourced in priority (GYM-74 invariant kept):
+    1. **This-session sets** (optimistic, exact weight/reps just logged).
+    2. **`GET /training/day/{today}` `TrainingDayExercise.sets`** (the server's already-recorded sets,
+       carrying `{set, weight, reps}`) — passed to `<SetLogger>` as `serverSets`, so the recap shows
+       real `w×r` **even after reopen or Continue**.
+    3. **`log-context.completed_sets`** (set numbers only — the honest muted `— · —` figure).
+    Session set wins over server set for the same set number (it's always more recent).
+  - **Ghost column** — the matching last-session set as a `<SetFigure ghost>` (`--hint`, ~70%
+    opacity). Last-session-only rows are **ghost rows**: the today column shows a quiet placeholder;
+    the next unlogged ghost is the standing "beat this" target, visible BEFORE Save.
+  - **Delta (LOCKED rule — weight first, reps tiebreak):** computed only when both sides carry full
+    weight+reps. More weight → `▲ +{x}kg`; less → `▼ −{x}kg`; equal weight → reps break the tie
+    (`▲ +{n} reps` / `▼ −{n} reps`); both equal → `=`. Up renders in `--accent`; `=` and down render
+    in `--hint` (down is never punitive red). ▲/▼ are unicode geometric figures, tabular-nums.
+  - **Headers** `TODAY` / `LAST TIME` — tiny uppercase `--hint` labels (i18n: `recap.today` /
+    `recap.lastTime`; ru СЕГОДНЯ / ПРОШЛЫЙ РАЗ).
+  - **Auto-scroll:** the recap region scrolls internally (GYM-101 layout kept); after a save the
+    just-saved row is kept visible via `scrollIntoView({block:"nearest"})` (smooth, instant under
+    `prefers-reduced-motion`); on Phase-B entry the next ghost target is brought into view.
+  - **No prior session at all** (`last_session_sets` empty): the recap renders exactly the
+    single-column "Today" list — no ghost column, no headers, no empty noise.
 - **Auto set-number:** `nextSet = max(log-context.completed_sets ∪ this-session sets) + 1` (so it's
   correct even mid-session and after the §11 history edits). Shown as the panel's "SET {n}" heading —
   the user **never picks a set number** (the bot's step 3 is gone).
@@ -814,7 +828,8 @@ For the chosen `{muscle_name, exercise_name}`, the panel is built to make **each
   2. Append the set to the "Today" recap (optimistic, full `w×r`).
   3. **Re-arm the panel for the next set in place** — `nextSet += 1`, **keep the same weight/reps
      pre-filled** (the just-logged values; gym sets repeat), Save re-enabled. No sheet close, no
-     scroll-jump (the panel stays anchored; the recap grows above). The user can Save again immediately
+     layout jump (the panel stays anchored; the recap grows below, auto-scrolled — GYM-130). The user
+     can Save again immediately
      → **+1 tap per additional set**. (Reduced-motion: the recap append is an instant insert, no slide.)
   4. **PR-beat celebration:** if the saved `weight` strictly exceeds the known `PersonalRecord.weight`
      (or any weight when none existed), fire the §9.4 single accent pulse on the SET/PR chip +

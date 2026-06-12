@@ -18,8 +18,9 @@
  * Telegram bottom inset via max(env(safe-area-inset-bottom), --tg-safe-bottom)
  * (Bot API 8.0, spec §4).
  */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useT } from "@/i18n/catalog";
 import { hapticSelection } from "@/telegram/webapp";
 import { NAV_TABS } from "./navConfig";
 import { NavFab, FAB_SIZE } from "./NavFab";
@@ -28,18 +29,19 @@ import { NavFab, FAB_SIZE } from "./NavFab";
  *  neighbouring >=44px tabs with a >=8px gap on each side (spec §12.8). */
 const CENTER_SLOT_PX = FAB_SIZE + 24; // 56 + 12px gap each side
 
-interface BottomNavProps {
-    /** Record-sheet open handler, passed straight to the FAB (GYM-69). */
-    onRecord?: () => void;
-}
-
-export function BottomNav({ onRecord }: BottomNavProps) {
-    const location = useLocation();
-    const activeIndex = Math.max(
-        0,
-        NAV_TABS.findIndex((t) => location.pathname.startsWith(t.to)),
-    );
-
+/**
+ * Measure the active tab's rect relative to the flex row and size/position
+ * the sliding indicator from it (GYM-126 — the previously duplicated
+ * measure effects merged into one hook). Measures synchronously on every
+ * route change (useLayoutEffect → no flash of a mispositioned bar), once
+ * more on the next animation frame (fonts/layout settling on first paint),
+ * and on every window resize.
+ */
+function useIndicatorPosition(activeIndex: number): {
+    rowRef: React.RefObject<HTMLDivElement>;
+    tabRefs: React.MutableRefObject<(HTMLAnchorElement | null)[]>;
+    indicator: { left: number; width: number };
+} {
     // Refs for each route tab, so the indicator can be measured (not computed
     // from a naive index, which breaks with the non-uniform center slot).
     const rowRef = useRef<HTMLDivElement>(null);
@@ -49,8 +51,6 @@ export function BottomNav({ onRecord }: BottomNavProps) {
         width: 0,
     });
 
-    // Measure the active tab's rect relative to the flex row and size/position
-    // the indicator from it. Recompute on route change and on resize.
     useLayoutEffect(() => {
         const measure = () => {
             const row = rowRef.current;
@@ -64,23 +64,32 @@ export function BottomNav({ onRecord }: BottomNavProps) {
             });
         };
         measure();
+        // Re-measure after fonts/layout settle (first paint especially).
+        const raf = requestAnimationFrame(measure);
         window.addEventListener("resize", measure);
-        return () => window.removeEventListener("resize", measure);
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener("resize", measure);
+        };
     }, [activeIndex]);
 
-    // Re-measure after fonts/layout settle on first mount.
-    useEffect(() => {
-        const id = requestAnimationFrame(() => {
-            const row = rowRef.current;
-            const tab = tabRefs.current[activeIndex];
-            if (!row || !tab) return;
-            const rowRect = row.getBoundingClientRect();
-            const tabRect = tab.getBoundingClientRect();
-            setIndicator({ left: tabRect.left - rowRect.left, width: tabRect.width });
-        });
-        return () => cancelAnimationFrame(id);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    return { rowRef, tabRefs, indicator };
+}
+
+interface BottomNavProps {
+    /** Record-sheet open handler, passed straight to the FAB (GYM-69). */
+    onRecord?: () => void;
+}
+
+export function BottomNav({ onRecord }: BottomNavProps) {
+    const { t } = useT();
+    const location = useLocation();
+    const activeIndex = Math.max(
+        0,
+        NAV_TABS.findIndex((t) => location.pathname.startsWith(t.to)),
+    );
+
+    const { rowRef, tabRefs, indicator } = useIndicatorPosition(activeIndex);
 
     // Visual order with the center spacer inserted between index 1 and 2.
     const leftTabs = NAV_TABS.slice(0, 2);
@@ -112,7 +121,7 @@ export function BottomNav({ onRecord }: BottomNavProps) {
                             isActive ? "font-semibold text-accent" : "text-hint"
                         }`}
                     >
-                        {tab.label}
+                        {t(tab.labelKey)}
                     </span>
                 </>
             )}
@@ -121,7 +130,7 @@ export function BottomNav({ onRecord }: BottomNavProps) {
 
     return (
         <nav
-            className="fixed inset-x-0 bottom-0 z-20 border-t border-hairline bg-bg"
+            className="fixed inset-x-0 bottom-0 z-chrome border-t border-hairline bg-bg"
             style={{
                 paddingBottom:
                     "max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px))",

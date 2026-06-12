@@ -1,9 +1,8 @@
+/* Tailwind 4 (GYM-128): the single import replaces the v3 @tailwind
+ * directives; the theme lives CSS-first in styles/tokens.css (@theme). */
+@import "tailwindcss";
 @import "./styles/fonts.css";
 @import "./styles/tokens.css";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 /* ---------------------------------------------------------------------------
  * Base reset + app frame (spec §2 scroll model, §6 mobile-first)
@@ -53,6 +52,14 @@
         font-weight: 400;
         letter-spacing: 0.01em;
         margin: 0;
+    }
+
+    /* Tailwind 4 preflight parity (GYM-128): v4 ships `cursor: default` on
+     * buttons; v3 used `pointer`. Touch-first app, but keep the v3 affordance
+     * for desktop Telegram so nothing visibly regresses. */
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
     }
 }
 
@@ -151,7 +158,11 @@
 
 /* ---------------------------------------------------------------------------
  * Page-load reveal stagger (spec §9.4) — content children fade + rise 8px.
- * The AppShell tags direct children with .reveal and a --reveal-i index.
+ * GYM-116: CSS-only. The Container's inner wrapper gets .reveal-stagger on
+ * first mount and forward (PUSH) navigations only — never on back (POP), so
+ * returning to a list doesn't replay the entrance. Delays come from
+ * :nth-child (no per-child JS tagging); children past the 8th share the max
+ * delay — they start below the fold anyway.
  * ------------------------------------------------------------------------- */
 @keyframes reveal-rise {
     from {
@@ -164,10 +175,84 @@
     }
 }
 
-.reveal {
+.reveal-stagger > * {
     opacity: 0;
     animation: reveal-rise var(--dur-reveal) var(--ease-out-soft) forwards;
-    animation-delay: calc(var(--reveal-i, 0) * 60ms);
+    animation-delay: calc(7 * var(--reveal-step));
+}
+.reveal-stagger > :nth-child(1) {
+    animation-delay: 0ms;
+}
+.reveal-stagger > :nth-child(2) {
+    animation-delay: calc(1 * var(--reveal-step));
+}
+.reveal-stagger > :nth-child(3) {
+    animation-delay: calc(2 * var(--reveal-step));
+}
+.reveal-stagger > :nth-child(4) {
+    animation-delay: calc(3 * var(--reveal-step));
+}
+.reveal-stagger > :nth-child(5) {
+    animation-delay: calc(4 * var(--reveal-step));
+}
+.reveal-stagger > :nth-child(6) {
+    animation-delay: calc(5 * var(--reveal-step));
+}
+.reveal-stagger > :nth-child(7) {
+    animation-delay: calc(6 * var(--reveal-step));
+}
+
+/* ---------------------------------------------------------------------------
+ * Directional route transitions (GYM-121, spec §9.4) — drill-in routes only.
+ * useTransitionNavigate() sets data-nav-transition="push|pop" on <html> and
+ * runs the navigation inside document.startViewTransition. Only the scrolling
+ * content area (.vt-content, the Container <main>) carries a
+ * view-transition-name, so the fixed header / bottom-nav stay in the default
+ * root snapshot (a near-identical cross-fade — the shell visually holds
+ * still, spec §2). Tab switches never set the attribute, so no slide runs.
+ * Unsupported WebViews / reduced motion skip startViewTransition entirely
+ * (instant swap) — the hook feature-detects before touching the API.
+ * ------------------------------------------------------------------------- */
+.vt-content {
+    view-transition-name: drill-content;
+}
+
+@keyframes vt-slide-out-left {
+    to {
+        opacity: 0;
+        transform: translateX(calc(-1 * var(--slide-drill)));
+    }
+}
+@keyframes vt-slide-in-right {
+    from {
+        opacity: 0;
+        transform: translateX(var(--slide-drill));
+    }
+}
+@keyframes vt-slide-out-right {
+    to {
+        opacity: 0;
+        transform: translateX(var(--slide-drill));
+    }
+}
+@keyframes vt-slide-in-left {
+    from {
+        opacity: 0;
+        transform: translateX(calc(-1 * var(--slide-drill)));
+    }
+}
+
+:root[data-nav-transition="push"]::view-transition-old(drill-content) {
+    animation: vt-slide-out-left var(--dur-reveal) var(--ease-out-soft) both;
+}
+:root[data-nav-transition="push"]::view-transition-new(drill-content) {
+    animation: vt-slide-in-right var(--dur-reveal) var(--ease-out-soft) both;
+}
+:root[data-nav-transition="pop"]::view-transition-old(drill-content) {
+    animation: vt-slide-out-right var(--dur-reveal) var(--ease-out-soft) both;
+}
+:root[data-nav-transition="pop"]::view-transition-new(drill-content) {
+    animation: vt-slide-in-left var(--dur-reveal) var(--ease-out-soft) both;
 }
 
 /* Activity-grid ink-in (spec §9.4) — cells fade in once on first paint, with a
@@ -270,6 +355,135 @@
     animation: pr-flare 700ms var(--ease-out-soft) 1;
 }
 
+/* ---------------------------------------------------------------------------
+ * Save choreography (GYM-131, spec §12.3 / doc 03 §2) — the ~700ms sequence on
+ * every successful save. All of it is gated by the prefers-reduced-motion
+ * block at the bottom of this file. Durations come from motion tokens only.
+ * ------------------------------------------------------------------------- */
+
+/* 1. Just-saved recap row: fade + rise 8px (reveal-rise reused) + ONE soft
+ * background flash on EVERY save (accent at ~12% — deliberately softer than
+ * the PR-only pr-flare at 22%). */
+@keyframes row-flash {
+    0% {
+        background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+.row-enter {
+    animation:
+        reveal-rise var(--dur-reveal) var(--ease-out-soft) both,
+        row-flash var(--dur-reveal) var(--ease-out-soft) 1;
+}
+/* PR-beat row: keep the entrance rise but swap the soft flash for the
+ * existing, stronger pr-flare (the shorthand on .pr-flare alone would
+ * otherwise drop the rise when both classes are present). */
+.row-enter.pr-flare {
+    animation:
+        reveal-rise var(--dur-reveal) var(--ease-out-soft) both,
+        pr-flare 700ms var(--ease-out-soft) 1;
+}
+
+/* 2. Delta badge slides in (translateX 4px + fade) AFTER the row lands —
+ * pure CSS animation-delay of one reveal beat, same animation block. The
+ * base opacity:0 hides the badge during the delay; reduced-motion overrides
+ * it back to 1 below. */
+@keyframes delta-slide {
+    from {
+        opacity: 0;
+        transform: translateX(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+.delta-enter {
+    opacity: 0;
+    animation: delta-slide var(--dur-quick) var(--ease-out-soft)
+        var(--dur-reveal) forwards;
+}
+
+/* 3. Save button success morph: scale 1.0 → 1.02 → 1.0 over the morph
+ * window while the content shows the check + "Saved set n" label. */
+@keyframes save-morph-scale {
+    0% {
+        transform: scale(1);
+    }
+    40% {
+        transform: scale(1.02);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+.save-morph {
+    animation: save-morph-scale var(--dur-save-morph) var(--ease-out-soft) 1;
+}
+
+/* 4. SET N heading digit roll (RollingNumber.tsx): the old digit slides up
+ * and out while the new one slides up and in. The clip crops both to the
+ * line box. */
+.roll-clip {
+    position: relative;
+    display: inline-flex;
+    overflow: hidden;
+    vertical-align: bottom;
+}
+@keyframes roll-out-up {
+    to {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+}
+@keyframes roll-in-up {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+.roll-out {
+    position: absolute;
+    inset: 0;
+    animation: roll-out-up var(--dur-quick) var(--ease-out-soft) forwards;
+}
+.roll-in {
+    animation: roll-in-up var(--dur-quick) var(--ease-out-soft) both;
+}
+
+/* 5. PR banner (GYM-131 #5, operator experiment): one keyframe block runs the
+ * whole lifecycle — slide-down (0→240ms ≈ 17%), hold (until 1.2s ≈ 83%),
+ * fade out (→1440ms). The element is removed from the DOM by a timer of the
+ * same total length; under reduced motion the animation is off (banner is
+ * information — it still shows, instantly) and the timer still removes it. */
+@keyframes pr-banner {
+    0% {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    17% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    83% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(0);
+    }
+}
+.pr-banner {
+    animation: pr-banner var(--dur-pr-banner) var(--ease-out-soft) both;
+}
+
 /* Active-tab indicator + press micro-interaction (spec §9.4). */
 .press-95 {
     transition: transform 80ms var(--ease-out-soft);
@@ -292,9 +506,15 @@
  * Reduced motion (spec §9.4, mandatory) — kill all motion, keep instant state.
  * ------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-    .reveal {
+    .reveal-stagger > * {
         opacity: 1;
         animation: none;
+    }
+    /* Belt-and-braces: useTransitionNavigate already skips the API under
+       reduced motion; this also neutralises any in-flight snapshot. */
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+        animation: none !important;
     }
     .shimmer {
         animation: none;
@@ -319,6 +539,26 @@
     .pr-pulse,
     .pr-flare {
         animation: none;
+    }
+    /* GYM-131 save choreography: all instant under reduced motion. */
+    .row-enter,
+    .row-enter.pr-flare,
+    .save-morph,
+    .roll-in,
+    .pr-banner {
+        animation: none;
+    }
+    /* The delta badge hides itself (opacity:0) only to wait out its CSS
+       delay — with no animation it must be visible immediately. */
+    .delta-enter {
+        opacity: 1;
+        animation: none;
+    }
+    /* The outgoing digit never animates away — drop it instead of leaving a
+       frozen overlay (RollingNumber clears it on animationend, which cannot
+       fire here). */
+    .roll-out {
+        display: none;
     }
     /* Picker slide-nav (GYM-74): instant step swap, no translateX transition. */
     .picker-slide-track {

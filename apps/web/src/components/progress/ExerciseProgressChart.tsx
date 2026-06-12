@@ -1,6 +1,7 @@
 /**
- * Exercise progress chart (spec §10.3, GYM-57) — `echarts-for-react`, weight over
- * time on a shared category axis of the distinct session dates. Two modes:
+ * Exercise progress chart (spec §10.3, GYM-57) — ECharts (via the local
+ * {@link useECharts} binding, GYM-129), weight over time on a shared category
+ * axis of the distinct session dates. Three modes:
  *
  *  - **By Weight** (default): ONE line = the max weight logged per session/date —
  *    the strength-over-time trend ("how my bench grew"), derived client-side from
@@ -8,9 +9,14 @@
  *    heaviest set so the tooltip reads `{weight}kg × {reps}` (GYM-63).
  *  - **By Set**: one line per set number (the original behavior). Reps ride along
  *    in each tooltip row so the chart stays legible at 360px without a second axis.
+ *  - **e1RM** (GYM-133, doc 03 §4.1): ONE line = the max Epley e1RM per
+ *    session/date, derived client-side exactly like By Weight (no API change;
+ *    math in src/lib/e1rm.ts). The tooltip names the source set:
+ *    `e1RM: {v}kg ({w} × {r})`.
  *
- * The tooltip shows `{weight}kg × {reps}` plus the full date in BOTH modes; reps
- * rides in each point's `data.reps` (spec §10.5 token theming unchanged).
+ * The tooltip shows the full date plus `{weight}kg × {reps}` rows in the weight/
+ * set modes; reps (and, for e1RM, the source weight) ride in each point's data
+ * (spec §10.5 token theming unchanged).
  *
  * X-axis labels are thinned to ~5 sparse `DD MMM` ticks (GYM-57 §2a); the full
  * date stays in the tooltip. Theming is bound to tokens (spec §10.5) via
@@ -20,10 +26,14 @@
  * without relying on color alone. It re-themes on Telegram `themeChanged`.
  */
 import { useMemo } from "react";
-import ReactECharts from "echarts-for-react";
+import type { EChartsCoreOption } from "echarts/core";
+import { useECharts } from "@/components/charts/useECharts";
+import type { Locale } from "@/i18n/locales";
+import { useT, type Translator } from "@/i18n/catalog";
 import { Card } from "@/components/ui/Card";
 import { useThemeVersion } from "@/hooks/useThemeVersion";
 import type { ExerciseProgress } from "@/api/analytics";
+import { maxE1rmByDate } from "@/lib/e1rm";
 import {
     baseChartOption,
     formatAxisDate,
@@ -33,12 +43,15 @@ import {
     sparseLabelIndices,
 } from "@/components/charts/echartsTheme";
 
-export type ProgressMode = "weight" | "set";
+export type ProgressMode = "weight" | "set" | "e1rm";
 
 interface ExerciseProgressChartProps {
     title: string;
     progress: ExerciseProgress;
-    /** "weight" = single max-weight-per-date trend; "set" = one line per set. */
+    /**
+     * "weight" = single max-weight-per-date trend; "set" = one line per set;
+     * "e1rm" = single max-Epley-e1RM-per-date trend (GYM-133).
+     */
     mode: ProgressMode;
 }
 
@@ -47,6 +60,8 @@ export function ExerciseProgressChart({
     progress,
     mode,
 }: ExerciseProgressChartProps) {
+    const translator = useT();
+    const { t, locale } = translator;
     // Re-read tokens + rebuild the option whenever Telegram flips light/dark.
     const themeVersion = useThemeVersion();
 
@@ -65,9 +80,11 @@ export function ExerciseProgressChart({
         const keep = sparseLabelIndices(dates.length);
 
         const series =
-            mode === "weight"
-                ? [byWeightSeries(progress, dates, vars)]
-                : bySetSeries(progress, indexOf, vars);
+            mode === "set"
+                ? bySetSeries(progress, indexOf, vars, translator)
+                : mode === "e1rm"
+                  ? [byE1rmSeries(progress, dates, vars, translator)]
+                  : [byWeightSeries(progress, dates, vars, translator)];
 
         return {
             ...base,
@@ -83,23 +100,31 @@ export function ExerciseProgressChart({
                 },
             },
             legend:
-                mode === "weight"
-                    ? { ...base.legend, show: false }
-                    : base.legend,
+                mode === "set" ? base.legend : { ...base.legend, show: false },
             tooltip: {
                 ...base.tooltip,
-                // Full date header + per-line `{weight}kg × {reps}` (spec §11.2
-                // figure format). Reps rides in each point's `data.reps` in BOTH
-                // modes: By Set carries the set's reps; By Weight carries the
-                // reps of that date's heaviest set (see {@link byWeightSeries}).
+                // Full date header + per-line rows. Weight/set modes render
+                // `{weight}kg × {reps}` (spec §11.2 figure format) — reps ride
+                // in each point's `data.reps` (By Weight: the reps of that
+                // date's heaviest set, see {@link byWeightSeries}). e1RM mode
+                // (GYM-133) names the SOURCE set instead:
+                // `e1RM: {v}kg ({w} × {r})` — w×r ride in the point's data.
                 formatter: (params: TooltipParam[]) => {
                     if (!params.length) return "";
-                    const date = formatTooltipDate(params[0].axisValue);
+                    const date = formatTooltipDate(params[0].axisValue, locale);
+                    const kg = t("unit.kg");
                     const rows = params
                         .map((p) => {
-                            const weight = p.value;
                             const reps = p.data?.reps;
-                            return `${p.marker}${p.seriesName}: ${weight}kg${
+                            if (mode === "e1rm") {
+                                const weight = p.data?.weight;
+                                const source =
+                                    weight != null && reps != null
+                                        ? ` (${weight} × ${reps})`
+                                        : "";
+                                return `${p.marker}${p.seriesName}: ${p.value}${kg}${source}`;
+                            }
+                            return `${p.marker}${p.seriesName}: ${p.value}${kg}${
                                 reps != null ? ` × ${reps}` : ""
                             }`;
                         })
@@ -118,23 +143,34 @@ export function ExerciseProgressChart({
             {/* GYM-77 #2: truncate long exercise names in the chart title.
                 Full name available on hover via title attr. */}
             <div className="mb-3 truncate font-display text-title text-text" title={title}>{title}</div>
-            <ReactECharts
+            <ChartCanvas
                 // Key on theme + mode so ECharts re-inits cleanly on a flip/switch.
                 key={`${themeVersion}-${mode}`}
                 option={option}
-                notMerge
-                lazyUpdate
-                style={{ height: 256, width: "100%" }}
-                opts={{ renderer: "svg" }}
             />
         </Card>
     );
 }
 
-/** A category point carrying its reps for the tooltip. `null` = no value on that date. */
+/**
+ * The chart container: binds {@link useECharts} to a fixed-height div. Kept as
+ * its own component so the parent's `key` remounts it — init/dispose re-run and
+ * the chart re-reads the theme tokens, exactly like the old wrapper's re-init.
+ */
+function ChartCanvas({ option }: { option: EChartsCoreOption }) {
+    const chartRef = useECharts(option);
+    return <div ref={chartRef} style={{ height: 256, width: "100%" }} />;
+}
+
+/**
+ * A category point carrying its reps (and, in e1RM mode, the source set's
+ * weight) for the tooltip. `null` in the data array = no value on that date.
+ */
 interface ChartPoint {
     value: number;
     reps?: number;
+    /** e1RM mode only: the weight of the set that produced the max e1RM. */
+    weight?: number;
 }
 
 /** Distinct session dates (ms epoch), ascending, across every set's points. */
@@ -162,6 +198,7 @@ function byWeightSeries(
     progress: ExerciseProgress,
     dates: number[],
     vars: ReturnType<typeof readCssVars>,
+    { t }: Translator,
 ) {
     // Per date: the max weight and the reps of the set that set it.
     const maxByDate = new Map<number, { weight: number; reps: number }>();
@@ -183,7 +220,40 @@ function byWeightSeries(
         return top == null ? null : { value: top.weight, reps: top.reps };
     });
     return {
-        name: "Max weight",
+        name: t("chart.maxWeight"),
+        type: "line" as const,
+        showSymbol: true,
+        symbolSize: 6,
+        smooth: false,
+        connectNulls: true,
+        data,
+        lineStyle: { color: seriesColorAt(vars, 0), width: 2, ...seriesLineStyle(0) },
+        itemStyle: { color: seriesColorAt(vars, 0) },
+    };
+}
+
+/**
+ * e1RM (GYM-133): one line = the MAX Epley e1RM per session/date, mirroring
+ * {@link byWeightSeries}'s client-side derivation (math + tie rule live in
+ * {@link maxE1rmByDate}, unit-tested in src/lib/e1rm.test.ts). Each point
+ * carries the SOURCE set's weight×reps so the tooltip reads
+ * `e1RM: {v}kg ({w} × {r})`. Values are display-rounded to 1 decimal.
+ */
+function byE1rmSeries(
+    progress: ExerciseProgress,
+    dates: number[],
+    vars: ReturnType<typeof readCssVars>,
+    { t }: Translator,
+) {
+    const bestByDate = maxE1rmByDate(progress);
+    const data: Array<ChartPoint | null> = dates.map((ms) => {
+        const top = bestByDate.get(ms);
+        return top == null
+            ? null
+            : { value: top.e1rm, weight: top.weight, reps: top.reps };
+    });
+    return {
+        name: t("chart.e1rm"),
         type: "line" as const,
         showSymbol: true,
         symbolSize: 6,
@@ -200,6 +270,7 @@ function bySetSeries(
     progress: ExerciseProgress,
     indexOf: Map<number, number>,
     vars: ReturnType<typeof readCssVars>,
+    { t }: Translator,
 ) {
     return progress.series.map((s, i) => {
         const data: Array<ChartPoint | null> = new Array(indexOf.size).fill(null);
@@ -209,7 +280,7 @@ function bySetSeries(
             if (idx != null) data[idx] = { value: p.weight, reps: p.reps };
         }
         return {
-            name: `Set ${s.set}`,
+            name: t("set.n", { n: s.set }),
             type: "line" as const,
             showSymbol: true,
             symbolSize: 6,
@@ -234,12 +305,12 @@ interface TooltipParam {
     data?: ChartPoint | null;
 }
 
-/** Short, locale-stable date for the tooltip header (from the ms-epoch category). */
-function formatTooltipDate(category?: string): string {
+/** Short, locale-aware date for the tooltip header (from the ms-epoch category). */
+function formatTooltipDate(category: string | undefined, locale: Locale): string {
     if (!category) return "";
     const d = new Date(Number(category));
     if (Number.isNaN(d.getTime())) return category;
-    return d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString(locale, {
         year: "numeric",
         month: "short",
         day: "numeric",

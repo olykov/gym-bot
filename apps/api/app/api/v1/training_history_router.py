@@ -90,6 +90,13 @@ def list_training_days(
     ``(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date`` in SELECT/GROUP BY/
     ORDER BY only.  The WHERE keeps the raw timestamp column.
 
+    GYM-136: each day carries ``has_pr`` — True when the day holds the
+    caller's CURRENT all-time max-weight set of at least one exercise
+    ("current max" semantic: a later heavier set moves the marker to its own
+    day; ties mark every tying day).  Computed via a per-exercise max-weight
+    CTE (sargable on ``idx_training_user_exercise``) joined back to the
+    windowed rows with ``BOOL_OR(t.weight = pr.max_weight)``.
+
     Args:
         from_date: Inclusive start date; defaults to today minus 180 days.
         to_date: Inclusive end date; defaults to today.
@@ -128,14 +135,27 @@ def list_training_days(
         day_expr = "(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date"
         query_params = {"uid": uid, "dt_from": dt_from, "dt_to": dt_to, "tz": tz}
 
+    # GYM-136: the pr CTE aggregates the caller's all-time max weight per
+    # exercise (whole history, not just the window) so a day inside the window
+    # is marked only when it holds a CURRENT standing record.  The CTE's WHERE
+    # is a plain user_id filter (idx_training_user_exercise); the join back is
+    # on exercise_id, and the marker itself is BOOL_OR(weight = max_weight).
     sql = f"""
+        WITH pr AS (
+            SELECT exercise_id, MAX(weight) AS max_weight
+            FROM training
+            WHERE user_id = :uid
+            GROUP BY exercise_id
+        )
         SELECT
             {day_expr}                            AS day,
             ARRAY_AGG(DISTINCT m.name)            AS muscles,
             COUNT(DISTINCT t.exercise_id)         AS exercises_count,
-            COUNT(*)                              AS sets_count
+            COUNT(*)                              AS sets_count,
+            BOOL_OR(t.weight = pr.max_weight)     AS has_pr
         FROM training t
         JOIN muscles m ON m.id = t.muscle_id
+        JOIN pr        ON pr.exercise_id = t.exercise_id
         WHERE t.user_id = :uid
           AND t.date >= :dt_from
           AND t.date  < :dt_to
@@ -151,6 +171,7 @@ def list_training_days(
             muscles=sorted(row.muscles),
             exercises_count=row.exercises_count,
             sets_count=row.sets_count,
+            has_pr=bool(row.has_pr),
         )
         for row in rows
     ]

@@ -26,7 +26,7 @@ interface AppHeaderProps {
 export function AppHeader({ title, action }: AppHeaderProps) {
     return (
         <header
-            className="header-scrim fixed inset-x-0 top-0 z-20"
+            className="header-scrim fixed inset-x-0 top-0 z-chrome"
             style={{
                 paddingTop:
                     "max(env(safe-area-inset-top), var(--tg-content-top, 0px))",

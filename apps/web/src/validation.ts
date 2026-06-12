@@ -14,3 +14,10 @@ export const MUSCLE_NAME_MAX = 30;
 
 /** Maximum character length for an exercise name (mirrors API validation). */
 export const EXERCISE_NAME_MAX = 40;
+
+/**
+ * Weight stepper increment in kg — gym-plate granularity (spec §11.4).
+ * Single source for the three steppers (SetLogger, SetEditor, AddSetInline);
+ * GYM-126 owns any further constant dedup.
+ */
+export const WEIGHT_STEP = 2.5;

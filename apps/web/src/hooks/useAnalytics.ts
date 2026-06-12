@@ -16,6 +16,7 @@ import {
     fetchSummary,
     fetchTopExercises,
     fetchTopMuscles,
+    fetchWeekCompare,
     type ActivityDay,
     type AnalyticsSummary,
     type Exercise,
@@ -23,7 +24,9 @@ import {
     type Muscle,
     type TopExercise,
     type TopMuscle,
+    type WeekCompare,
 } from "@/api/analytics";
+import { queryKeys } from "@/api/queryKeys";
 import { DEVICE_TZ } from "@/lib/timezone";
 
 /** Pull-all sentinel for the exercise picker (every exercise of a muscle). */
@@ -32,25 +35,41 @@ const TOP_EXERCISES_LIMIT = 200;
 /**
  * Dashboard summary numbers.
  *
- * Includes DEVICE_TZ in the query key so that a timezone change (rare but
- * possible across reloads) produces a cache miss and re-fetches correctly.
+ * The key (built in queryKeys) includes the device tz so that a timezone
+ * change (rare but possible across reloads) produces a cache miss and
+ * re-fetches correctly.
  */
 export function useSummary() {
     return useQuery<AnalyticsSummary>({
-        queryKey: ["analytics", "summary", DEVICE_TZ ?? "UTC"],
+        queryKey: queryKeys.analytics.summary(),
         queryFn: ({ signal }) => fetchSummary(signal, DEVICE_TZ),
+    });
+}
+
+/**
+ * This-week vs last-week totals for the Dashboard THIS WEEK card (GYM-136).
+ *
+ * The key carries the device tz (like summary) so a timezone change is a
+ * cache miss. Mounted only inside <WeekCompareCard>, which the Dashboard
+ * renders strictly on the has-data path — the new-user empty path never
+ * fires this query (ARCH §2).
+ */
+export function useWeekCompare() {
+    return useQuery<WeekCompare>({
+        queryKey: queryKeys.analytics.weekCompare(),
+        queryFn: ({ signal }) => fetchWeekCompare(signal, DEVICE_TZ),
     });
 }
 
 /**
  * Activity grid for a date window (the 26-week MVP window, see ActivityGrid).
  *
- * Includes DEVICE_TZ in the query key so that a timezone change produces a
- * cache miss and the server recomputes day boundaries in the correct timezone.
+ * The key includes the device tz so that a timezone change produces a cache
+ * miss and the server recomputes day boundaries in the correct timezone.
  */
 export function useActivity(from: string, to: string) {
     return useQuery<ActivityDay[]>({
-        queryKey: ["analytics", "activity", from, to, DEVICE_TZ ?? "UTC"],
+        queryKey: queryKeys.analytics.activity(from, to),
         queryFn: ({ signal }) => fetchActivity(from, to, signal, DEVICE_TZ),
     });
 }
@@ -58,7 +77,7 @@ export function useActivity(from: string, to: string) {
 /** Muscle groups for the Progress picker. */
 export function useMuscles() {
     return useQuery<Muscle[]>({
-        queryKey: ["muscles"],
+        queryKey: queryKeys.muscles.list,
         queryFn: ({ signal }) => fetchMuscles(signal),
         // Catalog is stable; keep it fresh for the session.
         staleTime: 5 * 60_000,
@@ -71,7 +90,7 @@ export function useMuscles() {
  */
 export function useExercises(muscleId: number | null) {
     return useQuery<Exercise[]>({
-        queryKey: ["muscles", muscleId, "exercises"],
+        queryKey: queryKeys.muscles.exercises(muscleId),
         queryFn: ({ signal }) => fetchExercises(muscleId as number, signal),
         enabled: muscleId != null,
         staleTime: 5 * 60_000,
@@ -86,7 +105,7 @@ export function useExercises(muscleId: number | null) {
  */
 export function useTopMuscles() {
     return useQuery<TopMuscle[]>({
-        queryKey: ["analytics", "top-muscles"],
+        queryKey: queryKeys.analytics.topMuscles,
         queryFn: ({ signal }) => fetchTopMuscles(signal),
         // Frequency shifts slowly within a session; keep it fresh.
         staleTime: 5 * 60_000,
@@ -101,7 +120,7 @@ export function useTopMuscles() {
  */
 export function useTopExercises(muscle: string | null) {
     return useQuery<TopExercise[]>({
-        queryKey: ["analytics", "top-exercises", muscle, TOP_EXERCISES_LIMIT],
+        queryKey: queryKeys.analytics.topExercises(muscle, TOP_EXERCISES_LIMIT),
         queryFn: ({ signal }) =>
             fetchTopExercises(muscle as string, TOP_EXERCISES_LIMIT, signal),
         enabled: muscle != null,
@@ -118,7 +137,7 @@ export function useExerciseProgress(
     exercise: string | null,
 ) {
     return useQuery<ExerciseProgress>({
-        queryKey: ["analytics", "exercise-progress", muscle, exercise],
+        queryKey: queryKeys.analytics.exerciseProgress(muscle, exercise),
         queryFn: ({ signal }) =>
             fetchExerciseProgress(muscle as string, exercise as string, signal),
         enabled: Boolean(muscle && exercise),

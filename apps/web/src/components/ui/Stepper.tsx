@@ -9,8 +9,16 @@
  * (spec §11.7). The value is held as the raw string while typing so a partial
  * entry (e.g. "10.") doesn't fight the user; `onChange` reports the parsed
  * number (or `null` for empty/NaN) to the parent for Save-enable validation.
+ *
+ * GYM-122: holding ± repeats the step (400ms delay → 250ms, accelerating to
+ * 80ms after ~8 repeats) via useHoldRepeat. A quick press still steps exactly
+ * once; repeats stop at the min clamp. Light impact haptic on the first
+ * repeat, then every 5th — never on the initial press (unchanged tap feel).
  */
 import { useId } from "react";
+import { useT } from "@/i18n/catalog";
+import { hapticImpact } from "@/telegram/webapp";
+import { useHoldRepeat } from "./useHoldRepeat";
 
 interface StepperProps {
     label: string;
@@ -28,6 +36,10 @@ interface StepperProps {
 }
 
 /** Parse a user string, normalizing comma→dot; return null on empty/NaN. */
+// Exported next to the component because it IS the Stepper's input contract
+// (SetLogger parses with the exact same rules the field types with); editing
+// this file falls back to a full reload instead of fast refresh — acceptable.
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseNumeric(raw: string, integer: boolean): number | null {
     const cleaned = raw.replace(",", ".").trim();
     if (cleaned === "") return null;
@@ -51,13 +63,17 @@ export function Stepper({
     inputMode = "decimal",
     unit,
 }: StepperProps) {
+    const { t } = useT();
     const id = useId();
 
-    function bump(delta: number): void {
+    /** Step once by delta; false when clamped at min (nothing changed). */
+    function stepBy(delta: number): boolean {
         const base = value ?? min;
         const next = Math.max(min, base + delta);
+        if (next === base) return false; // at the min clamp — repeats stop here
         const rounded = integer ? Math.round(next) : Math.round(next * 100) / 100;
         onChange({ text: format(rounded), value: rounded });
+        return true;
     }
 
     function onInput(raw: string): void {
@@ -72,7 +88,11 @@ export function Stepper({
                 {label}
             </label>
             <div className="mt-2 flex items-stretch gap-2">
-                <StepButton label="decrease" disabled={atMin} onClick={() => bump(-step)}>
+                <StepButton
+                    label={t("stepper.decrease")}
+                    disabled={atMin}
+                    onStep={() => stepBy(-step)}
+                >
                     −
                 </StepButton>
 
@@ -91,7 +111,7 @@ export function Stepper({
                     ) : null}
                 </div>
 
-                <StepButton label="increase" onClick={() => bump(step)}>
+                <StepButton label={t("stepper.increase")} onStep={() => stepBy(step)}>
                     +
                 </StepButton>
             </div>
@@ -101,22 +121,38 @@ export function Stepper({
 
 function StepButton({
     children,
-    onClick,
+    onStep,
     disabled = false,
     label,
 }: {
     children: React.ReactNode;
-    onClick: () => void;
+    /** Step once; return false when clamped (stops a hold's repeats). */
+    onStep: () => boolean;
     disabled?: boolean;
     label: string;
 }) {
+    // GYM-122: tick 0 is the initial press (no haptic — unchanged tap feel);
+    // repeats get a light impact on the first tick, then every 5th, and only
+    // when a step actually happened (never at the min clamp).
+    const hold = useHoldRepeat((tick) => {
+        const stepped = onStep();
+        if (stepped && tick > 0 && (tick === 1 || tick % 5 === 0)) {
+            hapticImpact("light");
+        }
+        return stepped;
+    });
     return (
         <button
             type="button"
             aria-label={label}
             disabled={disabled}
-            onClick={onClick}
-            className="press-95 flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-md border border-hairline bg-bg text-2xl leading-none text-text disabled:opacity-40"
+            onPointerDown={hold.onPointerDown}
+            onPointerUp={hold.onPointerUp}
+            onPointerLeave={hold.onPointerLeave}
+            onPointerCancel={hold.onPointerCancel}
+            onClick={hold.onClick}
+            // touch-none: a hold must repeat, not turn into a sheet scroll.
+            className="press-95 flex h-[52px] w-[52px] shrink-0 touch-none items-center justify-center rounded-md border border-hairline bg-bg text-2xl leading-none text-text disabled:opacity-40"
         >
             {children}
         </button>

@@ -7,10 +7,12 @@
  * SVGs (no icon library — stays inside the §1 stack).
  */
 import type { ReactNode } from "react";
+import type { MessageKey } from "@/i18n/messages";
 
 export interface NavTab {
     to: string;
-    label: string;
+    /** Catalog key for the tab label (GYM-109) — translated at render. */
+    labelKey: MessageKey;
     icon: (active: boolean) => ReactNode;
 }
 
@@ -19,7 +21,7 @@ const stroke = (active: boolean) => (active ? "var(--accent)" : "var(--hint)");
 export const NAV_TABS: NavTab[] = [
     {
         to: "/dashboard",
-        label: "Dashboard",
+        labelKey: "nav.dashboard",
         icon: (active) => (
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <rect x="3" y="3" width="7" height="9" rx="1.5" stroke={stroke(active)} strokeWidth="2" />
@@ -31,7 +33,7 @@ export const NAV_TABS: NavTab[] = [
     },
     {
         to: "/progress",
-        label: "Progress",
+        labelKey: "nav.progress",
         icon: (active) => (
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
@@ -47,7 +49,7 @@ export const NAV_TABS: NavTab[] = [
     },
     {
         to: "/history",
-        label: "History",
+        labelKey: "nav.history",
         // A "log" mark: three short stacked horizontal bars over a baseline
         // (spec §11.1) — distinct from Dashboard's grid and Progress's line.
         icon: (active) => (
@@ -61,7 +63,7 @@ export const NAV_TABS: NavTab[] = [
     },
     {
         to: "/profile",
-        label: "Profile",
+        labelKey: "nav.profile",
         // A simple person mark: a head circle over a shoulders arc — token-
         // stroked, distinct from Dashboard's grid, Progress's line, and
         // History's log (spec §12.1).

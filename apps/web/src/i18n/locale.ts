@@ -13,12 +13,39 @@
  * here so the locale answer is always consistent.
  */
 import { useMemo } from "react";
-import { getTelegramLanguageCode } from "@/telegram/webapp";
 import {
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
     type Locale,
 } from "@/i18n/locales";
+
+/**
+ * Read the raw Telegram language_code straight from the WebApp global.
+ *
+ * GYM-109: read directly (not via `@/telegram/webapp`) so this module — and
+ * every pure module that calls getLocale() (date formatting, derive.ts, the
+ * string catalog) — never pulls the @twa-dev/sdk bundle into Node/vitest,
+ * where the SDK script requires `window` at import time. At runtime the SDK
+ * exposes the very same `window.Telegram.WebApp` object, so the value is
+ * identical to the old accessor. Returns undefined outside Telegram.
+ */
+function readTelegramLanguageCode(): string | undefined {
+    if (typeof window === "undefined") return undefined;
+    const tg = (
+        window as {
+            Telegram?: {
+                WebApp?: {
+                    initDataUnsafe?: { user?: { language_code?: string } };
+                };
+            };
+        }
+    ).Telegram;
+    try {
+        return tg?.WebApp?.initDataUnsafe?.user?.language_code;
+    } catch {
+        return undefined;
+    }
+}
 
 /**
  * Normalise a raw Telegram language_code to an ISO-639-1 base code.
@@ -46,7 +73,7 @@ function normalise(raw: string | undefined): string | undefined {
  * Safe to call outside Telegram (local dev / browser) — returns DEFAULT_LOCALE.
  */
 export function getLocale(): Locale {
-    const base = normalise(getTelegramLanguageCode());
+    const base = normalise(readTelegramLanguageCode());
     if (base && (SUPPORTED_LOCALES as readonly string[]).includes(base)) {
         return base as Locale;
     }
@@ -64,6 +91,5 @@ export function getLocale(): Locale {
  *   const locale = useLocale(); // "en" | "ru"
  */
 export function useLocale(): Locale {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     return useMemo(() => getLocale(), []);
 }

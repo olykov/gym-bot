@@ -26,6 +26,11 @@ export type MuscleRename = Schemas["MuscleRename"];
 export type ExerciseRename = Schemas["ExerciseRename"];
 export type ExerciseMove = Schemas["ExerciseMove"];
 export type ExerciseCandidate = Schemas["ExerciseCandidate"];
+export type ExerciseTrend = Schemas["ExerciseTrend"];
+export type SessionVolume = Schemas["SessionVolume"];
+export type E1rmPoint = Schemas["E1rmPoint"];
+export type WeekCompare = Schemas["WeekCompare"];
+export type WeekStats = Schemas["WeekStats"];
 
 /**
  * GET /analytics/summary — the four dashboard numbers (scoped to the caller).
@@ -43,6 +48,27 @@ export function fetchSummary(
     const qs = new URLSearchParams(params).toString();
     const url = qs ? `/analytics/summary?${qs}` : "/analytics/summary";
     return apiRequest<AnalyticsSummary>(url, { signal });
+}
+
+/**
+ * GET /analytics/week-compare — this-week vs last-week sets/volume totals
+ * (GYM-136). Weeks are Monday-start calendar weeks in `tz` (UTC when omitted);
+ * a week with no training carries zeros. Feeds the Dashboard THIS WEEK card.
+ *
+ * @param tz - optional IANA timezone name (e.g. "Asia/Tbilisi"). When
+ *   provided, week boundaries follow the user's local wall-clock.
+ */
+export function fetchWeekCompare(
+    signal?: AbortSignal,
+    tz?: string,
+): Promise<WeekCompare> {
+    const params: Record<string, string> = {};
+    if (tz) params.tz = tz;
+    const qs = new URLSearchParams(params).toString();
+    const url = qs
+        ? `/analytics/week-compare?${qs}`
+        : "/analytics/week-compare";
+    return apiRequest<WeekCompare>(url, { signal });
 }
 
 /**
@@ -126,6 +152,31 @@ export function fetchExerciseProgress(
         `/analytics/exercise-progress?${qs}`,
         { signal },
     );
+}
+
+/**
+ * GET /analytics/exercise-trend?muscle&exercise&weeks — session volume delta
+ * inputs + a per-session max-e1RM series over the trailing window (GYM-134).
+ * Powers the SetLogger sparkline + trend chip (GYM-135).
+ *
+ * @param muscle - muscle group name.
+ * @param exercise - exercise name.
+ * @param weeks - trailing window for the e1RM trend, in weeks.
+ */
+export function fetchExerciseTrend(
+    muscle: string,
+    exercise: string,
+    weeks: number,
+    signal?: AbortSignal,
+): Promise<ExerciseTrend> {
+    const qs = new URLSearchParams({
+        muscle,
+        exercise,
+        weeks: String(weeks),
+    }).toString();
+    return apiRequest<ExerciseTrend>(`/analytics/exercise-trend?${qs}`, {
+        signal,
+    });
 }
 
 /**

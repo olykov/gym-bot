@@ -19,6 +19,7 @@
  * Token-only, mobile-first 360px, Chalk & Iron. No new library.
  */
 import { useMemo, useState } from "react";
+import { useT } from "@/i18n/catalog";
 import type { TrainingSet } from "@/api/training";
 import { ApiError } from "@/api/client";
 import { hapticNotification } from "@/telegram/webapp";
@@ -59,6 +60,7 @@ export function MoveSetPanel({
     onMoved,
     onCancel,
 }: MoveSetPanelProps) {
+    const { t, muscle } = useT();
     const [step, setStep] = useState<MoveStep>("main");
 
     // Target date (YYYY-MM-DD); starts as current day.
@@ -104,16 +106,14 @@ export function MoveSetPanel({
                 },
                 onError: (err) => {
                     if (err instanceof ApiError && err.status === 409) {
-                        setError(
-                            "That slot is already taken — pick a different day or exercise.",
-                        );
+                        setError(t("move.slotTaken"));
                     } else if (
                         err instanceof ApiError &&
                         (err.status === 422 || err.status === 404)
                     ) {
-                        setError("Couldn't move — check your selection.");
+                        setError(t("move.checkSelection"));
                     } else {
-                        setError("Couldn't move — try again.");
+                        setError(t("move.error"));
                     }
                 },
             },
@@ -152,7 +152,7 @@ export function MoveSetPanel({
         <div>
             {/* Section label */}
             <p className="mb-4 text-label uppercase tracking-wide text-hint">
-                Move to
+                {t("move.title")}
             </p>
 
             {/* Date field */}
@@ -161,7 +161,7 @@ export function MoveSetPanel({
                     htmlFor="move-date"
                     className="text-label uppercase tracking-wide text-hint"
                 >
-                    Day
+                    {t("move.day")}
                 </label>
                 <input
                     id="move-date"
@@ -175,7 +175,7 @@ export function MoveSetPanel({
             {/* Exercise picker row */}
             <div className="mb-4">
                 <p className="mb-2 text-label uppercase tracking-wide text-hint">
-                    Exercise
+                    {t("label.exercise")}
                 </p>
                 <button
                     type="button"
@@ -184,8 +184,8 @@ export function MoveSetPanel({
                 >
                     <span className="min-w-0 flex-1 truncate text-base text-text">
                         {targetExercise
-                            ? `${targetExercise} (${targetMuscle})`
-                            : `${exerciseName} — change`}
+                            ? `${targetExercise} (${muscle(targetMuscle ?? "")})`
+                            : t("move.exerciseChange", { exercise: exerciseName })}
                     </span>
                     <span aria-hidden className="shrink-0 text-hint">
                         ›
@@ -200,7 +200,7 @@ export function MoveSetPanel({
                         }}
                         className="press-95 mt-1 text-label text-hint"
                     >
-                        Clear exercise change
+                        {t("move.clearExercise")}
                     </button>
                 ) : null}
             </div>
@@ -220,11 +220,11 @@ export function MoveSetPanel({
                 onClick={onCancel}
                 className="press-95 mb-2 min-h-[44px] w-full rounded-md border border-hairline bg-bg text-base text-text"
             >
-                Cancel
+                {t("common.cancel")}
             </button>
 
             <SheetSaveButton
-                label={moveSet.isPending ? "Moving…" : "Move set"}
+                label={moveSet.isPending ? t("move.moving") : t("move.moveSet")}
                 onClick={submit}
                 disabled={!canMove}
             />
@@ -240,6 +240,7 @@ interface MusclePickerProps {
 }
 
 function MusclePicker({ onBack, onPick }: MusclePickerProps) {
+    const { t, muscle } = useT();
     const muscles = useMuscles();
     const topMuscles = useTopMuscles();
 
@@ -268,10 +269,10 @@ function MusclePicker({ onBack, onPick }: MusclePickerProps) {
                 onClick={onBack}
                 className="press-95 -ml-1 mb-3 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
             >
-                ← Back
+                ← {t("common.back")}
             </button>
             <p className="mb-3 text-label uppercase tracking-wide text-hint">
-                Target muscle
+                {t("move.targetMuscle")}
             </p>
             {muscles.isLoading ? (
                 <div className="space-y-2">
@@ -281,7 +282,7 @@ function MusclePicker({ onBack, onPick }: MusclePickerProps) {
                 </div>
             ) : muscles.isError ? (
                 <ErrorState
-                    message="Couldn't load muscles."
+                    message={t("picker.loadMusclesError")}
                     onRetry={() => void muscles.refetch()}
                 />
             ) : (
@@ -293,7 +294,7 @@ function MusclePicker({ onBack, onPick }: MusclePickerProps) {
                             onClick={() => onPick(m.name)}
                             className="press-95 min-h-[52px] w-full rounded-md border border-hairline bg-secondary-bg px-4 text-left text-base text-text"
                         >
-                            {m.name}
+                            {muscle(m.name)}
                         </button>
                     ))}
                 </div>
@@ -311,6 +312,7 @@ interface ExercisePickerProps {
 }
 
 function ExercisePicker({ muscleName, onBack, onPick }: ExercisePickerProps) {
+    const { t, muscle } = useT();
     const muscles = useMuscles();
     const topExercises = useTopExercises(muscleName);
 
@@ -347,10 +349,10 @@ function ExercisePicker({ muscleName, onBack, onPick }: ExercisePickerProps) {
                 onClick={onBack}
                 className="press-95 -ml-1 mb-3 inline-flex min-h-[44px] items-center gap-1 px-1 text-base text-hint"
             >
-                ← {muscleName}
+                ← {muscle(muscleName)}
             </button>
             <p className="mb-3 text-label uppercase tracking-wide text-hint">
-                Target exercise
+                {t("move.targetExercise")}
             </p>
             {fullExercises.isLoading ? (
                 <div className="space-y-2">
@@ -360,7 +362,7 @@ function ExercisePicker({ muscleName, onBack, onPick }: ExercisePickerProps) {
                 </div>
             ) : fullExercises.isError ? (
                 <ErrorState
-                    message="Couldn't load exercises."
+                    message={t("picker.loadExercisesError")}
                     onRetry={() => void fullExercises.refetch()}
                 />
             ) : (

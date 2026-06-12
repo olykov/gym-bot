@@ -1,12 +1,14 @@
 /**
  * Renders the app only once a session exists. Pending shows a skeleton-filled
- * shell frame (no spinner, spec §10.4); error shows the shared ErrorState with
- * retry; outside Telegram it explains the situation rather than looping auth.
+ * shell frame — no spinner and no copy (spec §10.4, GYM-123 #5: the
+ * "Loading / Signing you in…" EmptyState read as raw scaffolding); error shows
+ * the shared ErrorState with retry; outside Telegram it explains the situation
+ * rather than looping auth.
  */
 import type { ReactNode } from "react";
+import { useT } from "@/i18n/catalog";
 import { useAuth } from "./AuthProvider";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonCard, SkeletonGrid } from "@/components/ui/Skeleton";
 
 /** A bare, scrollable centered frame for pre-shell states (no nav yet). */
@@ -19,6 +21,7 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
+    const { t } = useT();
     const { status, error, retry } = useAuth();
 
     if (status === "authed" || status === "no-telegram") {
@@ -31,18 +34,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
         return (
             <Frame>
                 <ErrorState
-                    message={error ?? "Could not sign you in via Telegram."}
+                    message={error ?? t("auth.errorFallback")}
                     onRetry={retry}
                 />
             </Frame>
         );
     }
 
-    // pending
+    // pending — skeleton shell only (GYM-123 #5), announced as busy for AT.
     return (
         <Frame>
-            <div className="flex flex-col gap-4">
-                <EmptyState title="Loading" subtitle="Signing you in…" />
+            <div
+                className="flex flex-col gap-4"
+                role="status"
+                aria-label={t("common.loading")}
+            >
                 <div className="grid grid-cols-2 gap-4">
                     <SkeletonCard />
                     <SkeletonCard />

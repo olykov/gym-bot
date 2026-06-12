@@ -328,12 +328,18 @@ class TrainingDay(BaseModel):
 
     Matches ``TrainingDay`` in the OpenAPI contract.
     ``date`` is a calendar date (not a timestamp).
+
+    ``has_pr`` (GYM-136) is True when the day holds the caller's CURRENT
+    all-time max-weight set of at least one exercise ("current max" semantic:
+    a later heavier set moves the marker to its own day; ties mark every
+    tying day).
     """
 
     date: date
     muscles: List[str]
     exercises_count: int
     sets_count: int
+    has_pr: bool
 
 
 class TrainingDayDetail(BaseModel):
@@ -506,3 +512,72 @@ class LogContext(BaseModel):
     completed_sets: List[int]
     last_session_sets: List[LogSet]
     pr: Optional[PersonalRecord] = None
+
+
+# ---------------------------------------------------------------------------
+# Exercise trend (GYM-134) — session volume delta + e1RM trend series
+# ---------------------------------------------------------------------------
+
+class SessionVolume(BaseModel):
+    """One training session (calendar day) with its total volume.
+
+    Matches ``SessionVolume`` in packages/api-contract/openapi.yaml.
+    ``volume`` is the sum of weight x reps across all sets of the session.
+    """
+
+    date: date
+    volume: float
+
+
+class E1rmPoint(BaseModel):
+    """Per-session maximum estimated one-rep max (Epley).
+
+    Matches ``E1rmPoint`` in the OpenAPI contract.
+    ``e1rm`` is max(weight * (1 + reps/30)) across the session's sets.
+    """
+
+    date: date
+    e1rm: float
+
+
+class ExerciseTrend(BaseModel):
+    """Session-vs-session volume delta inputs plus a per-session e1RM trend.
+
+    Matches ``ExerciseTrend`` in the OpenAPI contract (GYM-134).
+
+    Attributes:
+        last_session: The most recent session, or null when no history exists.
+        prev_session: The session before the most recent one, or null.
+        e1rm_trend: Per-session max-e1RM points within the window, date ascending.
+    """
+
+    last_session: Optional[SessionVolume] = None
+    prev_session: Optional[SessionVolume] = None
+    e1rm_trend: List[E1rmPoint]
+
+
+# ---------------------------------------------------------------------------
+# Week comparison (GYM-136) — this-week vs last-week dashboard card
+# ---------------------------------------------------------------------------
+
+class WeekStats(BaseModel):
+    """Training totals for one Monday-start calendar week.
+
+    Matches ``WeekStats`` in packages/api-contract/openapi.yaml (GYM-136).
+    ``volume`` is the sum of weight x reps across the week's sets.
+    """
+
+    sets: int
+    volume: float
+
+
+class WeekCompare(BaseModel):
+    """This-week vs last-week totals for the Dashboard comparison card.
+
+    Matches ``WeekCompare`` in the OpenAPI contract (GYM-136).  Weeks are
+    Monday-start calendar weeks in the requested timezone (UTC when omitted);
+    a week with no training carries zeros.
+    """
+
+    this_week: WeekStats
+    last_week: WeekStats

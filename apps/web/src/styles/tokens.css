@@ -37,14 +37,11 @@
     --grid-l3: color-mix(in srgb, var(--accent) 68%, var(--secondary-bg));
     --grid-l4: color-mix(in srgb, var(--accent) 100%, var(--secondary-bg));
 
-    /* ---- Typography ---- */
-    --font-display: "Bebas Neue", "Oswald", ui-sans-serif, sans-serif;
-    --font-body: "Sora", ui-sans-serif, system-ui, sans-serif;
+    /* ---- Typography / shape: theme-static tokens moved into @theme below
+       (GYM-128) — same names, same values, now owned by Tailwind's theme
+       layer so utilities and plain CSS share one definition. ---- */
 
-    /* ---- Shape / depth ---- */
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
+    /* ---- Depth (theme-dependent: dark overrides it below) ---- */
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
 
     /* ---- Shell chrome heights (consumed by Tailwind spacing tokens) ---- */
@@ -57,9 +54,43 @@
     --fab-lift: 16px;
     --container-max: 480px;
 
+    /* ---- Component sizing (GYM-127) ---- */
+    /* Picker tile height: 3 clamped text lines + 24px padding (see the
+       .picker-tile-grid-* rationale in index.css). Consumed via the `h-tile`
+       Tailwind utility (spacing token), same idiom as h-header / h-nav. */
+    --tile-h: 88px;
+    /* Inline muscle-chip max-width caps (GYM-77 #2). The wide variant is the
+       DayCard list cap — the history list has more horizontal room than the
+       in-sheet header rows, so its chips may run a touch longer (10rem was
+       the shipped value; kept as a second token rather than flattening it). */
+    --chip-max: 8rem;
+    --chip-max-wide: 10rem;
+
+    /* ---- z-index scale (GYM-127) ---- */
+    /* Fixed shell chrome: AppHeader + BottomNav. */
+    --z-chrome: 20;
+    /* The shared bottom-sheet layer (BottomSheet default). */
+    --z-sheet: 30;
+    /* A sheet stacked above another sheet (e.g. ManageSheet over the record
+       sheet, GYM-98) — must clear the parent sheet's stacking context. */
+    --z-sheet-nested: 40;
+
     /* ---- Motion ---- */
-    --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+    /* --ease-out-soft lives in @theme below (GYM-128) — same value. */
     --dur-reveal: 240ms;
+    /* §9.4 stagger step between revealed children (GYM-116). */
+    --reveal-step: 60ms;
+    /* Drill-in route-transition slide distance (GYM-121). */
+    --slide-drill: 24px;
+    /* GYM-131 save choreography: the quick micro-beat (delta badge slide-in,
+       SET digit roll). */
+    --dur-quick: 180ms;
+    /* GYM-131: Save-button success morph window. Keep in sync with
+       SAVE_MORPH_MS in useSaveChoreography.ts. */
+    --dur-save-morph: 600ms;
+    /* GYM-131: PR banner full lifecycle (slide-down 240ms → hold until 1.2s →
+       fade 240ms = 1440ms). Keep in sync with PR_BANNER_TOTAL_MS. */
+    --dur-pr-banner: 1440ms;
 }
 
 /* Dark mode: brand layer adapts. theme.ts sets data-theme="dark" from
@@ -93,4 +124,103 @@
         --grid-empty-bg: color-mix(in srgb, #ffffff 4%, var(--bg));
         --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.4);
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * Tailwind 4 theme (GYM-128) — the CSS-first replacement of the old
+ * tailwind.config.js `theme` block. Same utility names, same token values.
+ * ------------------------------------------------------------------------- */
+@theme {
+    /* Spacing scale is the ONLY sanctioned set (spec §3): 4/8/12/16/24/32.
+       `initial` disables v4's dynamic numeric scale so off-scale utilities
+       (p-5, h-44, gap-1.5…) stay non-existent — identical to the v3 config
+       that REPLACED `spacing` rather than extending it. */
+    --spacing: initial;
+    --spacing-0: 0px;
+    --spacing-1: 4px;
+    --spacing-2: 8px;
+    --spacing-3: 12px;
+    --spacing-4: 16px;
+    --spacing-6: 24px;
+    --spacing-8: 32px;
+
+    /* Typographic scale — tokens only. `base` deliberately OVERRIDES the v4
+       default (1rem) to the app's 0.9375rem body size. micro: the tiniest
+       rail/annotation size (ActivityGrid weekday + month rails, GYM-127). */
+    --text-micro: 0.625rem;
+    --text-micro--line-height: 1;
+    --text-micro--letter-spacing: 0.02em;
+    --text-label: 0.75rem;
+    --text-label--line-height: 1rem;
+    --text-label--letter-spacing: 0.02em;
+    --text-base: 0.9375rem;
+    --text-base--line-height: 1.4rem;
+    --text-stat: 2.5rem;
+    --text-stat--line-height: 1;
+    --text-stat-lg: 3.25rem;
+    --text-stat-lg--line-height: 1;
+    --text-title: 1.5rem;
+    --text-title--line-height: 1.5rem;
+    --text-title--letter-spacing: 0.01em;
+
+    /* Bebas Neue (display/numerals) + Sora (body/UI) — spec §9.2. Theme-static,
+       so they live here as literals; plain CSS keeps using var(--font-*). */
+    --font-display: "Bebas Neue", "Oswald", ui-sans-serif, sans-serif;
+    --font-body: "Sora", ui-sans-serif, system-ui, sans-serif;
+
+    /* ---- Shape ---- */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+
+    /* ---- Motion easing (durations stay in :root above) ---- */
+    --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Theme entries that REFERENCE the runtime CSS variables above (Telegram
+ * themeParams + brand layer). `inline` makes the generated utilities consume
+ * the var() directly instead of re-emitting same-named :root variables (which
+ * would self-reference), so utilities keep following live theme flips. */
+@theme inline {
+    --color-bg: var(--bg);
+    --color-text: var(--text);
+    --color-hint: var(--hint);
+    --color-link: var(--link);
+    --color-button: var(--button);
+    --color-button-text: var(--button-text);
+    --color-secondary-bg: var(--secondary-bg);
+    /* App-owned brand layer (survives any Telegram theme). */
+    --color-accent: var(--accent);
+    --color-accent-weak: var(--accent-weak);
+    --color-hairline: var(--hairline);
+
+    /* Shell chrome heights + picker tile (h-header / h-nav / h-tile). */
+    --spacing-header: var(--header-h);
+    --spacing-nav: var(--nav-h);
+    --spacing-tile: var(--tile-h);
+
+    /* max-w-* draws from the v4 --container-* namespace. */
+    --container-container: var(--container-max);
+    --container-chip: var(--chip-max);
+    --container-chip-wide: var(--chip-max-wide);
+}
+
+/* The card shadow is THEME-DEPENDENT (dark overrides --shadow-card in :root),
+ * so it stays a runtime var consumed by a plain utility — not a @theme entry,
+ * which would self-reference the same name. Visually identical to the old
+ * Tailwind `boxShadow.card` (nothing composes it with rings/inset shadows). */
+@utility shadow-card {
+    box-shadow: var(--shadow-card);
+}
+
+/* z-index has no v4 theme namespace — the z-scale steps (GYM-127) are plain
+ * utilities over the tokens above: fixed chrome < sheet < nested sheet. */
+@utility z-chrome {
+    z-index: var(--z-chrome);
+}
+@utility z-sheet {
+    z-index: var(--z-sheet);
+}
+@utility z-sheet-nested {
+    z-index: var(--z-sheet-nested);
 }

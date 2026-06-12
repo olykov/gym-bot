@@ -9,7 +9,10 @@ import { Skeleton } from "@/components/ui/Skeleton";
 
 export interface ChipOption {
     id: number;
+    /** Canonical value (API name) — used as the query key upstream. */
     label: string;
+    /** Optional localized display text (GYM-109); falls back to `label`. */
+    display?: string;
 }
 
 interface ChipRowProps {
@@ -54,7 +57,7 @@ export function ChipRow({
                                           : "border border-hairline text-text"
                                   }`}
                               >
-                                  {opt.label}
+                                  {opt.display ?? opt.label}
                               </button>
                           );
                       })}

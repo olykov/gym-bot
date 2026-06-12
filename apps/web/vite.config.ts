@@ -1,15 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     build: {
-        // ECharts lives in its own async chunk (GYM-45); the main bundle is
-        // ~373 kB. Raise the limit past the echarts chunk so the warning
-        // targets only genuinely unintentional bloat, not this known split.
-        chunkSizeWarningLimit: 1100,
+        // ECharts lives in its own async chunk (GYM-45), tree-shaken to
+        // ~520 kB via echarts/core (GYM-129). Keep the limit just past that
+        // chunk so the warning targets only genuinely unintentional bloat.
+        chunkSizeWarningLimit: 600,
     },
     resolve: {
         alias: {

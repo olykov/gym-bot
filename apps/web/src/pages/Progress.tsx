@@ -20,16 +20,18 @@
  * their inputs exist, so the no-data path fires no extra queries.
  */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "@/i18n/catalog";
 import { Card } from "@/components/ui/Card";
 import { SkeletonChart } from "@/components/ui/Skeleton";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { EmptyState, EmptyStateAction } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { useRecordSheet } from "@/components/record/RecordSheetContext";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ChipRow, type ChipOption } from "@/components/progress/ChipRow";
 import type { ProgressMode } from "@/components/progress/ExerciseProgressChart";
 
-// Lazy-load ECharts (~1 MB) so it is excluded from the main bundle and only
-// fetched when the Progress tab is opened for the first time (GYM-45).
+// Lazy-load ECharts (~0.5 MB tree-shaken, GYM-129) so it is excluded from the
+// main bundle and only fetched when the Progress tab first opens (GYM-45).
 const ExerciseProgressChart = lazy(
     () => import("@/components/progress/ExerciseProgressChart").then(
         (m) => ({ default: m.ExerciseProgressChart }),
@@ -41,12 +43,8 @@ import {
     useTopMuscles,
 } from "@/hooks/useAnalytics";
 
-const MODE_OPTIONS: { value: ProgressMode; label: string }[] = [
-    { value: "weight", label: "By Weight" },
-    { value: "set", label: "By Set" },
-];
-
 export function Progress() {
+    const { t, muscle: muscleLabel } = useT();
     // Pickers are keyed by NAME (the progress endpoint takes muscle/exercise
     // names). The chip `id` is the position in the frequency-ordered row.
     const [muscle, setMuscle] = useState<ChipOption | null>(null);
@@ -55,6 +53,8 @@ export function Progress() {
     const [mode, setMode] = useState<ProgressMode>("weight");
 
     const muscles = useTopMuscles();
+    // GYM-118: the new-user empty-state CTA opens the shell-owned record sheet.
+    const { openRecordSheet } = useRecordSheet();
     // Disabled until a muscle is picked (no extra query on the empty path).
     const exercises = useTopExercises(muscle?.label ?? null);
     // Disabled until both names exist.
@@ -63,10 +63,28 @@ export function Progress() {
         exercise?.label ?? null,
     );
 
+    // Localized segmented-control options (GYM-109). "e1RM" stays Latin in
+    // both locales (GYM-133 — a formula name, like the "PR" brand mark).
+    const modeOptions = useMemo(
+        (): { value: ProgressMode; label: string }[] => [
+            { value: "weight", label: t("progress.byWeight") },
+            { value: "set", label: t("progress.bySet") },
+            { value: "e1rm", label: t("progress.e1rm") },
+        ],
+        [t],
+    );
+
     // Frequency order is authoritative — index is the chip id, name the label.
+    // `label` stays the canonical API name (the query key); `display` carries
+    // the localized muscle label (GYM-109).
     const muscleOptions: ChipOption[] = useMemo(
-        () => (muscles.data ?? []).map((m, i) => ({ id: i, label: m.name })),
-        [muscles.data],
+        () =>
+            (muscles.data ?? []).map((m, i) => ({
+                id: i,
+                label: m.name,
+                display: muscleLabel(m.name),
+            })),
+        [muscles.data, muscleLabel],
     );
     const exerciseOptions: ChipOption[] = useMemo(
         () => (exercises.data ?? []).map((e, i) => ({ id: i, label: e.name })),
@@ -112,8 +130,14 @@ export function Progress() {
     if (!muscles.isLoading && muscleOptions.length === 0) {
         return (
             <EmptyState
-                title="No trainings yet"
-                subtitle="Log a set in the bot and your progress shows up here."
+                title={t("empty.noTrainingsTitle")}
+                subtitle={t("empty.noTrainingsSubtitle")}
+                action={
+                    <EmptyStateAction
+                        label={t("empty.logASet")}
+                        onClick={openRecordSheet}
+                    />
+                }
             />
         );
     }
@@ -122,14 +146,14 @@ export function Progress() {
         <>
             <Card>
                 <SegmentedControl
-                    ariaLabel="Progress view"
-                    options={MODE_OPTIONS}
+                    ariaLabel={t("progress.viewAria")}
+                    options={modeOptions}
                     value={mode}
                     onChange={setMode}
                 />
                 <div className="mt-4">
                     <ChipRow
-                        label="Muscle"
+                        label={t("label.muscle")}
                         options={muscleOptions}
                         selectedId={muscle?.id ?? null}
                         onSelect={pickMuscle}
@@ -139,7 +163,7 @@ export function Progress() {
                 {muscle ? (
                     <div className="mt-4">
                         <ChipRow
-                            label="Exercise"
+                            label={t("label.exercise")}
                             options={exerciseOptions}
                             selectedId={exercise?.id ?? null}
                             onSelect={setExercise}
@@ -171,6 +195,7 @@ function ChartArea({
     progress: ReturnType<typeof useExerciseProgress>;
     mode: ProgressMode;
 }) {
+    const { t } = useT();
     // No selection resolved yet (auto-select in flight) — a skeleton, not an
     // empty screen, so the page never flashes a blank pick state on mount.
     if (!muscle || !exercise) {
@@ -186,9 +211,13 @@ function ChartArea({
     const hasPoints = series.some((s) => s.points.length > 0);
     if (!hasPoints) {
         return (
+            /* Copy-only here (GYM-118): the user already has data, the + FAB
+               is one tap away — a second in-card button would be noise. */
             <EmptyState
-                title="No data yet"
-                subtitle={`No logged sets for ${exercise.label}. Record a set in the bot to start the chart.`}
+                title={t("empty.noDataTitle")}
+                subtitle={t("empty.noDataSubtitle", {
+                    exercise: exercise.label,
+                })}
             />
         );
     }

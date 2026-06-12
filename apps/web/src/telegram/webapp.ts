@@ -6,8 +6,43 @@
  * degrades gracefully when the app runs OUTSIDE Telegram (e.g. local dev in a
  * browser), where `WebApp` is a no-op stub.
  */
-import WebApp from "@twa-dev/sdk";
+import SdkWebApp from "@twa-dev/sdk";
 import { applyTelegramTheme } from "./theme";
+
+/**
+ * Resolve the live Telegram WebApp object.
+ *
+ * `@twa-dev/sdk` is a CJS module whose entry is `exports.default =
+ * window.Telegram.WebApp`. Under Vite 8's CJS→ESM interop the default import can
+ * come back as a wrapped module object whose `.ready` is missing, which crashes
+ * the Mini App at boot (white screen). The SDK itself just reads
+ * `window.Telegram.WebApp`, so prefer that canonical object (present in a real
+ * Telegram client and identical to the SDK export), and fall back to unwrapping
+ * the SDK default export if the global is absent.
+ */
+function resolveWebApp(): typeof SdkWebApp {
+    const fromWindow =
+        typeof window !== "undefined"
+            ? (window as unknown as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp
+            : undefined;
+    if (fromWindow && typeof (fromWindow as { ready?: unknown }).ready === "function") {
+        return fromWindow as typeof SdkWebApp;
+    }
+    let cur: unknown = SdkWebApp;
+    // Unwrap nested `.default` wrappers only while one exists; stop at the first
+    // object that exposes the WebApp API (or that has no further `.default`), so a
+    // plain object (e.g. a unit-test mock) is never unwrapped into `undefined`.
+    while (
+        cur &&
+        typeof (cur as { ready?: unknown }).ready !== "function" &&
+        (cur as { default?: unknown }).default
+    ) {
+        cur = (cur as { default?: unknown }).default;
+    }
+    return cur as typeof SdkWebApp;
+}
+
+const WebApp = resolveWebApp();
 
 /** True when launched inside a real Telegram client (initData is present). */
 export function isTelegramEnv(): boolean {
@@ -32,6 +67,18 @@ export function getTelegramLanguageCode(): string | undefined {
 /** Raw initData query string for the Mini App auth round-trip (spec §4). */
 export function getInitData(): string {
     return WebApp.initData ?? "";
+}
+
+/**
+ * Subscribe to Telegram `themeChanged`; returns an unsubscribe. Routed through the
+ * resolved {@link WebApp} so callers never import `@twa-dev/sdk` directly (that
+ * default import is unreliable under Vite 8 — see {@link resolveWebApp}). A no-op
+ * when the SDK event API is unavailable (outside Telegram).
+ */
+export function onThemeChanged(handler: () => void): () => void {
+    if (typeof WebApp?.onEvent !== "function") return () => {};
+    WebApp.onEvent("themeChanged", handler);
+    return () => WebApp.offEvent?.("themeChanged", handler);
 }
 
 /**
@@ -180,19 +227,60 @@ export function hapticNotification(
 // GYM-54). Save now lives as a sticky in-sheet button (spec §11.4); no
 // MainButton wrapper is exported here.
 
-/** Wire Telegram's native BackButton to a handler; returns a teardown. */
-export function wireBackButton(handler: () => void): () => void {
-    WebApp.BackButton.onClick(handler);
+// ── BackButton handler stack (GYM-119) ──────────────────────────────────────
+//
+// The SDK fires EVERY `BackButton.onClick` subscriber on a single press, so
+// nested sheets that each wired their own handler all ran at once (ManageSheet
+// over the record sheet: one Back closed both). The app therefore keeps exactly
+// ONE underlying SDK subscription (created lazily on first push) and dispatches
+// to the TOP of this module-level stack only. Visibility is single-owner too:
+// the button shows while the stack is non-empty and hides when it empties.
+
+type BackHandler = () => void;
+
+const backHandlers: BackHandler[] = [];
+let backDispatchWired = false;
+
+/** Fire the top-most handler only — lower layers regain Back when it pops. */
+function dispatchBack(): void {
+    backHandlers[backHandlers.length - 1]?.();
+}
+
+function syncBackButtonVisibility(): void {
+    try {
+        if (backHandlers.length > 0) WebApp.BackButton.show();
+        else WebApp.BackButton.hide();
+    } catch {
+        /* no-op outside Telegram */
+    }
+}
+
+/**
+ * Push a Back handler onto the stack. While it is the top entry, a Telegram
+ * Back press runs it (and ONLY it). Returns a pop function that removes the
+ * entry — safe to call twice (idempotent) and safe to call out of order
+ * (removes this entry wherever it sits, not blindly the top).
+ *
+ * @param handler - runs on Back press while top of the stack.
+ * @returns pop/cleanup function (use as a React effect teardown).
+ */
+export function pushBackHandler(handler: BackHandler): () => void {
+    if (!backDispatchWired) {
+        try {
+            WebApp.BackButton.onClick(dispatchBack);
+            backDispatchWired = true;
+        } catch {
+            /* no-op outside Telegram */
+        }
+    }
+    backHandlers.push(handler);
+    syncBackButtonVisibility();
+    let popped = false;
     return () => {
-        WebApp.BackButton.offClick(handler);
-        WebApp.BackButton.hide();
+        if (popped) return;
+        popped = true;
+        const idx = backHandlers.lastIndexOf(handler);
+        if (idx !== -1) backHandlers.splice(idx, 1);
+        syncBackButtonVisibility();
     };
-}
-
-export function showBackButton(): void {
-    WebApp.BackButton.show();
-}
-
-export function hideBackButton(): void {
-    WebApp.BackButton.hide();
 }

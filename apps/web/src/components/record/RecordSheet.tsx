@@ -16,13 +16,16 @@
  * the exercise step, Back → muscles step; on the muscle step → close sheet.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useT } from "@/i18n/catalog";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { RecordPicker } from "./RecordPicker";
 import { SetLogger } from "./SetLogger";
+import { SessionSummaryPanel } from "./SessionSummaryPanel";
 import { toISODate } from "@/components/history/historyWindow";
 import { useTrainingDay } from "@/hooks/useTraining";
 import type { TrainingSet } from "@/api/training";
 import type { ChosenExercise } from "./types";
+import type { SessionLogEntry } from "./derive";
 
 /** Which step Phase A is currently on (GYM-74 slide-nav). */
 export type PickerStep = "muscles" | "exercises";
@@ -33,6 +36,7 @@ interface RecordSheetProps {
 }
 
 export function RecordSheet({ open, onClose }: RecordSheetProps) {
+    const { t } = useT();
     const [chosen, setChosen] = useState<ChosenExercise | null>(null);
     /**
      * GYM-85: transient hint shown after resolution=existing on create, persists
@@ -66,6 +70,29 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
     const pickerStepRef = useRef<PickerStep>("muscles");
     pickerStepRef.current = pickerStep;
 
+    /**
+     * GYM-132: the cross-exercise session log — every set saved while this
+     * sheet is open, across ALL exercises (SetLogger's own sessionSets reset
+     * on exercise switch; this one survives). A ref, not state: appends must
+     * not re-render the sheet mid-logging; the summary reads it on Done.
+     */
+    const sessionLogRef = useRef<SessionLogEntry[]>([]);
+    const handleSetLogged = useCallback((entry: SessionLogEntry) => {
+        sessionLogRef.current = [...sessionLogRef.current, entry];
+    }, []);
+
+    /**
+     * GYM-132: summary body-swap flag. Set ONLY by the explicit Done button
+     * (scrim / Telegram Back / drag-dismiss keep closing directly, as
+     * before). With an empty session log Done closes immediately — the
+     * summary never appears, the fast path is untouched.
+     */
+    const [showSummary, setShowSummary] = useState(false);
+    const handleDone = useCallback(() => {
+        if (sessionLogRef.current.length > 0) setShowSummary(true);
+        else onClose();
+    }, [onClose]);
+
     // Fetch today's training to source server sets (w×r) for the recap (GYM-74).
     const day = useTrainingDay(today);
 
@@ -76,6 +103,9 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
             setPickerStep("muscles");
             setSelectedMuscle(null);
             setCreateHint(null);
+            // GYM-132: a new sheet open is a new session.
+            setShowSummary(false);
+            sessionLogRef.current = [];
         }
     }, [open]);
 
@@ -109,9 +139,17 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
             onBackOverride={handleBackOverride}
         >
             <div id="record-sheet-title" className="sr-only">
-                Record training
+                {t("nav.recordTraining")}
             </div>
-            {chosen ? (
+            {showSummary ? (
+                // GYM-132: the closing moment — same sheet, body-swapped like
+                // Phase A↔B. One tap anywhere (or ~4s, scrim, Back) → the
+                // SAME onClose as every other close path (§12.5 unchanged).
+                <SessionSummaryPanel
+                    log={sessionLogRef.current}
+                    onDismiss={onClose}
+                />
+            ) : chosen ? (
                 <SetLogger
                     chosen={chosen}
                     today={today}
@@ -126,7 +164,8 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
                         setChosen(null);
                         setCreateHint(null);
                     }}
-                    onDone={onClose}
+                    onDone={handleDone}
+                    onSetLogged={handleSetLogged}
                 />
             ) : (
                 <RecordPicker

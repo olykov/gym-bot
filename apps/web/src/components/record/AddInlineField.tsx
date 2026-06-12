@@ -21,6 +21,7 @@
  * and caused jank by running before visualViewport fired its resize event.
  */
 import { useState } from "react";
+import { useT } from "@/i18n/catalog";
 
 interface AddInlineFieldProps {
     placeholder: string;
@@ -52,6 +53,7 @@ export function AddInlineField({
     onSubmit,
     onCancel,
 }: AddInlineFieldProps) {
+    const { t } = useT();
     const [name, setName] = useState(initialValue);
     const trimmed = name.trim();
     const canSubmit = trimmed.length > 0 && !pending;
@@ -91,7 +93,7 @@ export function AddInlineField({
                     <button
                         type="button"
                         onClick={onCancel}
-                        aria-label="Cancel"
+                        aria-label={t("common.cancel")}
                         className="press-95 min-h-[44px] shrink-0 rounded-md border border-hairline bg-bg px-3 text-base text-hint"
                     >
                         ×

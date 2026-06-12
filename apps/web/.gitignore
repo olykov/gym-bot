@@ -4,3 +4,7 @@ dist/
 .env.*
 .DS_Store
 npm-debug.log*
+
+# Re-include src/lib — a broad `lib/` rule in the global ~/.gitignore_global
+# otherwise silently excludes apps/web/src/lib/ (e.g. e1rm.ts), breaking the build.
+!src/lib/

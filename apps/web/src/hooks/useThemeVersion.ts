@@ -7,16 +7,15 @@
  * the listener is a harmless no-op.
  */
 import { useEffect, useState } from "react";
-import WebApp from "@twa-dev/sdk";
+import { onThemeChanged } from "@/telegram/webapp";
 
 export function useThemeVersion(): number {
     const [version, setVersion] = useState(0);
 
-    useEffect(() => {
-        const bump = () => setVersion((v) => v + 1);
-        WebApp.onEvent("themeChanged", bump);
-        return () => WebApp.offEvent("themeChanged", bump);
-    }, []);
+    useEffect(
+        () => onThemeChanged(() => setVersion((v) => v + 1)),
+        [],
+    );
 
     return version;
 }
