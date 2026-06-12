@@ -3,10 +3,10 @@ schema_version: 1
 id: GYM-141
 title: "History: PR shown on the day but no marker on the actual set inside the day"
 slug: gym-141-pr-marker-on-set
-status: blocked
+status: backlog
 priority: high
-type: bug-fix
-labels: [frontend,design,history,feature]
+type: feature
+labels: [frontend,design,history,feature,api,api-contract]
 assignee: null
 model: null
 reporter: oleksii
@@ -69,3 +69,17 @@ Option 1 is preferred (per-set, matches the DayCard `has_pr` granularity). This 
 - Frontend: use `set.is_pr` in `SetRow` and `HistoryDay` to render a PR chip beside the set figure.
 
 **Status: BLOCKED on backend. Not implementing client-side — it would violate spec §1.**
+
+## Plan (unblocked — backend + frontend)
+Per the design-agent analysis: `TrainingSet` carries no PR info and a correct all-time-PR marker can't be
+derived client-side. So:
+1. **Contract** (api-contract-guardian): add `is_pr: boolean` to `TrainingSet`; regen clients.
+2. **Core API** (core-api): compute `is_pr` in `GET /training/day/{date}` — a JOIN flagging the set(s) that
+   equal the caller's current all-time max weight for that exercise (zero extra client requests). Tests.
+3. **Frontend** (frontend-design + plugin): render a PR chip/marker on the flagged set (`SetRow`/HistoryDay),
+   on-spec; this lands AFTER GYM-143 (sheet layout) so it sits in a correct layout.
+
+## Comments
+
+### 2026-06-12T09:00:00Z — unblocked with a plan
+Reframed from blocked to a 3-step backend+frontend task. Awaiting operator approval to launch (after GYM-143).
