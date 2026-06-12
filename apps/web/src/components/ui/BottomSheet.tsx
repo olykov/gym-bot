@@ -227,10 +227,13 @@ export function BottomSheet({
                     style={{
                         ...(fixedHeight
                             ? {
-                                  // Fixed height: sits strictly below the AppShell header.
-                                  // = viewport − (safe-area/Telegram content top) − header-h − 24px margin.
-                                  // The header-h clearance ensures the picker never overlaps the fixed header.
-                                  height: "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - var(--header-h) - 24px)",
+                                  // Fixed height: sits strictly below the AppShell header AND
+                                  // above the fixed BottomNav (GYM-140).
+                                  // = viewport − (safe-area/Telegram content top) − header-h − nav-h − 24px margin.
+                                  // Subtracting --nav-h ensures the sheet's bottom edge clears the
+                                  // nav (always visible while this sheet is open), so controls
+                                  // at the base of the flex column are never hidden under it.
+                                  height: "calc(100dvh - max(env(safe-area-inset-top), var(--tg-content-top, 0px)) - var(--header-h) - var(--nav-h) - 24px)",
                                   // GYM-100: expose keyboard height as a CSS var so inner slide panels
                                   // (RecordPicker) can apply it as their paddingBottom. The body region
                                   // of a fixedHeight sheet does NOT add keyboardPad itself because the
@@ -275,11 +278,15 @@ export function BottomSheet({
                             fixedHeight
                                 ? undefined
                                 : {
-                                      // Non-fixedHeight sheets: add keyboard height to paddingBottom
-                                      // so the focused input scrolls above the keyboard.
+                                      // Non-fixedHeight sheets: paddingBottom must clear
+                                      // (a) the fixed BottomNav (--nav-h, always visible while
+                                      //     the sheet is open — GYM-140), so the SheetSaveButton
+                                      //     sticky at `bottom: var(--nav-h)` has room to anchor,
+                                      // (b) the device/Telegram bottom safe-area, and
+                                      // (c) keyboard height so the focused input scrolls clear.
                                       paddingBottom: keyboardPad > 0
-                                          ? `${keyboardPad + 12}px`
-                                          : "calc(max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",
+                                          ? `calc(var(--nav-h) + ${keyboardPad + 12}px)`
+                                          : "calc(var(--nav-h) + max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)) + 12px)",
                                   }
                         }
                     >

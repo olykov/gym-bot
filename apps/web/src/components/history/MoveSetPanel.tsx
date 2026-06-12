@@ -214,11 +214,12 @@ export function MoveSetPanel({
                 </div>
             ) : null}
 
-            {/* Cancel row */}
+            {/* Cancel row — GYM-140: flex items-center justify-center ensures
+               the text is vertically centered on all Android WebViews. */}
             <button
                 type="button"
                 onClick={onCancel}
-                className="press-95 mb-2 min-h-[44px] w-full rounded-md border border-hairline bg-bg text-base text-text"
+                className="press-95 mb-2 flex min-h-[44px] w-full items-center justify-center rounded-md border border-hairline bg-bg text-base text-text"
             >
                 {t("common.cancel")}
             </button>
@@ -292,7 +293,7 @@ function MusclePicker({ onBack, onPick }: MusclePickerProps) {
                             key={m.id}
                             type="button"
                             onClick={() => onPick(m.name)}
-                            className="press-95 min-h-[52px] w-full rounded-md border border-hairline bg-secondary-bg px-4 text-left text-base text-text"
+                            className="press-95 flex min-h-[52px] w-full items-center rounded-md border border-hairline bg-secondary-bg px-4 text-left text-base text-text"
                         >
                             {muscle(m.name)}
                         </button>
@@ -372,7 +373,7 @@ function ExercisePicker({ muscleName, onBack, onPick }: ExercisePickerProps) {
                             key={ex.id}
                             type="button"
                             onClick={() => onPick(ex.name)}
-                            className="press-95 min-h-[52px] w-full rounded-md border border-hairline bg-secondary-bg px-4 text-left text-base text-text"
+                            className="press-95 flex min-h-[52px] w-full items-center rounded-md border border-hairline bg-secondary-bg px-4 text-left text-base text-text"
                         >
                             {ex.name}
                         </button>

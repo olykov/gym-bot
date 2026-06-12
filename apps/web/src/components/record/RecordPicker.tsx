@@ -49,6 +49,7 @@ import {
 import type { PickerStep } from "./RecordSheet";
 import type { ChosenExercise } from "./types";
 import type { Muscle, Exercise } from "@/api/analytics";
+import type { ContinueExercise } from "./MusclePanel";
 
 /** Browse: exercises shown before the "Show all" expand (spec §12.9). */
 const BROWSE_VISIBLE = 6;
@@ -90,9 +91,16 @@ interface RecordPickerProps {
      * never call this (silent or no-op).
      */
     onCreateHint: (hint: string) => void;
+    /**
+     * GYM-139: the exercise most recently logged in this session (muscle+name
+     * pair from the last onSetLogged call in RecordSheet). When present it
+     * overrides the broken Number(uuid) derivation and guarantees the Continue
+     * tile reflects the exercise just logged. Null on fresh opens.
+     */
+    lastLoggedExercise: ContinueExercise | null;
 }
 
-export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMuscleChange, onPick, onCreateHint }: RecordPickerProps) {
+export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMuscleChange, onPick, onCreateHint, lastLoggedExercise }: RecordPickerProps) {
     const { t } = useT();
     const qc = useQueryClient();
 
@@ -109,7 +117,7 @@ export function RecordPicker({ today, step, onStepChange, selectedMuscle, onMusc
         exerciseList,
         continueExercise,
         muscleOptions,
-    } = usePickerData(today, selectedMuscle);
+    } = usePickerData(today, selectedMuscle, lastLoggedExercise);
 
     const [showAllExercises, setShowAllExercises] = useState(false);
 

@@ -1,18 +1,26 @@
 /**
  * Hold-to-repeat for the Stepper's ± buttons (GYM-122, spec §11.4 nice-to-have).
  *
- * Two layers:
+ * Three layers:
  *  - `createHoldRepeat` — a pure, timer-based repeat engine (no React, no DOM)
  *    so the timing contract (initial delay → interval → acceleration) is unit-
  *    testable with vitest fake timers.
- *  - `useHoldRepeat` — a thin React binding that wires the engine to pointer
- *    events: press steps once immediately, a sustained hold repeats, and
- *    pointerup / pointerleave / pointercancel cancel. The pointer is captured
- *    (same guarded idiom as SetRow) so a finger that drifts off the button
- *    keeps the hold alive on capable browsers.
+ *  - `createHoldHandlers` — a pure factory that creates the five pointer/click
+ *    handler functions given a step callback and a `now` clock function. No
+ *    React, no DOM — unit-testable for the GYM-138 double-step guard.
+ *  - `useHoldRepeat` — a thin React binding that wires `createHoldHandlers` to
+ *    stable refs so pointer events and long-running repeat timers always read
+ *    the latest callback without re-creating the handlers on every render.
  *
  * Reduced-motion: repeating is allowed (it is input, not motion) — there are
  * no animated ramp visuals to gate (spec §9.4).
+ *
+ * GYM-138 double-step fix: the old suppressClickRef + setTimeout(0) approach
+ * was racy on real Android WebViews where the setTimeout may resolve BEFORE
+ * the synthetic touch→click event fires, clearing the flag too early and letting
+ * the click step a second time. Replaced with a timestamp guard: store the
+ * pointerdown timestamp; if a click arrives within POINTER_CLICK_GUARD_MS it
+ * is the touch-generated synthetic click and is suppressed.
  */
 import { useEffect, useRef } from "react";
 
@@ -24,6 +32,15 @@ export const HOLD_INTERVAL_MS = 250;
 export const HOLD_FAST_INTERVAL_MS = 80;
 /** Repeats before the interval accelerates to the fast rate. */
 export const HOLD_ACCELERATE_AFTER_TICKS = 8;
+
+/**
+ * Maximum ms between a pointerdown (which steps once) and its trailing
+ * synthetic click for the click to be considered touch-generated and
+ * suppressed. Real touch-tap latency is typically 0–50 ms; 300 ms is a safe
+ * upper bound that does not interfere with a genuine keyboard press that
+ * happens after an unrelated touch interaction (GYM-138).
+ */
+export const POINTER_CLICK_GUARD_MS = 300;
 
 export interface HoldRepeatController {
     /** Begin a hold: first repeat after the initial delay, then the interval. */
@@ -85,15 +102,95 @@ export interface HoldRepeatHandlers {
 }
 
 /**
- * Bind hold-to-repeat to a button.
+ * A minimal PointerEvent-like interface used by the pure handler factory so
+ * tests can pass a stub without needing a DOM or jsdom.
+ */
+export interface PointerLike {
+    pointerId: number;
+    currentTarget: { setPointerCapture?: (id: number) => void };
+}
+
+/**
+ * Pure factory: creates the five pointer/click handlers given:
+ *  - `step`  — perform one step (tick 0 = initial press; 1-based for repeats).
+ *  - `now`   — clock function (default `Date.now`); injectable for tests.
+ *
+ * No React, no DOM — call this in a test environment directly.
+ * `useHoldRepeat` is a thin React wrapper over this factory.
+ *
+ * GYM-138: the click guard uses a timestamp instead of the old suppressClickRef
+ * + setTimeout(0) approach, which was racy on real Android WebViews.
+ */
+export function createHoldHandlers(
+    step: (tick: number) => boolean,
+    now: () => number = Date.now,
+): HoldRepeatHandlers {
+    const engine = createHoldRepeat(step);
+
+    // Timestamp of the most recent pointerdown (0 = no recent pointer press).
+    let pointerDownTs = 0;
+
+    function onPointerDown(e: PointerLike): void {
+        // Guarded capture: older WebViews may lack setPointerCapture or throw.
+        try {
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+        } catch {
+            /* degrade gracefully — pointerleave still cancels the hold */
+        }
+        pointerDownTs = now();
+        step(0);
+        engine.start();
+    }
+
+    function onPointerUp(): void {
+        engine.cancel();
+    }
+
+    function onPointerLeave(): void {
+        engine.cancel();
+    }
+
+    function onPointerCancel(): void {
+        engine.cancel();
+        // A cancel means no synthetic click will follow — reset the timestamp
+        // so the next keyboard activation is never suppressed.
+        pointerDownTs = 0;
+    }
+
+    function onClick(): void {
+        // GYM-138: suppress the synthetic click that touch-taps emit after
+        // pointerdown. POINTER_CLICK_GUARD_MS (300 ms) is safely above the
+        // real pointer→click latency on touch devices (~0–50 ms) and safely
+        // below the interval at which a user might tap then quickly press
+        // keyboard. If pointerDownTs is 0 (reset by cancel or never set),
+        // the guard is inactive and the click steps normally (keyboard).
+        const elapsed = now() - pointerDownTs;
+        if (pointerDownTs > 0 && elapsed < POINTER_CLICK_GUARD_MS) {
+            pointerDownTs = 0; // reset for the next interaction
+            return; // touch-generated synthetic click — pointerdown already stepped
+        }
+        step(0); // keyboard Enter/Space or genuine mouse click
+    }
+
+    return {
+        onPointerDown: onPointerDown as HoldRepeatHandlers["onPointerDown"],
+        onPointerUp,
+        onPointerLeave,
+        onPointerCancel,
+        onClick,
+    };
+}
+
+/**
+ * React binding over `createHoldHandlers`. Stores the latest `onStep`
+ * callback and the handler set in refs so pointer events and long-running
+ * repeat timers always read the freshest callback without re-creating handlers
+ * on every render.
  *
  * @param onStep - performs one step. `tick` is 0 for the initial press and
  *   1-based for repeats. Return `false` when the step was clamped (nothing
  *   changed) so the repeat run stops at min.
- * @returns pointer + click handlers to spread onto the button. The initial
- *   press steps exactly once on pointerdown; the trailing synthetic click is
- *   suppressed so a tap never double-steps. Keyboard activation (Enter/Space
- *   → click with no preceding pointerdown) still steps once.
+ * @returns pointer + click handlers to spread onto the button.
  */
 export function useHoldRepeat(
     onStep: (tick: number) => boolean,
@@ -103,58 +200,25 @@ export function useHoldRepeat(
     const onStepRef = useRef(onStep);
     onStepRef.current = onStep;
 
-    const engineRef = useRef<HoldRepeatController | null>(null);
-    if (engineRef.current === null) {
-        engineRef.current = createHoldRepeat((tick) => onStepRef.current(tick));
+    // The handler set is created once and stored in a ref. It always reads
+    // the latest onStep via onStepRef.current (stable reference).
+    const handlersRef = useRef<HoldRepeatHandlers | null>(null);
+    if (handlersRef.current === null) {
+        handlersRef.current = createHoldHandlers(
+            (tick) => onStepRef.current(tick),
+        );
     }
 
-    // True between a pointerdown (which already stepped) and its synthetic
-    // click — that click must be swallowed or a tap would step twice.
-    const suppressClickRef = useRef(false);
+    // Cancel any in-flight hold timer on unmount (e.g. sheet closes mid-hold).
+    const handlers = handlersRef.current;
+    useEffect(
+        () => () => {
+            // Access the internal engine cancel via the onPointerCancel path —
+            // this is safe because createHoldHandlers wires it to engine.cancel().
+            handlers.onPointerCancel();
+        },
+        [handlers],
+    );
 
-    // Unmount mid-hold (e.g. the sheet closes) must not leave a live timer.
-    useEffect(() => () => engineRef.current?.cancel(), []);
-
-    function onPointerDown(e: React.PointerEvent<HTMLElement>): void {
-        // Guarded capture (SetRow idiom): older WebViews may lack it or throw.
-        try {
-            if (typeof e.currentTarget.setPointerCapture === "function") {
-                e.currentTarget.setPointerCapture(e.pointerId);
-            }
-        } catch {
-            /* degrade gracefully — pointerleave still cancels the hold */
-        }
-        suppressClickRef.current = true;
-        onStepRef.current(0);
-        engineRef.current?.start();
-    }
-
-    function onPointerUp(): void {
-        engineRef.current?.cancel();
-        // Safety net: if an odd WebView never delivers the trailing click,
-        // don't leave the next keyboard activation swallowed. The click (when
-        // it comes) is dispatched before this macrotask runs.
-        setTimeout(() => {
-            suppressClickRef.current = false;
-        }, 0);
-    }
-
-    function onPointerLeave(): void {
-        engineRef.current?.cancel();
-    }
-
-    function onPointerCancel(): void {
-        engineRef.current?.cancel();
-        suppressClickRef.current = false; // no click follows a cancel
-    }
-
-    function onClick(): void {
-        if (suppressClickRef.current) {
-            suppressClickRef.current = false;
-            return; // pointerdown already stepped
-        }
-        onStepRef.current(0); // keyboard Enter/Space
-    }
-
-    return { onPointerDown, onPointerUp, onPointerLeave, onPointerCancel, onClick };
+    return handlers;
 }

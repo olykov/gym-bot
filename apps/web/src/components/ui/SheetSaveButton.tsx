@@ -1,10 +1,17 @@
 /**
  * The one in-sheet sticky Save button (spec §11.4 / §12.3). Pinned to the bottom
- * of a <BottomSheet>'s scroll viewport (`position:sticky; bottom:0`) above the
- * device/Telegram bottom inset, so it never scrolls away and is never clipped —
- * this is the deliberate replacement for the native Telegram MainButton, which
- * overlaid the WebApp viewport bottom and clipped the sheet's lowest field on
- * real devices (GYM-54).
+ * of a <BottomSheet>'s scroll viewport above the fixed BottomNav — so it never
+ * scrolls away, is never obscured by the nav, and is never clipped. This is the
+ * deliberate replacement for the native Telegram MainButton, which overlaid the
+ * WebApp viewport bottom and clipped the sheet's lowest field on real devices
+ * (GYM-54).
+ *
+ * GYM-140: The sticky offset is `var(--nav-h)` (not 0) because the fixed
+ * BottomNav (~61px) is always visible while these sheets are open, and a
+ * `bottom:0` anchor would place the button's bottom edge at the viewport bottom
+ * — under the nav. `bottom: var(--nav-h)` keeps the button's lower edge above
+ * the nav top. The scroll container's paddingBottom also reserves this space so
+ * content below the button is not cut off by the nav area.
  *
  * Shared by the History set editor (§11.4) and the record-flow SetLogger (§12.3)
  * so there is exactly ONE sticky-Save style. Accent fill per §9.3, disabled when
@@ -48,7 +55,10 @@ export function SheetSaveButton({
     success = null,
 }: SheetSaveButtonProps) {
     return (
-        <div className="sticky bottom-0 z-10 -mx-4 mt-6 bg-bg px-4 pb-1 pt-3">
+        <div
+            className="sticky z-10 -mx-4 mt-6 bg-bg px-4 pb-1 pt-3"
+            style={{ bottom: "var(--nav-h)" }}
+        >
             <button
                 type="button"
                 onClick={onClick}

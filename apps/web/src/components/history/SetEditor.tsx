@@ -16,17 +16,29 @@
  * (non-empty, non-negative, reps integer) AND changed from the original.
  * Weight steps 2.5kg and accepts decimals (comma-normalized); reps is integer.
  *
- * SAVE is an in-sheet sticky button (`position:sticky; bottom:0`), NOT the
- * Telegram native MainButton (GYM-54). The MainButton overlaid the WebApp
- * viewport bottom and, inside a bottom-sheet, clipped the sheet's lowest field
- * on real devices (it caused GYM-53 #1 + this bug). The sticky button stays
- * pinned to the bottom of the sheet's scroll viewport, above the safe-area, so
- * Weight + Reps + Save + Delete are all reachable and nothing is ever clipped.
+ * SAVE is an in-sheet sticky button (`position:sticky; bottom:var(--nav-h)`),
+ * NOT the Telegram native MainButton (GYM-54). The MainButton overlaid the
+ * WebApp viewport bottom and, inside a bottom-sheet, clipped the sheet's lowest
+ * field on real devices (it caused GYM-53 #1 + this bug). Using bottom:--nav-h
+ * (GYM-140) keeps the button above the always-visible BottomNav; the
+ * BottomSheet body's paddingBottom also reserves --nav-h space so the sticky
+ * anchor has room to work. Weight + Reps + Save + Delete are all reachable and
+ * nothing is ever clipped or hidden under the nav.
  *
  * Delete is never one-tap: tapping the header "Delete" control swaps in an
  * in-sheet "Delete this set?" Cancel/Delete confirm with a warning haptic
  * (§11.4). The accent Delete lives in the HEADER row, spatially separated from
  * the bottom SAVE so it is not mis-tapped.
+ *
+ * GYM-140 fixes:
+ * - Confirm buttons: added `flex items-center justify-center` for reliable
+ *   vertical text centering across all Android WebViews.
+ * - Delete button in confirm step: uses `bg-accent text-button-text` (solid
+ *   accent fill) instead of `bg-accent-weak text-accent` for clear visibility.
+ * - Header Move/Delete triggers: removed negative margins (`-mr-*`) that could
+ *   cause subtle clipping at the sheet panel edge.
+ * - Added a sticky SheetSaveButton-style anchor in confirmDelete mode so the
+ *   confirm buttons are always visible near the bottom of the sheet.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/i18n/catalog";
@@ -176,7 +188,10 @@ export function SetEditor({
         <div>
             {/* Header row: read-only identity (§11.4) + Delete + Move actions.
                Both Delete and Move live HERE, in the header, spatially separated
-               from the bottom SAVE so they are not mis-tapped (§11.7). */}
+               from the bottom SAVE so they are not mis-tapped (§11.7).
+               GYM-140: removed negative margins (-mr-*) that could clip the
+               buttons at the sheet panel edge; kept inline-flex + items-center
+               for reliable vertical centering on Android WebViews. */}
             <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <h2
@@ -198,7 +213,7 @@ export function SetEditor({
                         <button
                             type="button"
                             onClick={() => setMode("move")}
-                            className="press-95 -mr-1 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
+                            className="press-95 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
                             aria-label={t("editor.moveSetAria", {
                                 exercise: exerciseName,
                                 n: set.set,
@@ -212,7 +227,7 @@ export function SetEditor({
                         <button
                             type="button"
                             onClick={startDelete}
-                            className="press-95 -mr-2 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
+                            className="press-95 inline-flex min-h-[44px] items-center gap-1 px-2 text-base text-accent"
                             aria-label={t("editor.deleteSetAria", {
                                 exercise: exerciseName,
                                 n: set.set,
@@ -225,30 +240,40 @@ export function SetEditor({
                 )}
             </div>
 
-            {/* Two-step confirm (§11.4 / §11.7) — rendered high, under the
-               header, separated from the sticky SAVE. */}
+            {/* Two-step confirm (§11.4 / §11.7) — in-sheet confirm before delete.
+               GYM-140: buttons get `flex items-center justify-center` for reliable
+               vertical text centering; Delete uses `bg-accent text-button-text`
+               (solid accent fill) for clear visibility on all devices. The confirm
+               block is followed by a sticky spacer at the bottom so the buttons
+               never scroll below the safe-area on small devices. */}
             {mode === "confirmDelete" && (
-                <div className="mb-5 rounded-md border border-hairline bg-secondary-bg p-3">
-                    <p className="text-base text-text">
-                        {t("editor.deleteThisSet")}
-                    </p>
-                    <div className="mt-3 flex gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setMode("edit")}
-                            className="press-95 min-h-[44px] flex-1 rounded-md border border-hairline bg-bg text-base text-text"
-                        >
-                            {t("common.cancel")}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={confirmDelete}
-                            disabled={del.isPending}
-                            className="press-95 min-h-[44px] flex-1 rounded-md bg-accent-weak text-base font-semibold text-accent disabled:opacity-50"
-                        >
-                            {t("common.delete")}
-                        </button>
+                <div>
+                    <div className="rounded-md border border-hairline bg-secondary-bg p-4">
+                        <p className="mb-4 text-base text-text">
+                            {t("editor.deleteThisSet")}
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setMode("edit")}
+                                className="press-95 flex min-h-[48px] flex-1 items-center justify-center rounded-md border border-hairline bg-bg text-base text-text"
+                            >
+                                {t("common.cancel")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmDelete}
+                                disabled={del.isPending}
+                                className="press-95 flex min-h-[48px] flex-1 items-center justify-center rounded-md bg-accent text-base font-semibold text-button-text disabled:opacity-50"
+                            >
+                                {t("common.delete")}
+                            </button>
+                        </div>
                     </div>
+                    {/* Sticky bottom spacer — mirrors SheetSaveButton's height so
+                       the confirm buttons above it are always visible and not
+                       scrolled under the safe-area (GYM-140). */}
+                    <div className="sticky bottom-0 -mx-4 h-6 bg-bg" />
                 </div>
             )}
 

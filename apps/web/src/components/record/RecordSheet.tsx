@@ -26,6 +26,7 @@ import { useTrainingDay } from "@/hooks/useTraining";
 import type { TrainingSet } from "@/api/training";
 import type { ChosenExercise } from "./types";
 import type { SessionLogEntry } from "./derive";
+import type { ContinueExercise } from "./MusclePanel";
 
 /** Which step Phase A is currently on (GYM-74 slide-nav). */
 export type PickerStep = "muscles" | "exercises";
@@ -77,8 +78,28 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
      * not re-render the sheet mid-logging; the summary reads it on Done.
      */
     const sessionLogRef = useRef<SessionLogEntry[]>([]);
+
+    /**
+     * GYM-139: the most recently logged exercise in this session, kept as
+     * state (not just a ref) so it flows down as a prop and updates the
+     * Continue tile immediately when the user switches back to the picker.
+     *
+     * Background: `training_id` on each TrainingSet is a uuid4().hex string
+     * (32 hex chars), NOT a numeric serial. The old `continueExercise`
+     * derivation called `Number(training_id)` which always yielded NaN → the
+     * Continue tile always fell back to `exs[0]` (alphabetically first).
+     * Tracking the last-logged exercise here and passing it to the picker as
+     * an authoritative override fixes the primary scenario (log exercise B in
+     * this session, switch back to picker → Continue must show B).
+     */
+    const [lastLoggedExercise, setLastLoggedExercise] =
+        useState<ContinueExercise | null>(null);
+
     const handleSetLogged = useCallback((entry: SessionLogEntry) => {
         sessionLogRef.current = [...sessionLogRef.current, entry];
+        // GYM-139: capture which exercise was just logged so the Continue tile
+        // reflects it when the user returns to Phase A.
+        setLastLoggedExercise({ muscleName: entry.muscle, exerciseName: entry.exercise });
     }, []);
 
     /**
@@ -106,6 +127,9 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
             // GYM-132: a new sheet open is a new session.
             setShowSummary(false);
             sessionLogRef.current = [];
+            // GYM-139: clear the session override so a fresh open starts
+            // from the server data (not a stale previous session's exercise).
+            setLastLoggedExercise(null);
         }
     }, [open]);
 
@@ -176,6 +200,7 @@ export function RecordSheet({ open, onClose }: RecordSheetProps) {
                     onMuscleChange={setSelectedMuscle}
                     onPick={setChosen}
                     onCreateHint={setCreateHint}
+                    lastLoggedExercise={lastLoggedExercise}
                 />
             )}
         </BottomSheet>

@@ -1,10 +1,13 @@
 /**
- * Unit tests for the pure hold-to-repeat engine (GYM-122).
+ * Unit tests for the hold-to-repeat engine (GYM-122) and the
+ * pointer→click double-step guard (GYM-138).
  *
- * The engine is React-free (timer-based, callback-driven) so the timing
- * contract — initial delay, base interval, acceleration, cancel, min-clamp
- * stop — is verified here with fake timers. The pointer wiring in
- * `useHoldRepeat` is a thin binding over this engine (no jsdom/RTL yet).
+ * `createHoldRepeat` — pure, timer-based engine; verified with fake timers.
+ * `createHoldHandlers` — pure handler factory (no React, no DOM); verified
+ *   for the GYM-138 double-step guard using a controllable `now` clock.
+ *
+ * `useHoldRepeat` is a thin React wrapper over `createHoldHandlers` and is
+ * not tested here (no jsdom/RTL in the current setup).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -12,7 +15,9 @@ import {
     HOLD_FAST_INTERVAL_MS,
     HOLD_INITIAL_DELAY_MS,
     HOLD_INTERVAL_MS,
+    POINTER_CLICK_GUARD_MS,
     createHoldRepeat,
+    createHoldHandlers,
 } from "./useHoldRepeat";
 
 beforeEach(() => {
@@ -133,5 +138,108 @@ describe("createHoldRepeat", () => {
             engine.cancel();
             engine.cancel();
         }).not.toThrow();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// createHoldHandlers — pointer→click double-step guard (GYM-138)
+//
+// Tests exercise the pure handler factory directly (no React, no DOM).
+// A controllable `now` clock replaces Date.now so we can advance time
+// precisely to simulate the pointer→click sequence on a real touch device.
+// ---------------------------------------------------------------------------
+
+/** Minimal PointerLike stub — only the fields createHoldHandlers needs. */
+function makePointerStub(): Parameters<ReturnType<typeof createHoldHandlers>["onPointerDown"]>[0] {
+    return {
+        pointerId: 1,
+        currentTarget: { setPointerCapture: vi.fn() },
+    } as unknown as Parameters<ReturnType<typeof createHoldHandlers>["onPointerDown"]>[0];
+}
+
+describe("createHoldHandlers — GYM-138 double-step guard", () => {
+    it("pointerdown → pointerup → click: steps exactly ONCE (not twice)", () => {
+        let fakeNow = 1_000_000;
+        const now = () => fakeNow;
+        const onStep = vi.fn().mockReturnValue(true);
+        const h = createHoldHandlers(onStep, now);
+
+        // Touch tap sequence: down (steps once) → up → synthetic click.
+        h.onPointerDown(makePointerStub());
+        expect(onStep).toHaveBeenCalledTimes(1);
+
+        h.onPointerUp();
+
+        // Synthetic click arrives 10 ms after pointerdown — within the guard.
+        fakeNow += 10;
+        h.onClick();
+        // Must still be exactly 1 — the click was suppressed.
+        expect(onStep).toHaveBeenCalledTimes(1);
+    });
+
+    it("pointerdown → pointerup → late click (>guard window): steps twice", () => {
+        // A click arriving AFTER the guard window is a new genuine activation.
+        let fakeNow = 1_000_000;
+        const now = () => fakeNow;
+        const onStep = vi.fn().mockReturnValue(true);
+        const h = createHoldHandlers(onStep, now);
+
+        h.onPointerDown(makePointerStub());
+        expect(onStep).toHaveBeenCalledTimes(1);
+
+        h.onPointerUp();
+
+        // Click arrives well after the guard window.
+        fakeNow += POINTER_CLICK_GUARD_MS + 1;
+        h.onClick();
+        expect(onStep).toHaveBeenCalledTimes(2);
+    });
+
+    it("no prior pointerdown → standalone click steps once (keyboard activation)", () => {
+        const now = () => 1_000_000;
+        const onStep = vi.fn().mockReturnValue(true);
+        const h = createHoldHandlers(onStep, now);
+
+        // No pointerdown — click from keyboard Enter/Space.
+        h.onClick();
+        expect(onStep).toHaveBeenCalledTimes(1);
+        expect(onStep).toHaveBeenCalledWith(0);
+    });
+
+    it("pointercancel clears the guard so a subsequent click is not suppressed", () => {
+        let fakeNow = 1_000_000;
+        const now = () => fakeNow;
+        const onStep = vi.fn().mockReturnValue(true);
+        const h = createHoldHandlers(onStep, now);
+
+        h.onPointerDown(makePointerStub()); // steps once
+        h.onPointerCancel();               // cancel clears timestamp to 0
+
+        // Click immediately after cancel — timestamp is 0 so guard is inactive.
+        fakeNow += 5;
+        h.onClick();
+        expect(onStep).toHaveBeenCalledTimes(2); // pointerdown + click
+    });
+
+    it("second tap after the guard expires steps once per tap (no state leak)", () => {
+        let fakeNow = 1_000_000;
+        const now = () => fakeNow;
+        const onStep = vi.fn().mockReturnValue(true);
+        const h = createHoldHandlers(onStep, now);
+
+        // First tap.
+        h.onPointerDown(makePointerStub());
+        h.onPointerUp();
+        fakeNow += 10;
+        h.onClick(); // suppressed — total: 1
+        expect(onStep).toHaveBeenCalledTimes(1);
+
+        // Guard was reset by the suppressed click. Second tap after a long pause.
+        fakeNow += POINTER_CLICK_GUARD_MS + 500;
+        h.onPointerDown(makePointerStub()); // steps again — total: 2
+        h.onPointerUp();
+        fakeNow += 10;
+        h.onClick(); // suppressed — total still: 2
+        expect(onStep).toHaveBeenCalledTimes(2);
     });
 });
