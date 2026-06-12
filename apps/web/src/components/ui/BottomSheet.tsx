@@ -43,6 +43,7 @@
  * clearance needed since the wrapper already clears the nav.
  */
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "@/i18n/catalog";
 import { pushBackHandler } from "@/telegram/webapp";
 import { useSheetDrag } from "./useSheetDrag";
@@ -253,7 +254,15 @@ export function BottomSheet({
 
     if (!open) return null;
 
-    return (
+    // GYM-149: render through a portal to <body>, OUTSIDE the .shell-content
+    // wrapper. The GYM-148 page de-emphasis puts `opacity` + `transform` on
+    // .shell-content; an inline sheet (a descendant of that wrapper) would
+    // inherit the opacity (going translucent → the page bleeds through it) and
+    // its `position: fixed` would resolve against the transformed ancestor
+    // (so it scales/drifts instead of pinning to the viewport). Portaling to
+    // <body> keeps the sheet fully opaque and viewport-fixed while only the
+    // page behind is scaled and dimmed. :root CSS vars still apply in <body>.
+    return createPortal(
         <div
             className="fixed inset-0"
             style={{
@@ -361,6 +370,7 @@ export function BottomSheet({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

@@ -303,16 +303,12 @@
 }
 
 .sheet-panel {
-    /* GYM-147: inset box-shadow replaces border-t border-hairline on the
-     * panel. A CSS border on a rounded-t-lg corner anti-aliases to a bright
-     * white sliver in dark mode (the browser blends the hairline color against
-     * the viewport behind it, not the panel surface). An inset shadow is
-     * composited AGAINST the panel's own bg-bg surface, so it stays subtle in
-     * both light and dark. 1px inset, hint-at-10% — visually identical to the
-     * hairline token in light, and correct in dark (no white artifact). */
-    box-shadow:
-        var(--shadow-card),
-        inset 0 1px 0 0 color-mix(in srgb, var(--hint) 10%, transparent);
+    /* GYM-149: NO top edge line. A `border-t` anti-aliased to a bright white
+     * sliver on the rounded-t corners in dark mode (the original bug); the
+     * GYM-147 attempt to replace it with an `inset 0 1px` highlight still read
+     * as a visible strip in the sheet header. The grab handle alone signals the
+     * top — the panel needs no border/inset edge at all. Just the card shadow. */
+    box-shadow: var(--shadow-card);
     animation: sheet-rise 240ms var(--ease-out-soft) forwards;
 }
 
