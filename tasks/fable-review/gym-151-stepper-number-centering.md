@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-143]
-commits: [1fff677]
+commits: [aa60662]
 tests: []
 design_reports: []
 review_reports: []
@@ -47,7 +47,7 @@ Verify headless dark + realistic insets: WEIGHT "50" and REPS "10" centers align
 
 ### 2026-06-13T06:45:00Z — filed + approved for this iteration
 
-### 2026-06-13T11:00:00Z — closed (1fff677)
+### 2026-06-13T11:00:00Z — closed (aa60662)
 Fixed in `apps/web/src/components/ui/Stepper.tsx`: field container changed from
 `flex justify-center gap-1` (unit in flow) to `relative` with unit `absolute right-3
 inset-y-0`. Input is `w-full h-full text-center` and centers over the full field width

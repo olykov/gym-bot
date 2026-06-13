@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: []
-commits: [3fc859e]
+commits: [aa60662]
 tests:
   - apps/web/src/components/record/derive.test.ts
 design_reports: []
