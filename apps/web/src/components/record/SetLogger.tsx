@@ -167,14 +167,21 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
     // Pre-fill priority (§12.3, GYM-152): (1) last_session_sets matched by the
     // current set number (last training's set N); (2) repeat this session's
     // last set (more sets than last time / new exercise); (3) leave empty (Save
-    // disabled until valid). PR is NOT a pre-fill source. Only fills empty
-    // fields so we never fight the user mid-edit. Runs as log-context resolves
-    // and re-runs after each save (nextSet advances → next last-session set).
+    // disabled until valid). PR is NOT a pre-fill source.
+    //
+    // GYM-152b: when the set number changes (a save advanced nextSet, or the
+    // exercise switched) we OVERWRITE the fields with the new set's pre-fill —
+    // otherwise the previous set's values linger and block the new pre-fill
+    // (continuous logging: save set 1 → set 2 must re-arm with last training's
+    // set 2, not keep set 1's numbers). Within the SAME set we never fight the
+    // user: if they've typed anything we leave it; if it's still empty we fill
+    // (catches last-session data that resolves late, e.g. by name_key).
     const prefilledFor = useRef<string>("");
     useEffect(() => {
         const key = `${muscleName}/${exerciseName}/${nextSet}`;
         if (ctx.isLoading) return; // wait so the pre-fill isn't lost to empty.
-        if (prefilledFor.current === key && (weightText || repsText)) return;
+        const isNewSet = prefilledFor.current !== key;
+        if (!isNewSet && (weightText || repsText)) return; // same set, user typing
 
         const { weight: w, reps: r } = derivePrefill(
             nextSet,
@@ -182,8 +189,8 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
             ctx.data?.last_session_sets ?? [],
         );
         prefilledFor.current = key;
-        if (w != null && !weightText) setWeightText(String(w));
-        if (r != null && !repsText) setRepsText(String(r));
+        setWeightText(w != null ? String(w) : "");
+        setRepsText(r != null ? String(r) : "");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         muscleName,
@@ -285,7 +292,8 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
                         beatLast: beatsLastSession(last, saved),
                         beatPR: prBeat === "weight",
                     });
-                    // Keep the same pre-fill (gym sets repeat); Save re-enabled.
+                    // nextSet now advances → the pre-fill effect re-arms the
+                    // fields with the NEXT set's pre-fill (GYM-152b). Save re-enabled.
                 },
             },
         );
