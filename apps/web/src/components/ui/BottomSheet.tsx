@@ -272,24 +272,28 @@ export function BottomSheet({
                         : "var(--z-sheet)",
             }}
         >
-            {/* Scrim — tap to dismiss. Darker so it reads over near-black dark. */}
+            {/* Scrim — tap to dismiss. Darker so it reads over near-black dark.
+                GYM-154: the scrim bottom stops at NAV_CLEAR (same expression
+                as the panel wrapper's bottom) so it NEVER paints over the
+                BottomNav strip. The nav retains full brightness while the
+                sheet is open. Because the panel itself is also positioned at
+                bottom=NAV_CLEAR, the scrim bottom edge sits exactly at the
+                panel bottom edge — no dark gap or seam between them. */}
             <button
                 type="button"
                 aria-label={t("common.close")}
                 onClick={onClose}
-                className="sheet-scrim absolute inset-0"
-                // GYM-120: while a handle-drag is live the scrim opacity
-                // follows drag progress (inline, with the entrance animation
-                // pinned off so its `forwards` fill can't fight the style).
-                style={scrimStyle}
+                className="sheet-scrim absolute inset-x-0 top-0"
+                style={{ ...scrimStyle, bottom: NAV_CLEAR }}
             />
 
             {/* Wrapper: anchored ABOVE the BottomNav (GYM-143-v2 root fix).
                 bottom = --nav-h + safe-area-bottom so the panel's lowest pixel
                 sits at the nav's top edge. The drag gesture translates the panel
                 element via panelStyle (not this wrapper) so positioning is stable
-                during drags. The scrim is a sibling of this wrapper (inside the
-                fixed overlay) so it covers the full viewport including the nav. */}
+                during drags. GYM-154: scrim and wrapper share the same bottom
+                value so the panel bottom is flush with the scrim bottom — no
+                dark gap between the sheet and the nav. */}
             <div
                 className="absolute inset-x-0 flex justify-center"
                 style={{ bottom: NAV_CLEAR }}

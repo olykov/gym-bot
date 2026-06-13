@@ -3,7 +3,9 @@ schema_version: 1
 id: GYM-154
 title: "Open sheet dims the bottom nav too; nav should stay bright (no gap) or be hidden"
 slug: gym-154-nav-not-dimmed-under-sheet
-status: todo
+status: done
+start_date: 2026-06-13T00:00:00Z
+finish_date: 2026-06-13T00:00:00Z
 priority: medium
 type: feature
 labels: [frontend, design, sheet, shell, miniapp]
@@ -16,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-148, GYM-149]
-commits: []
+commits: [bac385d]
 tests: []
 design_reports: []
 review_reports: []
@@ -51,3 +53,12 @@ full brightness and the sheet bottom is flush with the nav top (no scrimmed gap)
 ## Comments
 
 ### 2026-06-13T14:50:00Z — filed; operator wants option 1 first, delegated to design agent
+
+### 2026-06-13T00:00:00Z — done (bac385d)
+Implemented Option 1. Mechanism: limit the `.sheet-scrim` bottom to `NAV_CLEAR`
+(`calc(var(--nav-h) + max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)))`),
+the same expression used by the panel wrapper. The scrim now covers only the viewport
+area above the nav. The panel bottom is flush with the scrim bottom — no dark gap or
+seam. GYM-145 FAB-hidden behavior unaffected. Headless Playwright verification passed
+both dark and light themes: nav luminance delta 1.0 lum (dark) / 1.4 lum (light)
+(threshold 15); scrim bottom=758, nav top=757, gap=-1px (flush). 205 unit tests pass.
