@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: []
-commits: [aa60662]
+commits: [aa60662, 4d1e8cc]
 tests:
   - apps/web/src/components/record/derive.test.ts
 design_reports: []
@@ -65,3 +65,9 @@ Added `derivePrefill(nextSet, sessionSets, lastSessionSets)` pure helper to `der
 (primary: last_session_sets[N], fallback: session repeat, else empty). Updated `SetLogger.tsx`
 prefill effect to call it. Added 8 unit tests in `derive.test.ts` covering cases (a)–(d).
 All 205 tests pass; 0 lint warnings. Build pre-existing errors unchanged (not introduced here).
+
+### 2026-06-13T13:40:00Z — follow-up (continuous logging)
+Fields lingered with the previous set's values after a save (onSuccess kept the
+pre-fill), so the new set's pre-fill was blocked by the only-fill-empty guard. The
+pre-fill effect now OVERWRITES the fields when the set number advances (still never
+fights a mid-edit user). Commit 4d1e8cc.
