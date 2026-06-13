@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-153
 title: "History PR marker: move out of the figure cluster (numbers shift) + weight-vs-reps PR"
 slug: gym-153-history-pr-marker-placement
-status: backlog
+status: in_progress
 priority: medium
 type: feature
 labels: [frontend, design, history, api, miniapp]
@@ -53,6 +53,29 @@ When picked up: frontend-design-engineer + plugin proposes the marker design + r
 label; if weight/reps distinction is wanted, api-contract-guardian + core-api-engineer add a
 reps-PR flag first. Verify headless dark + realistic insets + the narrow-width fallback.
 
+## Activation (2026-06-13, operator: "погнали") + pr_kind design
+GYM-155 now computes WHICH record a set is. The two PR kinds are MUTUALLY EXCLUSIVE: a
+weight PR means the weight is strictly above all prior (or first set), which implies the
+weight was never lifted before, so the reps-at-weight branch cannot also fire. So
+`pr_kind ∈ {"weight","reps"}` (single value), null when `is_pr` is false. First-ever set =
+"weight".
+
+Three coordinated parts (start_date set):
+1. **Contract** (api-contract-guardian): add `pr_kind` (nullable, enum weight|reps) to
+   `TrainingSet`; regen both clients. Additive, non-breaking. Branch fix/gym-153-contract.
+2. **Core API** (core-api-engineer): populate `pr_kind` in `GET /training/day/{date}` from the
+   GYM-155 window logic (weight branch → "weight", reps branch → "reps", else null). Tests.
+   Branch from the contract branch.
+3. **Frontend** (frontend-design + plugin): move the PR marker to the row middle (numbers keep
+   their axis, no shift on PR/non-PR); label "Weight PR" / "Reps PR" from `pr_kind`, collapsing
+   to just "PR" on narrow rows / small phones; audit + do NOT break other PR usages (DayCard
+   day-level badge GYM-136, any shared StatChip). Branch from the contract branch.
+
+Orchestrator owns this task file (agents do not edit it) and closes it after integrating all
+three + verifying (real-data pr_kind correctness + visual placement) + deploy.
+
 ## Comments
 
 ### 2026-06-13T06:45:00Z — filed; deferred to backlog per operator
+
+### 2026-06-13T19:10:00Z — activated; wave 1 (contract) launched
