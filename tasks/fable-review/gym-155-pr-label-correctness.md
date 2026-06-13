@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-155
 title: "PR label wrong: is_pr/has_pr flag every max-weight set (constant-weight exercises always PR)"
 slug: gym-155-pr-label-correctness
-status: todo
+status: done
 priority: high
 type: bug-fix
 labels: [api, core-api, history, pr, miniapp]
@@ -11,13 +11,15 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-13T14:50:00Z
-updated: 2026-06-13T14:50:00Z
+updated: 2026-06-13T15:30:00Z
+start_date: 2026-06-13T15:30:00Z
 epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-141, GYM-136, GYM-133]
-commits: []
-tests: []
+commits: [cb2f836]
+tests: [apps/api/tests/test_gym155_pr_correctness.py]
+finish_date: 2026-06-13T16:00:00Z
 design_reports: []
 review_reports: []
 review: {}
@@ -77,3 +79,10 @@ shape. Orchestrator re-verifies.
 ### 2026-06-13T14:50:00Z — investigated (prod DB), root cause found, fix plan pending approval
 
 ### 2026-06-13T15:25:00Z — approved Option A; delegating to core-api
+
+### 2026-06-13T16:00:00Z — implemented and tested (core-api-engineer)
+Replaced both endpoints' PR computation with window-function temporal semantics.
+Constant-weight / bodyweight exercises (Pull-Up at 1 kg) now correctly show PR
+only on the first set and on new reps records; repeats and below-record sets
+are not flagged. 484 tests pass (15 new in test_gym155_pr_correctness.py).
+Branch: fix/gym-155-pr-correctness, commit: cb2f836.

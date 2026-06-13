@@ -1,4 +1,4 @@
-"""Training history endpoints — GYM-47 / GYM-58 / GYM-51.
+"""Training history endpoints — GYM-47 / GYM-58 / GYM-51 / GYM-155.
 
 Implements:
   GET  /training/days              — day-grouped summary, reverse-chronological
@@ -20,6 +20,17 @@ ORDER BY only — the WHERE filter keeps the raw column for sargability.
 
 GYM-51: PATCH move stores date at noon UTC so the set lands on the intended
 calendar day in every ±12h timezone.
+
+GYM-155: PR flags use temporal window-function semantics ("was a PR when
+logged") instead of the old all-time-max-weight comparison.  A set is_pr when,
+comparing to all EARLIER sets for the same exercise (ordered by date, set):
+  1. It is the user's first ever set of that exercise (no prior rows), OR
+  2. Its weight is strictly greater than every prior weight, OR
+  3. The exact weight was lifted before AND its reps strictly exceed the best
+     prior reps at that weight.
+has_pr (day level) = OR of is_pr over the day's sets.
+This fixes constant-weight / bodyweight exercises that previously flagged every
+set as PR because weight == all-time max_weight for every set.
 """
 import logging
 from collections import defaultdict
@@ -90,12 +101,11 @@ def list_training_days(
     ``(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date`` in SELECT/GROUP BY/
     ORDER BY only.  The WHERE keeps the raw timestamp column.
 
-    GYM-136: each day carries ``has_pr`` — True when the day holds the
-    caller's CURRENT all-time max-weight set of at least one exercise
-    ("current max" semantic: a later heavier set moves the marker to its own
-    day; ties mark every tying day).  Computed via a per-exercise max-weight
-    CTE (sargable on ``idx_training_user_exercise``) joined back to the
-    windowed rows with ``BOOL_OR(t.weight = pr.max_weight)``.
+    GYM-155: has_pr uses temporal PR semantics — a day has_pr=True when it
+    contains at least one set that was a personal record at the moment it was
+    logged (weight PR or reps-at-weight PR vs all prior sets of the exercise,
+    ordered by date then set number).  Constant-weight exercises no longer mark
+    every day as has_pr.
 
     Args:
         from_date: Inclusive start date; defaults to today minus 180 days.
@@ -126,39 +136,91 @@ def list_training_days(
 
     if tz is None:
         # UTC path — unchanged behaviour.
-        day_expr = "t.date::date"
+        # Reason: the outer query references pr_flags pf, so the column
+        # alias is pf.date (not t.date which was used in the old single-table query).
+        day_expr = "pf.date::date"
         query_params: dict = {"uid": uid, "dt_from": dt_from, "dt_to": dt_to}
     else:
         # Timezone-aware path: convert the naive UTC timestamp to the user's local
         # wall-clock before casting to date.  The AT TIME ZONE transform stays out
         # of the WHERE clause so the index on (user_id, date) is still used.
-        day_expr = "(t.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date"
+        day_expr = "(pf.date AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date"
         query_params = {"uid": uid, "dt_from": dt_from, "dt_to": dt_to, "tz": tz}
 
-    # GYM-136: the pr CTE aggregates the caller's all-time max weight per
-    # exercise (whole history, not just the window) so a day inside the window
-    # is marked only when it holds a CURRENT standing record.  The CTE's WHERE
-    # is a plain user_id filter (idx_training_user_exercise); the join back is
-    # on exercise_id, and the marker itself is BOOL_OR(weight = max_weight).
+    # GYM-155: Temporal PR detection via window functions.
+    #
+    # Step 1 (all_sets CTE): pull the user's FULL history (not just the window)
+    # for every exercise present in the requested window.  This ensures the
+    # "prior" comparison is correct for any set inside the window even when
+    # earlier sets fall outside the window date range.
+    #
+    # Step 2 (pr_flags CTE): compute two running-max window functions per set,
+    # ordered by (date, set) — the canonical insertion order:
+    #   prior_max_w         — max weight seen BEFORE this set for the exercise.
+    #   prior_max_reps_at_w — max reps seen BEFORE this set at this exact weight.
+    # The ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING frame excludes the
+    # current row so "prior" is strictly earlier.
+    #
+    # Step 3: is_pr logic (Option A, no e1RM):
+    #   - prior_max_w IS NULL              → first ever set of this exercise = PR
+    #   - weight > prior_max_w             → strict weight PR
+    #   - prior_max_reps_at_w IS NOT NULL  → weight was lifted before (not first
+    #     time at this weight) AND reps > prior_max_reps_at_w → reps-at-weight PR
+    #
+    # Step 4: filter pr_flags to the requested window, then GROUP BY day and OR
+    # the is_pr flags for has_pr.
     sql = f"""
-        WITH pr AS (
-            SELECT exercise_id, MAX(weight) AS max_weight
+        WITH window_exercises AS (
+            -- Distinct exercises the user trained in the requested window.
+            -- Used to scope the full-history scan to only relevant exercises.
+            SELECT DISTINCT exercise_id
             FROM training
             WHERE user_id = :uid
-            GROUP BY exercise_id
+              AND date >= :dt_from
+              AND date  < :dt_to
+        ),
+        all_sets AS (
+            -- Full history for those exercises (needed for correct "prior" context).
+            SELECT t.id, t.date, t.set, t.exercise_id, t.muscle_id,
+                   t.weight, t.reps
+            FROM training t
+            JOIN window_exercises we ON we.exercise_id = t.exercise_id
+            WHERE t.user_id = :uid
+        ),
+        pr_flags AS (
+            SELECT
+                id, date, exercise_id, muscle_id, weight, reps,
+                -- Running max weight of all EARLIER sets for this exercise.
+                MAX(weight) OVER (
+                    PARTITION BY exercise_id
+                    ORDER BY date, set
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ) AS prior_max_w,
+                -- Running max reps of all EARLIER sets at the same weight.
+                MAX(reps) OVER (
+                    PARTITION BY exercise_id, weight
+                    ORDER BY date, set
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ) AS prior_max_reps_at_w
+            FROM all_sets
         )
         SELECT
-            {day_expr}                            AS day,
-            ARRAY_AGG(DISTINCT m.name)            AS muscles,
-            COUNT(DISTINCT t.exercise_id)         AS exercises_count,
-            COUNT(*)                              AS sets_count,
-            BOOL_OR(t.weight = pr.max_weight)     AS has_pr
-        FROM training t
-        JOIN muscles m ON m.id = t.muscle_id
-        JOIN pr        ON pr.exercise_id = t.exercise_id
-        WHERE t.user_id = :uid
-          AND t.date >= :dt_from
-          AND t.date  < :dt_to
+            {day_expr}                AS day,
+            ARRAY_AGG(DISTINCT m.name) AS muscles,
+            COUNT(DISTINCT pf.exercise_id) AS exercises_count,
+            COUNT(*)                   AS sets_count,
+            BOOL_OR(
+                pf.prior_max_w IS NULL
+                OR pf.weight > pf.prior_max_w
+                OR (
+                    pf.prior_max_reps_at_w IS NOT NULL
+                    AND pf.reps > pf.prior_max_reps_at_w
+                )
+            )                          AS has_pr
+        FROM pr_flags pf
+        JOIN muscles m ON m.id = pf.muscle_id
+        WHERE pf.date >= :dt_from
+          AND pf.date  < :dt_to
         GROUP BY {day_expr}
         ORDER BY {day_expr} DESC
     """
@@ -193,10 +255,12 @@ def get_training_day(
     muscle and exercise names denormalized.  Returns an empty exercises list
     for a day with no training — never a 404 for the empty case.
 
-    GYM-141: each set carries ``is_pr`` — True when the set's weight equals
-    the caller's current all-time max weight for that exercise (standing PR).
-    Ties flag all sets (including same-day ties).  Computed via a CTE that
-    aggregates the caller's full history; zero extra round-trips.
+    GYM-155: each set carries ``is_pr`` using temporal PR semantics — True
+    when the set was a personal record at the moment it was logged (weight PR
+    or reps-at-weight PR vs all prior sets of that exercise, ordered by date
+    then set number).  Constant-weight / bodyweight exercises are handled
+    correctly: only the first set of the exercise and any new reps-at-weight
+    records flag is_pr=True.
 
     GYM-142 (variant A): exercise groups are ordered by recency — the most
     recently logged exercise first (DESC by MAX(t.date) within the day).
@@ -216,17 +280,50 @@ def get_training_day(
     dt_from = datetime(day_date.year, day_date.month, day_date.day)
     dt_to = dt_from + timedelta(days=1)
 
-    # GYM-141: pr CTE computes the caller's all-time max weight per exercise
-    # (full history, not windowed) so is_pr reflects the CURRENT standing record.
-    # GYM-142: ex_recency CTE captures the latest timestamp per exercise on this
-    # day so the outer ORDER BY can place the most-recently-logged exercise first.
+    # GYM-155: Temporal PR detection via window functions (same logic as
+    # list_training_days — see that docstring for full derivation).
+    #
+    # all_sets: full history for every exercise the user did on this day so
+    # the window functions have correct "prior" context even when earlier sets
+    # fall on other days.
+    #
+    # pr_flags: running-max window functions partitioned by exercise (and by
+    # exercise+weight for the reps dimension).  ROWS BETWEEN UNBOUNDED
+    # PRECEDING AND 1 PRECEDING excludes the current row — strictly prior.
+    #
+    # GYM-142: ex_recency provides the latest timestamp per exercise within
+    # the day so the outer ORDER BY places the most-recently-logged exercise
+    # first while sets within each exercise remain ascending by set number.
     rows = db.execute(
         text("""
-            WITH pr AS (
-                SELECT exercise_id, MAX(weight) AS max_weight
+            WITH day_exercises AS (
+                SELECT DISTINCT exercise_id
                 FROM training
                 WHERE user_id = :uid
-                GROUP BY exercise_id
+                  AND date >= :dt_from
+                  AND date  < :dt_to
+            ),
+            all_sets AS (
+                SELECT t.id, t.date, t.set, t.exercise_id, t.muscle_id,
+                       t.weight, t.reps
+                FROM training t
+                JOIN day_exercises de ON de.exercise_id = t.exercise_id
+                WHERE t.user_id = :uid
+            ),
+            pr_flags AS (
+                SELECT
+                    id, date, set, exercise_id, muscle_id, weight, reps,
+                    MAX(weight) OVER (
+                        PARTITION BY exercise_id
+                        ORDER BY date, set
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                    ) AS prior_max_w,
+                    MAX(reps) OVER (
+                        PARTITION BY exercise_id, weight
+                        ORDER BY date, set
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                    ) AS prior_max_reps_at_w
+                FROM all_sets
             ),
             ex_recency AS (
                 SELECT exercise_id, MAX(date) AS last_logged
@@ -237,23 +334,28 @@ def get_training_day(
                 GROUP BY exercise_id
             )
             SELECT
-                t.id                             AS training_id,
-                t.set,
-                t.weight,
-                t.reps,
-                t.exercise_id,
-                e.name                           AS exercise_name,
-                m.name                           AS muscle_name,
-                (t.weight = pr.max_weight)       AS is_pr
-            FROM training t
-            JOIN exercises  e  ON e.id  = t.exercise_id
-            JOIN muscles    m  ON m.id  = t.muscle_id
-            JOIN pr            ON pr.exercise_id = t.exercise_id
-            JOIN ex_recency er ON er.exercise_id = t.exercise_id
-            WHERE t.user_id = :uid
-              AND t.date >= :dt_from
-              AND t.date  < :dt_to
-            ORDER BY er.last_logged DESC, t.set ASC
+                pf.id                   AS training_id,
+                pf.set,
+                pf.weight,
+                pf.reps,
+                pf.exercise_id,
+                e.name                  AS exercise_name,
+                m.name                  AS muscle_name,
+                (
+                    pf.prior_max_w IS NULL
+                    OR pf.weight > pf.prior_max_w
+                    OR (
+                        pf.prior_max_reps_at_w IS NOT NULL
+                        AND pf.reps > pf.prior_max_reps_at_w
+                    )
+                )                       AS is_pr
+            FROM pr_flags pf
+            JOIN exercises  e  ON e.id  = pf.exercise_id
+            JOIN muscles    m  ON m.id  = pf.muscle_id
+            JOIN ex_recency er ON er.exercise_id = pf.exercise_id
+            WHERE pf.date >= :dt_from
+              AND pf.date  < :dt_to
+            ORDER BY er.last_logged DESC, pf.set ASC
         """),
         {"uid": uid, "dt_from": dt_from, "dt_to": dt_to},
     ).fetchall()

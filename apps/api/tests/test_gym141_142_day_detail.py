@@ -1,11 +1,13 @@
-"""Integration tests for GYM-141 (is_pr per set) and GYM-142 (recency order).
+"""Integration tests for GYM-141/GYM-155 (is_pr per set) and GYM-142 (recency order).
 
-GYM-141 — is_pr per set:
-  - A set at the exercise's all-time max weight has is_pr=True.
-  - A lighter set has is_pr=False.
-  - Ties (multiple sets at the same max weight, including same-day) all flag.
-  - A PR on a different day still flags today's set if it equals the standing max.
-  - Cross-user isolation: user A's max does not bleed into user B's flags.
+GYM-155 — is_pr per set (temporal PR semantics, replaces GYM-141 max-weight logic):
+  - First ever set of an exercise has is_pr=True.
+  - A set at a strictly greater weight than any prior set has is_pr=True (weight PR).
+  - A set at more reps than any prior set at the same weight has is_pr=True
+    (reps-at-weight PR).
+  - A tie (equal weight, equal reps) is NOT a PR — must be strictly greater.
+  - A lighter set is is_pr=False.
+  - Cross-user isolation: user A's history does not affect user B's PR flags.
 
 GYM-142 — recency order:
   - The day's exercise groups are returned most-recently-logged first
@@ -180,14 +182,18 @@ def day_detail_client(db_setup) -> Generator[TestClient, None, None]:
 
 
 # ---------------------------------------------------------------------------
-# GYM-141 — is_pr per set
+# GYM-155 — is_pr per set (replaces GYM-141 all-time-max semantics)
 # ---------------------------------------------------------------------------
 
 class TestIsPrFlag:
-    """GET /training/day/{date} correctly sets is_pr on each set."""
+    """GET /training/day/{date} correctly sets is_pr on each set (GYM-155).
 
-    def test_set_at_alltime_max_is_pr_true(self, day_detail_client, db_setup):
-        """A set whose weight equals the all-time max for that exercise is is_pr=True."""
+    Temporal semantics: a set is_pr=True when it was a personal record at
+    the moment it was logged, not based on the current all-time max.
+    """
+
+    def test_new_weight_pr_is_pr_true(self, day_detail_client, db_setup):
+        """A set at a strictly new higher weight is is_pr=True (weight PR)."""
         superuser_url = db_setup["superuser_url"]
         seed = db_setup["seed"]
         today_noon = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
@@ -210,21 +216,28 @@ class TestIsPrFlag:
                 if ex["exercise_id"] == seed["priv_ex_a"]
             )
             pr_set = next(s for s in sets if s["weight"] == 120.0)
-            assert pr_set["is_pr"] is True, f"Expected is_pr=True for 120 kg set: {pr_set}"
+            assert pr_set["is_pr"] is True, (
+                f"120 kg > prior max 100 kg must be weight PR: {pr_set}"
+            )
         finally:
             _delete_training_direct(superuser_url, tid)
 
     def test_lighter_set_is_pr_false(self, day_detail_client, db_setup):
-        """A set below the all-time max has is_pr=False."""
+        """A set below the prior max weight (and never lifted) is is_pr=False."""
         superuser_url = db_setup["superuser_url"]
         seed = db_setup["seed"]
-        today_noon = datetime.utcnow().replace(hour=12, minute=1, second=0, microsecond=0)
+        # Use a future-leaning timestamp so it sorts AFTER the conftest seed rows
+        # (which are inserted at NOW() during fixture setup).  The window functions
+        # order by (date, set) so "prior" context must include the 100 kg seed rows.
+        after_seed = datetime.utcnow() + timedelta(seconds=1)
 
         # Insert a set at 50 kg while the existing conftest seed has 100 kg as max.
+        # 50 kg < 100 kg and 50 kg was never lifted before → not a weight PR,
+        # not a reps-at-weight PR (first time at 50 kg, no prior reps to beat).
         tid = _insert_training(
             superuser_url, USER_A_ID,
             seed["priv_muscle_a"], seed["priv_ex_a"],
-            set_num=11, when=today_noon, weight=50.0, reps=10.0,
+            set_num=11, when=after_seed, weight=50.0, reps=10.0,
         )
         try:
             resp = day_detail_client.get(
@@ -244,13 +257,17 @@ class TestIsPrFlag:
         finally:
             _delete_training_direct(superuser_url, tid)
 
-    def test_ties_all_flagged(self, day_detail_client, db_setup):
-        """Multiple sets at the all-time max weight are ALL is_pr=True (ties)."""
+    def test_first_set_is_pr_second_same_weight_reps_is_not(
+        self, day_detail_client, db_setup
+    ):
+        """Under temporal semantics, a tie (same weight+reps) is NOT a PR.
+
+        Conftest seed inserts set=1 and set=2 at 100 kg x 10 reps for USER_A.
+        Set 1 is the first ever set → is_pr=True.
+        Set 2 is an exact repeat (same weight AND same reps) → NOT a PR.
+        """
         superuser_url = db_setup["superuser_url"]
         seed = db_setup["seed"]
-        # Conftest seed inserts set=1 and set=2 both at 100 kg for USER_A on today.
-        # The all-time max for priv_ex_a is 100 kg (no heavier sets exist at this
-        # point in the test run order, assuming test_set_at_alltime_max cleaned up).
         resp = day_detail_client.get(
             f"/api/v1/training/day/{datetime.utcnow().date()}",
             headers=_service_headers(USER_A_ID),
@@ -261,26 +278,34 @@ class TestIsPrFlag:
             ex["sets"] for ex in exercises
             if ex["exercise_id"] == seed["priv_ex_a"]
         )
-        # Both seed sets are at 100 kg — both must be is_pr=True.
-        for s in sets:
-            assert s["is_pr"] is True, (
-                f"Tie set at 100 kg must have is_pr=True: {s}"
-            )
+        # Both seed sets are at 100 kg x 10 reps, ordered by set number.
+        # Set 1 (first ever) must be is_pr=True; set 2 (tie) must be False.
+        assert len(sets) >= 2
+        assert sets[0]["is_pr"] is True, (
+            f"First set (first ever) must be is_pr=True: {sets[0]}"
+        )
+        assert sets[1]["is_pr"] is False, (
+            f"Second set (same weight+reps, tie) must be is_pr=False: {sets[1]}"
+        )
 
-    def test_pr_on_different_day_flags_todays_equal_set(
+    def test_same_weight_again_on_second_day_is_not_pr(
         self, day_detail_client, db_setup
     ):
-        """If a PR was set on a different day, today's set at the same weight is flagged."""
+        """A repeat at the same weight and reps as a past set is NOT a temporal PR.
+
+        Under the old current-max semantics this returned is_pr=True.
+        Under GYM-155 temporal semantics it is not a new record.
+        """
         superuser_url = db_setup["superuser_url"]
         seed = db_setup["seed"]
-        # Insert a heavier set on a past day.
+        # Insert a heavier set on a past day (150 kg, first time).
         past_day = datetime.utcnow() - timedelta(days=5)
         past_tid = _insert_training(
             superuser_url, USER_A_ID,
             seed["priv_muscle_a"], seed["priv_ex_a"],
             set_num=20, when=past_day, weight=150.0, reps=1.0,
         )
-        # Insert a today set at the same 150 kg.
+        # Insert a today set at the SAME 150 kg x 1 rep = tie, not a new record.
         today_noon = datetime.utcnow().replace(hour=12, minute=2, second=0, microsecond=0)
         today_tid = _insert_training(
             superuser_url, USER_A_ID,
@@ -298,19 +323,18 @@ class TestIsPrFlag:
                 ex["sets"] for ex in exercises
                 if ex["exercise_id"] == seed["priv_ex_a"]
             )
-            today_set = next(s for s in sets if s["weight"] == 150.0)
-            assert today_set["is_pr"] is True, (
-                f"Today's set at standing-max weight must be is_pr=True: {today_set}"
+            today_set = next(s for s in sets if s["set"] == 21)
+            assert today_set["is_pr"] is False, (
+                f"Repeat at 150 kg x 1 (tie) must be is_pr=False "
+                f"under temporal semantics: {today_set}"
             )
         finally:
             _delete_training_direct(superuser_url, past_tid, today_tid)
 
     def test_cross_user_pr_isolation(self, day_detail_client, db_setup):
-        """User A's all-time max does not affect user B's is_pr computation."""
+        """User A's history does not affect user B's is_pr computation."""
         superuser_url = db_setup["superuser_url"]
         seed = db_setup["seed"]
-        # Conftest seed: USER_A priv_ex_a has 100 kg sets; USER_B priv_ex_b has 80 kg.
-        # Both should see is_pr=True on their own sets (each is their own max).
         today = datetime.utcnow().date()
 
         resp_b = day_detail_client.get(
@@ -323,11 +347,15 @@ class TestIsPrFlag:
             ex["sets"] for ex in exercises_b
             if ex["exercise_id"] == seed["priv_ex_b"]
         )
-        # USER_B's sets at 80 kg are their all-time max → must all be is_pr=True.
-        for s in sets_b:
-            assert s["is_pr"] is True, (
-                f"B's set at own max weight must be is_pr=True: {s}"
-            )
+        # USER_B's set=1 at 80 kg is their FIRST ever set → is_pr=True.
+        # USER_B's set=2 at 80 kg is a repeat → is_pr=False.
+        assert len(sets_b) >= 2
+        assert sets_b[0]["is_pr"] is True, (
+            f"B's first set (first ever) must be is_pr=True: {sets_b[0]}"
+        )
+        assert sets_b[1]["is_pr"] is False, (
+            f"B's second set (repeat) must be is_pr=False: {sets_b[1]}"
+        )
 
     def test_is_pr_field_present_in_response(self, day_detail_client, db_setup):
         """Every set in the response carries the is_pr boolean field."""

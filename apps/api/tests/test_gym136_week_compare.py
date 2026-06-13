@@ -13,14 +13,11 @@ Week-compare validates:
      has data.
   6. 401 without auth; 422 invalid tz.
 
-has_pr validates (semantic: "the day holds the CURRENT all-time max-weight
-set of some exercise" — current-max, not was-PR-at-the-time):
-  1. The day holding an exercise's standing max → has_pr True.
-  2. A day whose former PR was beaten by a later day → has_pr False
-     (the marker MOVES to the later day).
-  3. Multi-exercise day: any one standing record marks the day.
-  4. A day with only sub-max sets → False.
-  5. User with no rows → [].
+has_pr validates (GYM-155 temporal semantic: "was a PR when logged"):
+  1. The first session of an exercise → has_pr True (first set = PR).
+  2. A day with a new weight PR or reps-at-weight PR → has_pr True.
+  3. A day with only sub-max / repeat sets → has_pr False.
+  4. User with no rows → [].
 
 Seed layout:
   USER_WC_ID  (500014) — week-compare math:
@@ -31,9 +28,9 @@ Seed layout:
   USER_WB_ID  (500017) — Monday-rollover boundary:
     one row at this_monday - 2h (Sunday 22:00 UTC, w=60,r=10, volume 600)
   USER_PR_ID  (500015) — has_pr:
-    day1 (now-10d): ex_pa 100×10           → False (beaten later)
-    day2 (now-5d):  ex_pa 110×8 + ex_pb 50×10 → True (both standing maxes)
-    day3 (now-2d):  ex_pa 90×10 + ex_pb 40×10 → False (all sub-max)
+    day1 (now-10d): ex_pa 100×10           → True  (first ever set = PR)
+    day2 (now-5d):  ex_pa 110×8 + ex_pb 50×10 → True (weight PR + first set)
+    day3 (now-2d):  ex_pa 90×10 + ex_pb 40×10 → False (all sub-max, no new weight debut)
   USER_EMPTY_ID (500016) — registered, zero training rows.
 """
 
@@ -440,11 +437,26 @@ class TestEmptyAndIsolation:
 
 
 # ---------------------------------------------------------------------------
-# 4. has_pr on /training/days (current-max semantic)
+# 4. has_pr on /training/days (GYM-155 temporal PR semantic)
 # ---------------------------------------------------------------------------
 
 class TestTrainingDaysHasPr:
-    """has_pr marks days holding a CURRENT standing max-weight set."""
+    """has_pr marks days containing at least one temporal PR set.
+
+    GYM-155: semantics changed from "current standing max-weight" to
+    temporal ("was a PR when logged").  A set is is_pr=True if it set a
+    new weight record OR a new reps-at-weight record vs all prior sets of
+    that exercise.  The first set ever of an exercise is always a PR.
+
+    Seed for USER_PR_ID:
+      day1 (now-10d): ex_pa 100×10 — first ever set → is_pr=True → has_pr=True
+      day2 (now-5d):  ex_pa 110×8 (weight PR) + ex_pb 50×10 (first ever)
+                      → both is_pr=True → has_pr=True
+      day3 (now-2d):  ex_pa 90×10 (90 < 110, and 90 kg was never lifted
+                      so prior_max_reps_at_w IS NULL → NOT PR)
+                      + ex_pb 40×10 (40 < 50, similar → NOT PR)
+                      → has_pr=False
+    """
 
     def _days_by_date(self, client, user_id: int) -> dict:
         resp = _days(client, user_id)
@@ -452,23 +464,29 @@ class TestTrainingDaysHasPr:
         return {d["date"]: d for d in resp.json()}
 
     def test_day_with_standing_max_is_marked(self, gym136_client):
-        """day2 holds ex_pa's 110 (current max) and ex_pb's 50 → True."""
+        """day2 holds ex_pa's weight PR (110 > 100) and ex_pb's first set → True."""
         by_date = self._days_by_date(gym136_client, USER_PR_ID)
         key = str(PR_DAY2.date())
         assert key in by_date, f"day2 missing: {by_date}"
         assert by_date[key]["has_pr"] is True, by_date[key]
 
-    def test_pr_moved_by_later_day(self, gym136_client):
-        """day1's 100 was beaten by day2's 110 → day1 has_pr False."""
+    def test_first_day_is_pr_temporal(self, gym136_client):
+        """day1 is the first session for ex_pa (100 kg first ever set) → has_pr True.
+
+        GYM-155: under temporal semantics, day1 keeps has_pr=True because the
+        100 kg set was a genuine PR when it was logged (no prior sets existed).
+        The old current-max test expected False here because a later 110 kg set
+        "moved" the marker.  That old behaviour is replaced by GYM-155.
+        """
         by_date = self._days_by_date(gym136_client, USER_PR_ID)
         key = str(PR_DAY1.date())
         assert key in by_date, f"day1 missing: {by_date}"
-        assert by_date[key]["has_pr"] is False, (
-            f"The marker must move to the later, heavier day: {by_date[key]}"
+        assert by_date[key]["has_pr"] is True, (
+            f"First session (temporal PR) must have has_pr=True: {by_date[key]}"
         )
 
     def test_submax_day_not_marked(self, gym136_client):
-        """day3 (90 and 40 — both below standing maxes) → False."""
+        """day3 (90 and 40 — both below standing maxes, no weight debut) → False."""
         by_date = self._days_by_date(gym136_client, USER_PR_ID)
         key = str(PR_DAY3.date())
         assert key in by_date, f"day3 missing: {by_date}"
