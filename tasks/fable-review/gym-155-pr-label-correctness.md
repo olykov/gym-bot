@@ -64,6 +64,16 @@ core-api-engineer implements the window-function computation in both endpoints +
 constant-weight / bodyweight case and a reps-PR case). Verify against the operator's real data
 shape. Orchestrator re-verifies.
 
+## DECISION (operator-approved, 2026-06-13)
+- **Option A**: History PR = weight PR OR reps-at-weight PR. **NO e1RM** dimension in the
+  History label (e1RM stays where the operator likes it — the Progress page + the SetLogger
+  trend sparkline, both unchanged).
+- **First set ever of an exercise = PR** (weight PR, no prior source) — keep, as the record
+  flow already does.
+- Temporal semantics ("was a PR when logged"), ordered by (date, set).
+
 ## Comments
 
 ### 2026-06-13T14:50:00Z — investigated (prod DB), root cause found, fix plan pending approval
+
+### 2026-06-13T15:25:00Z — approved Option A; delegating to core-api
