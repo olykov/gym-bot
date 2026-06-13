@@ -11,7 +11,9 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-13T06:45:00Z
-updated: 2026-06-13T06:45:00Z
+updated: 2026-06-13T19:30:00Z
+start_date: 2026-06-13T19:10:00Z
+finish_date: 2026-06-13T19:30:00Z
 epic: fable-review
 depends_on: []
 blocks: []
