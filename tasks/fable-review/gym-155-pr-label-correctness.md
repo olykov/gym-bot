@@ -17,7 +17,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-141, GYM-136, GYM-133]
-commits: [cb2f836]
+commits: [558e5ad]
 tests: [apps/api/tests/test_gym155_pr_correctness.py]
 finish_date: 2026-06-13T16:00:00Z
 design_reports: []
@@ -85,4 +85,4 @@ Replaced both endpoints' PR computation with window-function temporal semantics.
 Constant-weight / bodyweight exercises (Pull-Up at 1 kg) now correctly show PR
 only on the first set and on new reps records; repeats and below-record sets
 are not flagged. 484 tests pass (15 new in test_gym155_pr_correctness.py).
-Branch: fix/gym-155-pr-correctness, commit: cb2f836.
+Branch: fix/gym-155-pr-correctness, commit: 558e5ad.
