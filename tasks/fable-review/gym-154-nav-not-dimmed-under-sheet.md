@@ -18,7 +18,7 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-148, GYM-149]
-commits: [bac385d]
+commits: [a33b7ad]
 tests: []
 design_reports: []
 review_reports: []
@@ -54,7 +54,7 @@ full brightness and the sheet bottom is flush with the nav top (no scrimmed gap)
 
 ### 2026-06-13T14:50:00Z — filed; operator wants option 1 first, delegated to design agent
 
-### 2026-06-13T00:00:00Z — done (bac385d)
+### 2026-06-13T00:00:00Z — done (a33b7ad)
 Implemented Option 1. Mechanism: limit the `.sheet-scrim` bottom to `NAV_CLEAR`
 (`calc(var(--nav-h) + max(env(safe-area-inset-bottom), var(--tg-safe-bottom, 0px)))`),
 the same expression used by the panel wrapper. The scrim now covers only the viewport
