@@ -43,6 +43,12 @@ interface StatChipProps {
     children: ReactNode;
     /** Optional extra classes (e.g. an appear animation from the caller). */
     className?: string;
+    /**
+     * GYM-153: optional accessible label override. Used by SetRow to give
+     * the full kind label ("Weight PR" / "Reps PR") to screen readers even
+     * when the visible text inside the chip is the collapsed "PR" span.
+     */
+    "aria-label"?: string;
 }
 
 /** The accent PR chip (spec §10.2 / §9.4). Subtle, --accent-weak fill.
@@ -50,10 +56,15 @@ interface StatChipProps {
  * GYM-141: accepts an optional `className` so callers can attach a one-shot
  * appear animation (the SetRow PR chip) without coupling animation details
  * to this primitive.
+ *
+ * GYM-153: accepts an optional `aria-label` for screen readers (the SetRow
+ * middle marker contains two display spans — one CSS-hidden — so the
+ * explicit label gives assistive tech the full kind string always).
  */
-export function StatChip({ children, className }: StatChipProps) {
+export function StatChip({ children, className, "aria-label": ariaLabel }: StatChipProps) {
     return (
         <span
+            aria-label={ariaLabel}
             className={`rounded-full bg-accent-weak px-2 py-[2px] text-label font-semibold uppercase text-accent${className ? ` ${className}` : ""}`}
         >
             {children}

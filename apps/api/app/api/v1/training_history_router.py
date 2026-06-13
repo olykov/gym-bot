@@ -1,4 +1,4 @@
-"""Training history endpoints — GYM-47 / GYM-58 / GYM-51 / GYM-155.
+"""Training history endpoints — GYM-47 / GYM-58 / GYM-51 / GYM-155 / GYM-153.
 
 Implements:
   GET  /training/days              — day-grouped summary, reverse-chronological
@@ -31,6 +31,13 @@ comparing to all EARLIER sets for the same exercise (ordered by date, set):
 has_pr (day level) = OR of is_pr over the day's sets.
 This fixes constant-weight / bodyweight exercises that previously flagged every
 set as PR because weight == all-time max_weight for every set.
+
+GYM-153: pr_kind is derived alongside is_pr in GET /training/day/{date}.
+  'weight' — first-ever set or strictly greater weight (weight branch first,
+             so first-ever set always yields 'weight', not 'reps').
+  'reps'   — same weight lifted before, strictly more reps.
+  NULL     — not a PR.
+Invariant: pr_kind IS NOT NULL exactly when is_pr is true.
 """
 import logging
 from collections import defaultdict
@@ -262,6 +269,11 @@ def get_training_day(
     correctly: only the first set of the exercise and any new reps-at-weight
     records flag is_pr=True.
 
+    GYM-153: each set also carries ``pr_kind`` — ``'weight'`` for a strict
+    weight PR or the first-ever set of the exercise; ``'reps'`` for a strict
+    reps-at-weight PR; ``None`` when is_pr is false.  Derived from the same
+    window-function expressions as is_pr so they can never disagree.
+
     GYM-142 (variant A): exercise groups are ordered by recency — the most
     recently logged exercise first (DESC by MAX(t.date) within the day).
     Sets within an exercise remain in ascending set-number order.  The recency
@@ -348,7 +360,21 @@ def get_training_day(
                         pf.prior_max_reps_at_w IS NOT NULL
                         AND pf.reps > pf.prior_max_reps_at_w
                     )
-                )                       AS is_pr
+                )                       AS is_pr,
+                -- GYM-153: weight branch is checked first so the first-ever
+                -- set (prior_max_w IS NULL) always yields 'weight', guaranteeing
+                -- mutual exclusivity with the 'reps' branch.
+                -- Invariant: pr_kind IS NOT NULL exactly when is_pr is true.
+                CASE
+                    WHEN (pf.prior_max_w IS NULL OR pf.weight > pf.prior_max_w)
+                        THEN 'weight'
+                    WHEN (
+                        pf.prior_max_reps_at_w IS NOT NULL
+                        AND pf.reps > pf.prior_max_reps_at_w
+                    )
+                        THEN 'reps'
+                    ELSE NULL
+                END                     AS pr_kind
             FROM pr_flags pf
             JOIN exercises  e  ON e.id  = pf.exercise_id
             JOIN muscles    m  ON m.id  = pf.muscle_id
@@ -379,6 +405,7 @@ def get_training_day(
                 weight=float(row.weight),
                 reps=float(row.reps),
                 is_pr=bool(row.is_pr),
+                pr_kind=row.pr_kind,
             )
         )
 

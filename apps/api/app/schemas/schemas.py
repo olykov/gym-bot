@@ -6,7 +6,7 @@ that existing endpoints keep working.
 """
 import datetime as _dt
 from datetime import datetime, date
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 # Alias: prevents Pydantic from confusing the field name ``date`` with the
 # ``datetime.date`` type when both appear in the same class namespace.
@@ -304,9 +304,15 @@ class TrainingSet(BaseModel):
 
     Matches ``TrainingSet`` in packages/api-contract/openapi.yaml.
 
-    ``is_pr`` (GYM-141) is True when this set's weight equals the caller's
-    current all-time max weight for the exercise (a standing personal record).
-    Server-computed; ties (including same-day) flag all matching sets.
+    ``is_pr`` uses temporal PR semantics (GYM-155): True when this set was a
+    personal record at the moment it was logged — either the first ever set of
+    the exercise, a strict weight PR, or a strict reps-at-weight PR.
+
+    ``pr_kind`` (GYM-153) is the flavour of PR:
+      - ``'weight'``: first-ever set or strictly greater weight than all prior.
+      - ``'reps'``: same weight lifted before, strictly more reps than prior.
+      - ``None``: set is not a PR.
+    Invariant: ``pr_kind is None`` exactly when ``is_pr is False``.
     """
 
     training_id: str
@@ -314,6 +320,7 @@ class TrainingSet(BaseModel):
     weight: float
     reps: float
     is_pr: bool
+    pr_kind: Literal["weight", "reps"] | None = None
 
 
 class TrainingDayExercise(BaseModel):

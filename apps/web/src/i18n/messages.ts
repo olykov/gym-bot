@@ -108,6 +108,11 @@ export const MESSAGES = {
     "summary.prs": { en: "PRs set", ru: "Рекорды" },
     "summary.weekStreak": { en: "Week streak", ru: "Недель подряд" },
     "pr": { en: "PR", ru: "PR" },
+    // GYM-153: kind-specific PR labels for the SetRow middle marker.
+    // Short fallback "PR" is the existing `pr` key (reused on narrow rows
+    // and for the DayCard day-level badge which has no kind).
+    "pr.weight": { en: "Weight PR", ru: "Weight PR" },
+    "pr.reps": { en: "Reps PR", ru: "Reps PR" },
 
     // ── THIS WEEK card (Dashboard, GYM-136) — ▲/▼ are unicode geometric
     // figures (the GYM-130 delta language), not emojis. Sets reuse the

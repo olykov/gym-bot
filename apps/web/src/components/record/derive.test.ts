@@ -26,7 +26,8 @@ import {
 
 function srv(set: number, weight: number, reps: number): TrainingSet {
     // GYM-141: is_pr defaults false in test fixtures; tests that care set it explicitly.
-    return { training_id: `t-${set}`, set, weight, reps, is_pr: false };
+    // GYM-153: pr_kind is null when is_pr is false.
+    return { training_id: `t-${set}`, set, weight, reps, is_pr: false, pr_kind: null };
 }
 
 function ses(set: number, weight: number, reps: number): SessionSet {

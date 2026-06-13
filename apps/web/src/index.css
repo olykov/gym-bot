@@ -551,6 +551,26 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * GYM-153: SetRow PR label — container-query responsive collapse.
+ *
+ * The SetRow flex div is a CSS @container (inline-size). At normal widths
+ * (≥ 261px row) the full label ("Weight PR" / "Reps PR") is shown. On very
+ * narrow rows (≤ 260px) — which only arise below ~320px screen or in unusual
+ * layout conditions — the label collapses to just "PR".
+ *
+ * Both spans are always in the DOM; CSS toggles which is visible without any
+ * JS measurement. The threshold (260px) leaves comfortable room for "Weight PR"
+ * (~58px chip) to sit in the middle zone of a 320px screen.
+ * ------------------------------------------------------------------------- */
+.set-row-pr-full  { display: inline; }
+.set-row-pr-short { display: none; }
+
+@container (max-width: 260px) {
+    .set-row-pr-full  { display: none; }
+    .set-row-pr-short { display: inline; }
+}
+
+/* ---------------------------------------------------------------------------
  * Reduced motion (spec §9.4, mandatory) — kill all motion, keep instant state.
  * ------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
