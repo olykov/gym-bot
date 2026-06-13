@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-151
 title: "Set steppers: WEIGHT and REPS numbers centered on different axes (kg unit shifts WEIGHT)"
 slug: gym-151-stepper-number-centering
-status: todo
+status: done
 priority: high
 type: bug-fix
 labels: [frontend, design, record, sheet, miniapp]
@@ -11,12 +11,14 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-13T06:45:00Z
-updated: 2026-06-13T06:45:00Z
+updated: 2026-06-13T11:00:00Z
+start_date: 2026-06-13T07:00:00Z
+finish_date: 2026-06-13T11:00:00Z
 epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-143]
-commits: []
+commits: [1fff677]
 tests: []
 design_reports: []
 review_reports: []
@@ -44,3 +46,11 @@ Verify headless dark + realistic insets: WEIGHT "50" and REPS "10" centers align
 ## Comments
 
 ### 2026-06-13T06:45:00Z — filed + approved for this iteration
+
+### 2026-06-13T11:00:00Z — closed (1fff677)
+Fixed in `apps/web/src/components/ui/Stepper.tsx`: field container changed from
+`flex justify-center gap-1` (unit in flow) to `relative` with unit `absolute right-3
+inset-y-0`. Input is `w-full h-full text-center` and centers over the full field width
+regardless of unit presence. Verified headless Playwright dark theme: WEIGHT centerX =
+196.50px, REPS centerX = 196.50px, delta = 0.00px (≤ 1px threshold met). Build ✅
+lint ✅ 198 tests ✅.

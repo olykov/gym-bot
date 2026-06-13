@@ -62,6 +62,7 @@ import {
     buildComparisonRows,
     computeEffectivePR,
     computeNextSet,
+    derivePrefill,
     findNextGhostSet,
     resolvePrBeat,
     saveErrorMessage,
@@ -163,8 +164,9 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
         [ctx.data, sessionSets],
     );
 
-    // Pre-fill priority (§12.3): (1) this session's previous set for this
-    // exercise; (2) last_session_sets for the NEXT set #; (3) leave empty (Save
+    // Pre-fill priority (§12.3, GYM-152): (1) last_session_sets matched by the
+    // current set number (last training's set N); (2) repeat this session's
+    // last set (more sets than last time / new exercise); (3) leave empty (Save
     // disabled until valid). PR is NOT a pre-fill source. Only fills empty
     // fields so we never fight the user mid-edit. Runs as log-context resolves
     // and re-runs after each save (nextSet advances → next last-session set).
@@ -174,21 +176,11 @@ export function SetLogger({ chosen, today, serverSets, createHint, onClearCreate
         if (ctx.isLoading) return; // wait so the pre-fill isn't lost to empty.
         if (prefilledFor.current === key && (weightText || repsText)) return;
 
-        const lastSession = sessionSets[sessionSets.length - 1];
-        let w: number | null = null;
-        let r: number | null = null;
-        if (lastSession) {
-            w = lastSession.weight;
-            r = lastSession.reps;
-        } else {
-            const lastForSet = ctx.data?.last_session_sets.find(
-                (s) => s.set === nextSet,
-            );
-            if (lastForSet) {
-                w = lastForSet.weight;
-                r = lastForSet.reps;
-            }
-        }
+        const { weight: w, reps: r } = derivePrefill(
+            nextSet,
+            sessionSets,
+            ctx.data?.last_session_sets ?? [],
+        );
         prefilledFor.current = key;
         if (w != null && !weightText) setWeightText(String(w));
         if (r != null && !repsText) setRepsText(String(r));

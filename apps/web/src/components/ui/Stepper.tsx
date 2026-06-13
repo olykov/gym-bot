@@ -96,7 +96,10 @@ export function Stepper({
                     −
                 </StepButton>
 
-                <div className="flex flex-1 items-baseline justify-center gap-1 rounded-md border border-hairline bg-secondary-bg px-3">
+                {/* GYM-151: relative container so the unit is positioned absolutely
+                    at the right edge — the input stays w-full text-center and
+                    centers over the FULL field width regardless of the unit. */}
+                <div className="relative flex-1 rounded-md border border-hairline bg-secondary-bg">
                     <input
                         id={id}
                         type="text"
@@ -104,10 +107,12 @@ export function Stepper({
                         value={text}
                         onChange={(e) => onInput(e.target.value)}
                         aria-label={label}
-                        className="tabular w-full bg-transparent text-center font-display text-stat leading-none text-text outline-none"
+                        className="tabular h-full w-full bg-transparent px-3 text-center font-display text-stat leading-none text-text outline-none"
                     />
                     {unit ? (
-                        <span className="text-label text-hint">{unit}</span>
+                        <span className="text-label pointer-events-none absolute inset-y-0 right-3 flex items-center text-hint">
+                            {unit}
+                        </span>
                     ) : null}
                 </div>
 

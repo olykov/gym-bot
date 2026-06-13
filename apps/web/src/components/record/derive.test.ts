@@ -14,6 +14,7 @@ import {
     computeDelta,
     computeEffectivePR,
     computeNextSet,
+    derivePrefill,
     findNextGhostSet,
     mergeRecap,
     resolvePrBeat,
@@ -56,6 +57,89 @@ describe("computeNextSet", () => {
     it("takes the max across the completed ∪ session union", () => {
         expect(computeNextSet([2], [ses(5, 50, 8)])).toBe(6);
         expect(computeNextSet([7], [ses(3, 50, 8)])).toBe(8);
+    });
+});
+
+describe("derivePrefill (GYM-152 — last-training-set-N is primary)", () => {
+    // (a) Primary: after a session set exists, set N+1 uses last_session_sets[N+1]
+    //     — NOT a repeat of the session's last set.
+    it("(a) set N+1 prefills last_session_sets[N+1], not the session's last set", () => {
+        const sessionSets = [ses(1, 50, 10)]; // just logged set 1 at 50×10
+        const lastSessionSets = [
+            ghost(1, 48, 10), // last time set 1
+            ghost(2, 52, 8),  // last time set 2 — should be the prefill
+        ];
+        // nextSet = 2; last_session_sets has an entry for set 2 → use it.
+        expect(derivePrefill(2, sessionSets, lastSessionSets)).toEqual({
+            weight: 52,
+            reps: 8,
+        });
+    });
+
+    it("(a) also applies when there are multiple session sets already", () => {
+        const sessionSets = [ses(1, 60, 8), ses(2, 62, 7)];
+        const lastSessionSets = [
+            ghost(1, 58, 8),
+            ghost(2, 60, 7),
+            ghost(3, 55, 10), // last time set 3
+        ];
+        expect(derivePrefill(3, sessionSets, lastSessionSets)).toEqual({
+            weight: 55,
+            reps: 10,
+        });
+    });
+
+    // (b) Fallback: when last_session_sets has no entry for nextSet, repeat
+    //     this session's last set.
+    it("(b) falls back to repeating this session's last set when last_session_sets has no entry for nextSet", () => {
+        const sessionSets = [ses(1, 50, 10), ses(2, 50, 10)];
+        const lastSessionSets = [ghost(1, 48, 10)]; // only one set last time
+        // nextSet = 3; no ghost for set 3 → repeat session's last (set 2).
+        expect(derivePrefill(3, sessionSets, lastSessionSets)).toEqual({
+            weight: 50,
+            reps: 10,
+        });
+    });
+
+    it("(b) fallback also applies when last_session_sets is empty but a session set exists", () => {
+        const sessionSets = [ses(1, 70, 5)];
+        expect(derivePrefill(2, sessionSets, [])).toEqual({
+            weight: 70,
+            reps: 5,
+        });
+    });
+
+    // (c) New exercise / empty last_session → empty (both null).
+    it("(c) new exercise with no session sets and no last_session_sets → empty", () => {
+        expect(derivePrefill(1, [], [])).toEqual({
+            weight: null,
+            reps: null,
+        });
+    });
+
+    it("(c) first set with no last_session entry and no session sets yet → empty", () => {
+        // last_session_sets exists but has no entry for set 1 and session is empty.
+        expect(derivePrefill(1, [], [ghost(2, 50, 8)])).toEqual({
+            weight: null,
+            reps: null,
+        });
+    });
+
+    // (d) Never-overwrite guard — derivePrefill itself does not read the current
+    //     text values (the guard lives in the useEffect), but we verify that
+    //     primary wins over fallback unconditionally (the "only fill empty"
+    //     responsibility sits in SetLogger.tsx and is tested conceptually here
+    //     by confirming derivePrefill always returns the primary source).
+    it("(d) primary source (last_session set N) wins even when session sets exist", () => {
+        // Session has set 1 = 100×8; last_session has set 2 = 90×6.
+        // derivePrefill must return the last_session value, not the session repeat.
+        const sessionSets = [ses(1, 100, 8)];
+        const lastSessionSets = [ghost(1, 95, 8), ghost(2, 90, 6)];
+        const result = derivePrefill(2, sessionSets, lastSessionSets);
+        // Must be last_session's set 2, NOT session's last set (100×8).
+        expect(result).toEqual({ weight: 90, reps: 6 });
+        expect(result.weight).not.toBe(100);
+        expect(result.reps).not.toBe(8);
     });
 });
 

@@ -392,6 +392,43 @@ export function resolvePrBeat(
 }
 
 /**
+ * GYM-152: pure prefill selection — the approved priority order for §12.3.
+ *
+ * Priority:
+ *  1. `lastSessionSets` matched by `nextSet` (last training's same set N).
+ *  2. Fallback: repeat `sessionSets[last]` (more sets than last time, or new
+ *     exercise with prior sets in THIS session).
+ *  3. Null pair (both null) — Save stays disabled until the user types.
+ *
+ * This is a pure helper so the selection logic is unit-testable without React.
+ * SetLogger calls it inside the prefill `useEffect`.
+ *
+ * @param nextSet - the upcoming set number (1-based).
+ * @param sessionSets - sets already logged in THIS session for this exercise.
+ * @param lastSessionSets - `log-context.last_session_sets` (may be empty).
+ * @returns `{weight, reps}` to prefill, or `{weight: null, reps: null}`.
+ */
+export function derivePrefill(
+    nextSet: number,
+    sessionSets: SessionSet[],
+    lastSessionSets: LogSet[],
+): { weight: number | null; reps: number | null } {
+    // Priority 1: last training's same set number.
+    const fromLast = lastSessionSets.find((s) => s.set === nextSet);
+    if (fromLast) {
+        return { weight: fromLast.weight, reps: fromLast.reps };
+    }
+    // Priority 2: repeat this session's last set (exercise is new or has more
+    // sets than last training — gives a sensible starting point).
+    const lastInSession = sessionSets[sessionSets.length - 1];
+    if (lastInSession) {
+        return { weight: lastInSession.weight, reps: lastInSession.reps };
+    }
+    // Priority 3: nothing known — leave empty.
+    return { weight: null, reps: null };
+}
+
+/**
  * GYM-125 #2: inline save-error message for the SetLogger write path
  * (spec §12.5 / §12.8). A 409 from `POST /training` means the attempted set
  * NUMBER already exists for this exercise today (set-number collision — e.g.

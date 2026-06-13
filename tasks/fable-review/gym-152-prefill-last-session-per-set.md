@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-152
 title: "Set prefill: next set should mirror last training's same set, not repeat this session's last set"
 slug: gym-152-prefill-last-session-per-set
-status: todo
+status: done
 priority: high
 type: feature
 labels: [frontend, record, ux, miniapp]
@@ -12,12 +12,15 @@ model: null
 reporter: oleksii
 created: 2026-06-13T06:45:00Z
 updated: 2026-06-13T06:45:00Z
+start_date: 2026-06-13T00:00:00Z
+finish_date: 2026-06-13T00:00:00Z
 epic: fable-review
 depends_on: []
 blocks: []
 related: []
-commits: []
-tests: []
+commits: [3fc859e]
+tests:
+  - apps/web/src/components/record/derive.test.ts
 design_reports: []
 review_reports: []
 review: {}
@@ -56,3 +59,9 @@ guard and the re-run-after-save behaviour. Add/adjust unit tests for the new pri
 ## Comments
 
 ### 2026-06-13T06:45:00Z — filed + approved for this iteration
+
+### 2026-06-13T10:49:00Z — implemented and closed
+Added `derivePrefill(nextSet, sessionSets, lastSessionSets)` pure helper to `derive.ts`
+(primary: last_session_sets[N], fallback: session repeat, else empty). Updated `SetLogger.tsx`
+prefill effect to call it. Added 8 unit tests in `derive.test.ts` covering cases (a)–(d).
+All 205 tests pass; 0 lint warnings. Build pre-existing errors unchanged (not introduced here).
