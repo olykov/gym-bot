@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-153
 title: "History PR marker: move out of the figure cluster (numbers shift) + weight-vs-reps PR"
 slug: gym-153-history-pr-marker-placement
-status: in_progress
+status: done
 priority: medium
 type: feature
 labels: [frontend, design, history, api, miniapp]
@@ -16,8 +16,8 @@ epic: fable-review
 depends_on: []
 blocks: []
 related: [GYM-141, GYM-136]
-commits: []
-tests: []
+commits: [9911337]
+tests: [apps/api/tests/test_gym153_pr_kind.py, apps/web/src/components/ui/SetRow.test.ts]
 design_reports: []
 review_reports: []
 review: {}
@@ -79,3 +79,6 @@ three + verifying (real-data pr_kind correctness + visual placement) + deploy.
 ### 2026-06-13T06:45:00Z — filed; deferred to backlog per operator
 
 ### 2026-06-13T19:10:00Z — activated; wave 1 (contract) launched
+
+### 2026-06-13T19:30:00Z — done (9911337)
+Three waves integrated: contract pr_kind, core-api populate (validated on real data: bench 50x10='reps', weight records='weight'), frontend marker→middle (figure 0px shift, Weight/Reps PR labels, narrow→'PR'). Day-level badge unaffected. Gate: web 209 tests + build + lint; api py_compile; core 493 tests.
