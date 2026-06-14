@@ -3,7 +3,7 @@ schema_version: 1
 id: GYM-156
 title: "Day detail empty though the list shows sets: detail uses UTC day bounds, list groups by tz"
 slug: gym-156-day-detail-timezone-mismatch
-status: todo
+status: done
 priority: high
 type: bug-fix
 labels: [api, core-api, frontend, api-contract, history, timezone, miniapp]
@@ -11,13 +11,15 @@ assignee: null
 model: null
 reporter: oleksii
 created: 2026-06-13T20:10:00Z
-updated: 2026-06-13T20:10:00Z
+updated: 2026-06-14T04:05:00Z
+start_date: 2026-06-13T20:10:00Z
+finish_date: 2026-06-14T04:05:00Z
 epic: fable-review
 depends_on: []
 blocks: []
 related: []
-commits: []
-tests: []
+commits: [c7d712f]
+tests: [apps/api/tests/test_gym156_day_detail_tz.py]
 design_reports: []
 review_reports: []
 review: {}
@@ -61,3 +63,9 @@ list counts under Jun 5; opening Jun 4 must NOT double-count them.
 ## Comments
 
 ### 2026-06-13T20:10:00Z — root cause confirmed in prod DB; fix plan
+
+### 2026-06-14T04:05:00Z — fixed (c7d712f), validated on real data
+Detail endpoint now tz-aware (zoneinfo local-midnight bounds), contract gained the tz
+param, frontend passes DEVICE_TZ. Prod-data check: the Jun-5 / Asia-Tbilisi window
+[Jun-4 20:00, Jun-5 20:00) UTC returns exactly Face Pull / Shoulders / 2 sets — matches
+the day card. core-api 508 tests (15 new tz/DST/422/back-compat), web 209, gate green.
