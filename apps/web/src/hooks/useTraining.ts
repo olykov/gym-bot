@@ -68,11 +68,15 @@ export function useTrainingDays(from: string, to: string) {
  * Continue tile reflects the truly-latest exercise rather than a 10-min-old
  * prefetch snapshot. gcTime is kept at default so the previous snapshot renders
  * as a placeholder while the fresh fetch runs — instant feel preserved.
+ *
+ * GYM-156: DEVICE_TZ is forwarded so that day-boundary computation on the
+ * server matches the local tz used by the list endpoint. The query key also
+ * carries DEVICE_TZ (via queryKeys.training.day) so a tz change is a cache miss.
  */
 export function useTrainingDay(date: string) {
     return useQuery<TrainingDayDetail>({
         queryKey: dayKey(date),
-        queryFn: ({ signal }) => fetchTrainingDay(date, signal),
+        queryFn: ({ signal }) => fetchTrainingDay(date, signal, DEVICE_TZ),
         staleTime: 0,
         refetchOnMount: "always",
     });

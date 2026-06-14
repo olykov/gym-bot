@@ -38,6 +38,13 @@ GYM-153: pr_kind is derived alongside is_pr in GET /training/day/{date}.
   'reps'   — same weight lifted before, strictly more reps.
   NULL     — not a PR.
 Invariant: pr_kind IS NOT NULL exactly when is_pr is true.
+
+GYM-156: Optional ``tz`` query param added to ``get_training_day`` (mirrors
+``list_training_days``).  When provided, the UTC day window [dt_from, dt_to)
+is computed from the LOCAL midnight boundaries of ``day_date`` in ``tz`` using
+``zoneinfo.ZoneInfo``.  Without ``tz`` the existing UTC behaviour is preserved
+(back-compat).  Same ``_validate_tz`` helper and same Query metadata as
+``list_training_days``.
 """
 import logging
 from collections import defaultdict
@@ -253,6 +260,7 @@ def list_training_days(
 )
 def get_training_day(
     day_date: date,
+    tz: Optional[str] = Query(default=None),
     principal: Principal = Depends(get_principal),
     db: Session = Depends(get_db_for_principal),
 ) -> schemas.TrainingDayDetail:
@@ -279,18 +287,43 @@ def get_training_day(
     Sets within an exercise remain in ascending set-number order.  The recency
     signal is the ``date`` TIMESTAMP column (set to server UTC at insert time).
 
+    GYM-156: When ``tz`` is provided, the day window is computed from the LOCAL
+    midnight boundaries of ``day_date`` in ``tz``.  The LOCAL midnight is
+    converted to UTC so the WHERE filter stays on the raw ``date`` column
+    (sargable).  Without ``tz`` the existing UTC behaviour is unchanged.
+    Adding 1 day to the tz-aware local midnight before converting to UTC
+    handles DST correctly (next LOCAL midnight, not +86400 seconds).
+
     Args:
         day_date: Calendar date to fetch.
+        tz: Optional IANA timezone name (e.g. "Asia/Tbilisi"). Default None = UTC.
         principal: Resolved identity from ``get_principal``.
         db: SQLAlchemy session.
 
     Returns:
         ``TrainingDayDetail`` with exercises grouped by exercise_id, ordered
         most-recently-logged first, each with its ascending set list.
+
+    Raises:
+        HTTPException 422: If ``tz`` is not a valid IANA timezone name.
     """
+    _validate_tz(tz)  # raises 422 on invalid tz
     uid = principal["user_id"]
-    dt_from = datetime(day_date.year, day_date.month, day_date.day)
-    dt_to = dt_from + timedelta(days=1)
+    if tz is None:
+        # UTC path — unchanged back-compat behaviour.
+        dt_from = datetime(day_date.year, day_date.month, day_date.day)
+        dt_to = dt_from + timedelta(days=1)
+    else:
+        # Timezone-aware path: compute LOCAL midnight boundaries then convert to UTC.
+        # Adding timedelta(days=1) to the tz-aware local midnight gives the next
+        # LOCAL midnight (DST-correct), which we then strip back to a naive UTC.
+        local_midnight = datetime(
+            day_date.year, day_date.month, day_date.day, tzinfo=ZoneInfo(tz)
+        )
+        dt_from = local_midnight.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        dt_to = (local_midnight + timedelta(days=1)).astimezone(
+            ZoneInfo("UTC")
+        ).replace(tzinfo=None)
 
     # GYM-155: Temporal PR detection via window functions (same logic as
     # list_training_days — see that docstring for full derivation).

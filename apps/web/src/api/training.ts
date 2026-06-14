@@ -41,15 +41,23 @@ export function fetchTrainingDays(
     return apiRequest<TrainingDay[]>(`/training/days?${qs}`, { signal });
 }
 
-/** GET /training/day/{date} — exercises (grouped) with their sets for one day. */
+/**
+ * GET /training/day/{date} — exercises (grouped) with their sets for one day.
+ *
+ * @param date - calendar date (YYYY-MM-DD).
+ * @param signal - optional AbortSignal.
+ * @param tz - optional IANA timezone name. When provided, day boundaries are
+ *   computed in that timezone so a session logged near midnight lands on the
+ *   correct local calendar day (mirrors `fetchTrainingDays`).
+ */
 export function fetchTrainingDay(
     date: string,
     signal?: AbortSignal,
+    tz?: string,
 ): Promise<TrainingDayDetail> {
-    return apiRequest<TrainingDayDetail>(
-        `/training/day/${encodeURIComponent(date)}`,
-        { signal },
-    );
+    const base = `/training/day/${encodeURIComponent(date)}`;
+    const url = tz ? `${base}?${new URLSearchParams({ tz }).toString()}` : base;
+    return apiRequest<TrainingDayDetail>(url, { signal });
 }
 
 /** POST /training — record one set; the server assigns id/date/user_id. */

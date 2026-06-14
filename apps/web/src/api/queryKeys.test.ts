@@ -96,10 +96,13 @@ describe("queryKeys — exact shapes", () => {
             "2026-06-30",
             TZ,
         ]);
+        // GYM-156: day key now carries the tz suffix so that server day-boundary
+        // computation matches the list endpoint (both use the same local tz).
         expect(queryKeys.training.day("2026-06-12")).toEqual([
             "training",
             "day",
             "2026-06-12",
+            TZ,
         ]);
     });
 });

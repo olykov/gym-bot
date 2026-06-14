@@ -11,12 +11,12 @@
  *    matches by array prefix, so invalidating a prefix hits every key that
  *    starts with it. Each prefix below states exactly which keys it covers.
  *
- * Timezone suffixes: `summary`, `activity` and `training.days` carry the
- * resolved device timezone (DEVICE_TZ ?? "UTC") as their LAST element so a tz
- * change across reloads is a cache miss. Their invalidation contracts
- * deliberately use the tz-LESS prefix — `["analytics","summary"]` invalidates
- * the summary for whatever tz is cached. This was previously an unwritten
- * coincidence of string prefixes; it is now the documented contract.
+ * Timezone suffixes: `summary`, `activity`, `training.days` and `training.day`
+ * carry the resolved device timezone (DEVICE_TZ ?? "UTC") as their LAST
+ * element so a tz change across reloads is a cache miss. Their invalidation
+ * contracts deliberately use the tz-LESS prefix — `["analytics","summary"]`
+ * invalidates the summary for whatever tz is cached. This was previously an
+ * unwritten coincidence of string prefixes; it is now the documented contract.
  */
 import { DEVICE_TZ } from "@/lib/timezone";
 
@@ -164,8 +164,10 @@ export const queryKeys = {
         daysPrefix: ["training", "days"] as const,
         /**
          * `GET /training/day/{date}` — one day's grouped detail (§11.3).
-         * Exact key; also used directly as its own invalidation target.
+         * Carries the tz suffix (GYM-156: server day-boundary uses local tz,
+         * must match the list). Invalidated by the exact key (no prefix needed
+         * — callers pass the date directly).
          */
-        day: (date: string) => ["training", "day", date] as const,
+        day: (date: string) => ["training", "day", date, TZ] as const,
     },
 } as const;
